@@ -11,6 +11,7 @@ import { BFUtils } from '../modules/utils';
 import { trackPageView } from '../modules/analytics';
 import { Blockchain } from '../modules/blockchain';
 import { useVote } from './useVote';
+import { useRpc } from './useRpc';
 import { useSupport } from './useSupport';
 import { useWallet } from './useWallet';
 import { useProfile } from './useProfile';
@@ -68,27 +69,7 @@ export function useApp() {
     lockedCommunity: false,
   });
 
-  const rpcMenuOpen  = ref(false);
-  const rpcForumNode = ref(localStorage.getItem('bf-rpc-forum') || 'https://rpc.drakernoise.com');
-  const rpcDataNode  = ref(localStorage.getItem('bf-rpc-data')  || 'https://rpc.drakernoise.com');
-  const rpcForumCustom = ref('');
-  const rpcDataCustom  = ref('');
-
-  const getForumUrl = () => rpcForumNode.value === 'custom' ? rpcForumCustom.value : rpcForumNode.value;
-  const getDataUrl  = () => rpcDataNode.value  === 'custom' ? rpcDataCustom.value  : rpcDataNode.value;
-
-  let forumClient = new dblurt.Client([getForumUrl()]);
-  let client      = new dblurt.Client([getDataUrl()]);
-
-  const applyRpcSettings = () => {
-    const fUrl = getForumUrl();
-    const dUrl = getDataUrl();
-    if (!fUrl || !dUrl) return;
-    forumClient = new dblurt.Client([fUrl]);
-    client      = new dblurt.Client([dUrl]);
-    localStorage.setItem('bf-rpc-forum', rpcForumNode.value === 'custom' ? rpcForumCustom.value : rpcForumNode.value);
-    localStorage.setItem('bf-rpc-data',  rpcDataNode.value  === 'custom' ? rpcDataCustom.value  : rpcDataNode.value);
-  };
+  const rpc = useRpc();
 
   const view         = ref('index');
   const loading      = ref(true);
@@ -287,8 +268,7 @@ export function useApp() {
     if (act.community !== config.communityAccount) {
       config.communityAccount = act.community;
       selectedCommunity.value = act.community;
-      forumClient = new dblurt.Client([getForumUrl()]);
-      client      = new dblurt.Client([getDataUrl()]);
+    rpc.applyRpcSettings();
       loadData();
     }
     markTopicAsRead({ author: act.root_author, permlink: act.root_permlink, lastActivityTs: act.lastActivityTs });
@@ -311,7 +291,7 @@ export function useApp() {
     refreshUser();
     try {
       if (direction === 'current' && !targetForum) {
-        const props = await Blockchain.getDynamicGlobalProperties(client);
+        const props = await Blockchain.getDynamicGlobalProperties(rpc.dataClient.value);
         globalProps.value = props as any;
         moderators.value = [];
         communityInfo.value = {};
@@ -325,7 +305,7 @@ export function useApp() {
       if (direction === 'current' && !targetForum) {
         try {
           if (config.communityAccount.startsWith('blurt-')) {
-            const cc = await Blockchain.getCommunity(forumClient, config.communityAccount);
+            const cc = await Blockchain.getCommunity(rpc.forumClient.value, config.communityAccount);
             if (cc) {
               communityInfo.value = { title: (cc.title as string) || config.communityAccount, about: (cc.about as string) || '' };
               rawDescription.value = (cc.description as string) || '';
@@ -333,7 +313,7 @@ export function useApp() {
               const extMatch = structureSource.match(/\[\[Forum config:(@?)([a-z0-9.-]+)\/([a-z0-9-]+)\]\]/i);
               if (extMatch) {
                 try {
-                  const post = await Blockchain.getContent(client, extMatch[2], extMatch[3]);
+                  const post = await Blockchain.getContent(rpc.dataClient.value, extMatch[2], extMatch[3]);
                   if (post?.body) structureSource = post.body;
                 } catch (err) { console.warn('External config load error:', err); }
               }
@@ -354,7 +334,7 @@ export function useApp() {
           structureNote.value = true;
         }
 
-          const acc = await Blockchain.getAccount(client, config.communityAccount);
+          const acc = await Blockchain.getAccount(rpc.dataClient.value, config.communityAccount);
           if (acc) {
             const rb = acc.reward_blurt_balance as string;
             const rv = acc.reward_vesting_balance as string;
@@ -372,7 +352,7 @@ export function useApp() {
 
         try {
           if (!moderators.value.length) {
-            const roles = await Blockchain.listCommunityRoles(forumClient, config.communityAccount);
+            const roles = await Blockchain.listCommunityRoles(rpc.forumClient.value, config.communityAccount);
             if (Array.isArray(roles) && roles.length > 0) {
               moderators.value = roles.map(r => ({ account: r[0], role: r[1], title: r[2] || '' }));
             }
@@ -434,16 +414,16 @@ export function useApp() {
         if (currentTagFilter.value) apiParams.tag = currentTagFilter.value;
 
         if (vf.id === 'user-feed' && auth.user) {
-          rawPosts = await Blockchain.getAccountPosts(forumClient, 'feed', auth.user.username, fetchLimit, params.start_author as string, params.start_permlink as string);
+          rawPosts = await Blockchain.getAccountPosts(rpc.forumClient.value, 'feed', auth.user.username, fetchLimit, params.start_author as string, params.start_permlink as string);
         } else if (vf.id === 'global-trending') {
-          rawPosts = await Blockchain.getRankedPosts(forumClient, 'trending', currentTagFilter.value as string, fetchLimit, params.start_author as string, params.start_permlink as string);
+          rawPosts = await Blockchain.getRankedPosts(rpc.forumClient.value, 'trending', currentTagFilter.value as string, fetchLimit, params.start_author as string, params.start_permlink as string);
         } else if (vf.id === 'global-new') {
-          rawPosts = await Blockchain.getRankedPosts(forumClient, 'created', currentTagFilter.value as string, fetchLimit, params.start_author as string, params.start_permlink as string);
+          rawPosts = await Blockchain.getRankedPosts(rpc.forumClient.value, 'created', currentTagFilter.value as string, fetchLimit, params.start_author as string, params.start_permlink as string);
         } else if (vf.id === 'global-activity') {
-          rawPosts = await Blockchain.getForumPosts(forumClient, '', fetchLimit, 'activity', undefined, params.start_author as string, params.start_permlink as string, params.tags_any as string[]);
+          rawPosts = await Blockchain.getForumPosts(rpc.forumClient.value, '', fetchLimit, 'activity', undefined, params.start_author as string, params.start_permlink as string, params.tags_any as string[]);
         }
       } else {
-        rawPosts = await Blockchain.getForumPosts(forumClient, params.community as string, fetchLimit, 'activity', undefined, params.start_author as string, params.start_permlink as string, params.tags_any as string[]);
+        rawPosts = await Blockchain.getForumPosts(rpc.forumClient.value, params.community as string, fetchLimit, 'activity', undefined, params.start_author as string, params.start_permlink as string, params.tags_any as string[]);
       }
 
       if (!rawPosts || rawPosts.length === 0) {
@@ -525,7 +505,7 @@ export function useApp() {
     const recurse = async (pAuthor: string, pPermlink: string, depth: number): Promise<void> => {
       let results: any[];
       try {
-        results = await Blockchain.getContentReplies(client, pAuthor, pPermlink);
+        results = await Blockchain.getContentReplies(rpc.dataClient.value, pAuthor, pPermlink);
       } catch (e) {
         console.error(`Error loading replies for ${pAuthor}/${pPermlink}:`, e);
         return;
@@ -660,7 +640,7 @@ export function useApp() {
     if (!topic.payout && !topic.body) {
       loading.value = true;
       try {
-        const full = await Blockchain.getContent(client, topic.author, topic.permlink);
+        const full = await Blockchain.getContent(rpc.dataClient.value, topic.author, topic.permlink);
         if (full?.author) topic = normalizePost(full);
       } catch (e) { console.error('Error fetching full topic:', e); }
       loading.value = false;
@@ -676,7 +656,7 @@ export function useApp() {
     markTopicAsRead(activeTopic.value);
     loadReplies(topic.author, topic.permlink);
     if (!topic.beneficiaries?.length) {
-      Blockchain.getContent(client, topic.author, topic.permlink).then((full: any) => {
+      Blockchain.getContent(rpc.dataClient.value, topic.author, topic.permlink).then((full: any) => {
         if (full?.beneficiaries?.length && activeTopic.value?.permlink === topic.permlink) {
           activeTopic.value = { ...activeTopic.value, beneficiaries: full.beneficiaries as Beneficiary[] };
         }
@@ -690,8 +670,7 @@ export function useApp() {
     const found = allCommunities.value.find(c => c.account === account);
     if (found) { selectedCommunity.value = account; }
     else { selectedCommunity.value = 'custom'; customTag.value = account; }
-    forumClient = new dblurt.Client([getForumUrl()]);
-    client      = new dblurt.Client([getDataUrl()]);
+    rpc.applyRpcSettings();
     goHome();
     loadData();
   };
@@ -706,7 +685,7 @@ export function useApp() {
     view.value = 'communities';
     currentTagFilter.value = '';
     syncUrl();
-    if (BFCommunity.state.list.length === 0) BFCommunity.fetchCommunities(client as unknown as Record<string, unknown>);
+    if (BFCommunity.state.list.length === 0) BFCommunity.fetchCommunities(rpc.dataClient.value as unknown as Record<string, unknown>);
   };
 
   const toggleCommunitySub = async (communityName: string): Promise<void> => {
@@ -741,7 +720,7 @@ export function useApp() {
            walletAuthModal.show = false;
            try {
              const tempUser = { ...user, key: tempKey };
-             await Blockchain.broadcast(client, tempUser, ops, authority);
+             await Blockchain.broadcast(rpc.dataClient.value, tempUser, ops, authority);
              resolve();
            } catch (e) {
              reject(e);
@@ -750,13 +729,13 @@ export function useApp() {
        });
     }
     
-    return Blockchain.broadcast(client, user, ops, authority);
+    return Blockchain.broadcast(rpc.dataClient.value, user, ops, authority);
   };
 
   const loadFollowingList = async (username: string): Promise<void> => {
     if (!username) return;
     try {
-      const following = await Blockchain.getFollowing(client, username);
+      const following = await Blockchain.getFollowing(rpc.dataClient.value, username);
       if (Array.isArray(following)) followingSet.value = new Set(following.map(f => f.following));
     } catch (e) { console.warn('Error loading following list:', e); }
   };
@@ -889,7 +868,7 @@ export function useApp() {
   const refreshUser = async (): Promise<void> => {
     if (!auth.user) return;
     try {
-      const acc = await Blockchain.getAccount(client, auth.user.username);
+      const acc = await Blockchain.getAccount(rpc.dataClient.value, auth.user.username);
       if (acc) {
         const lastVoteTime = new Date((acc.last_vote_time as string) + 'Z').getTime();
         const delta = (Date.now() - lastVoteTime) / 1000;
@@ -918,7 +897,7 @@ export function useApp() {
         entry.progress = Math.min(((Date.now() - start) / maxMs) * 85, 85);
         await new Promise(r => setTimeout(r, pollMs));
         try {
-          const c = await Blockchain.getContent(client, author, permlink);
+          const c = await Blockchain.getContent(rpc.dataClient.value, author, permlink);
           if (isReal(c)) { lastContent = c; if (!pollFn || pollFn(c)) { found = true; break; } }
         } catch { /* ignore */ }
         if (!found) entry.label = t('syncingWithBlockchain') || 'Waiting for data node synchronization…';
@@ -927,7 +906,7 @@ export function useApp() {
       if (!found) {
         entry.progress = 88; entry.label = 'Still syncing… final attempt';
         await new Promise(r => setTimeout(r, 10000));
-        try { const c = await Blockchain.getContent(client, author, permlink); if (isReal(c)) { lastContent = c; found = true; } } catch { /* ignore */ }
+        try { const c = await Blockchain.getContent(rpc.dataClient.value, author, permlink); if (isReal(c)) { lastContent = c; found = true; } } catch { /* ignore */ }
       }
     } else {
       while (Date.now() - start < 4000) { entry.progress = Math.min(((Date.now() - start) / 4000) * 85, 85); await new Promise(r => setTimeout(r, 300)); }
@@ -968,7 +947,7 @@ export function useApp() {
       }
     } else if (activeTopic.value) {
       try {
-        const fresh = await client.condenser.getContent(activeTopic.value.author, activeTopic.value.permlink);
+        const fresh = await rpc.dataClient.value.condenser.getContent(activeTopic.value.author, activeTopic.value.permlink);
         if (isReal(fresh)) { activeTopic.value = { ...activeTopic.value, ...normalizePost(fresh) }; markTopicAsRead(activeTopic.value); }
       } catch { /* ignore */ }
     }
@@ -1104,7 +1083,7 @@ export function useApp() {
     ].find(p => p && p.author === post.author && p.permlink === post.permlink);
     
     if (found) return found;
-    const raw = await Blockchain.getContent(client, post.author, post.permlink);
+    const raw = await Blockchain.getContent(rpc.dataClient.value, post.author, post.permlink);
     return normalizePost(raw);
   };
 
@@ -1119,7 +1098,7 @@ export function useApp() {
   };
 
     const feeInfo = Blockchain.feeInfo;
-  const fetchFeeInfo = () => Blockchain.fetchFeeInfo(client);
+  const fetchFeeInfo = () => Blockchain.fetchFeeInfo(rpc.dataClient.value);
   const estimateTxFee = (numOps: number, payloadBytes: number) => Blockchain.estimateTxFee(numOps, payloadBytes);
   const feeEstimates = reactive({ post: null as string | null, reply: null as string | null });
   const feeTimers = { post: null as ReturnType<typeof setTimeout> | null, reply: null as ReturnType<typeof setTimeout> | null };
@@ -1174,7 +1153,7 @@ export function useApp() {
     if (!('created' in post) || !post.created) {
       loading.value = true;
       try {
-        const raw = await Blockchain.getContent(client, post.author, post.permlink);
+        const raw = await Blockchain.getContent(rpc.dataClient.value, post.author, post.permlink);
         fullPost = normalizePost(raw);
       } catch (e) {
         showStatus('Error', 'Could not fetch post details', 'error');
@@ -1193,7 +1172,7 @@ export function useApp() {
     payoutModal.beneficiaries = []; payoutModal.show = true;
     if (fullPost.beneficiaries?.length) payoutModal.beneficiaries = fullPost.beneficiaries as Beneficiary[];
     else {
-      try { const fresh = await Blockchain.getContent(client, fullPost.author, fullPost.permlink); if (fresh?.beneficiaries) payoutModal.beneficiaries = fresh.beneficiaries as Beneficiary[]; } catch { /* ignore */ }
+      try { const fresh = await Blockchain.getContent(rpc.dataClient.value, fullPost.author, fullPost.permlink); if (fresh?.beneficiaries) payoutModal.beneficiaries = fresh.beneficiaries as Beneficiary[]; } catch { /* ignore */ }
     }
   };
 
@@ -1204,7 +1183,7 @@ export function useApp() {
 
   const loadUserCommunities = async (username: string): Promise<void> => {
     try {
-      const subs = await Blockchain.listSubscriptions(client, username);
+      const subs = await Blockchain.listSubscriptions(rpc.dataClient.value, username);
       if (Array.isArray(subs)) userSubscriptions.value = subs.map(s => ({ account: s[0], title: s[1] || s[0] }));
     } catch (err) { console.error('Error loading communities:', err); }
   };
@@ -1223,7 +1202,7 @@ export function useApp() {
 
     if (checkLock(() => claimRewards(targetAccount))) return;
     try {
-      const acc = await Blockchain.getAccount(client, username);
+      const acc = await Blockchain.getAccount(rpc.dataClient.value, username);
       if (!acc) return;
       if (BFUtils.parsePayout(acc.reward_blurt_balance as string) === 0 && BFUtils.parsePayout(acc.reward_vesting_balance as string) === 0) {
  
@@ -1310,7 +1289,7 @@ export function useApp() {
       forumStructure.value.forEach(cat => cat.forums.forEach(f => allForums.push(f)));
       allForums.forEach(async (f) => {
         try {
-          const raw = await Blockchain.getForumPosts(client, config.communityAccount, 10, 'activity', undefined, undefined, undefined, f.targetTags.length > 0 ? f.targetTags : undefined);
+          const raw = await Blockchain.getForumPosts(rpc.dataClient.value, config.communityAccount, 10, 'activity', undefined, undefined, undefined, f.targetTags.length > 0 ? f.targetTags : undefined);
           if (raw?.length) f.posts = raw.map(normalizePost).filter(post => !post.isMuted || canMute.value).slice(0, 5);
         } catch { /* ignore */ }
       });
@@ -1338,7 +1317,7 @@ export function useApp() {
         if (f) activeForum.value = f;
       }
 
-      Blockchain.getContent(client, requestedAuthor, requestedPermlink).then(content => {
+      Blockchain.getContent(rpc.dataClient.value, requestedAuthor, requestedPermlink).then(content => {
         if (content?.author) { activeTopic.value = { ...normalizePost(content), beneficiaries: (content.beneficiaries || []) as Beneficiary[] }; view.value = 'topic'; loadReplies(content.author, content.permlink); }
       });
     } else if (requestedView === 'profile' && requestedUser) {
@@ -1347,7 +1326,7 @@ export function useApp() {
       openProfile(requestedUser);
     } else if (requestedView === 'communities') {
       view.value = 'communities';
-      if (BFCommunity.state.list.length === 0) BFCommunity.fetchCommunities(client as unknown as Record<string, unknown>);
+      if (BFCommunity.state.list.length === 0) BFCommunity.fetchCommunities(rpc.dataClient.value as unknown as Record<string, unknown>);
     }
   };
 
@@ -1361,10 +1340,10 @@ export function useApp() {
       try {
         const apiParams: Record<string, unknown> = { limit: 1 };
         let raw: RawPost[] = [];
-        if (vf.id === 'user-feed') raw = await forumClient.call('bridge', 'get_account_posts', { ...apiParams, account: auth.user!.username, sort: 'feed' }) as RawPost[];
-        else if (vf.id === 'global-trending') raw = await forumClient.call('bridge', 'get_ranked_posts', { ...apiParams, sort: 'trending' }) as RawPost[];
-        else if (vf.id === 'global-new') raw = await forumClient.call('bridge', 'get_ranked_posts', { ...apiParams, sort: 'created' }) as RawPost[];
-        else if (vf.id === 'global-activity') raw = await forumClient.call('bridge', 'get_forum_posts', { ...apiParams, community: '', sort: 'activity' }) as RawPost[];
+        if (vf.id === 'user-feed') raw = await rpc.forumClient.value.call('bridge', 'get_account_posts', { ...apiParams, account: auth.user!.username, sort: 'feed' }) as RawPost[];
+        else if (vf.id === 'global-trending') raw = await rpc.forumClient.value.call('bridge', 'get_ranked_posts', { ...apiParams, sort: 'trending' }) as RawPost[];
+        else if (vf.id === 'global-new') raw = await rpc.forumClient.value.call('bridge', 'get_ranked_posts', { ...apiParams, sort: 'created' }) as RawPost[];
+        else if (vf.id === 'global-activity') raw = await rpc.forumClient.value.call('bridge', 'get_forum_posts', { ...apiParams, community: '', sort: 'activity' }) as RawPost[];
         vf.posts = raw?.length ? [normalizePost(raw[0])] : [];
       } catch { vf.posts = []; }
     }
@@ -1388,7 +1367,7 @@ export function useApp() {
         const parts = url.split('#')[0].split('/');
         if (parts.length >= 4) {
           const rootAuthor = parts[2].replace('@', ''); const rootPermlink = parts[3];
-          const root = await Blockchain.getContent(client, rootAuthor, rootPermlink);
+          const root = await Blockchain.getContent(rpc.dataClient.value, rootAuthor, rootPermlink);
           if (root?.author) openTopic(normalizePost(root));
         }
       }
@@ -1404,7 +1383,7 @@ export function useApp() {
     completeLogin: _completeLogin, doKeyLogin: _doKeyLogin, doWVLogin: _doWVLogin, logout, 
     switchAccount: _switchAccount, removeAccount, openLoginModal, openSwitchAccountModal, showSwitchAccountModal,
     handlePinSubmit: _handlePinSubmit
-  } = useAuth(client, t);
+  } = useAuth(rpc.dataClient.value, t);
 
   const authCallbacks = { 
     loadUserCommunities, loadFollowingList, loadData,
@@ -1419,7 +1398,7 @@ export function useApp() {
     globalActivity,
     updateGlobalActivity,
     markActivityAsRead
-  } = useGlobalActivity(client, auth, config, userSubscriptions, normalizePost);
+  } = useGlobalActivity(rpc.dataClient.value, auth, config, userSubscriptions, normalizePost);
 
   const userRole = computed(() => {
     if (!auth.user || !moderators.value.length) return null;
@@ -1447,10 +1426,10 @@ export function useApp() {
     openProfile,
     loadMoreProfileContent,
     fetchEarningsHistory: _fetchEarningsHistory
-  } = useProfile(client, globalProps, view, normalizePost);
+  } = useProfile(rpc.dataClient.value, globalProps, view, normalizePost);
 
   const { supportModal, submitSupportComment, triggerSupport } = useSupport(
-    client, auth, broadcast as any, checkLock, t
+    rpc.dataClient.value, auth, broadcast as any, checkLock, t
   );
 
   const {
@@ -1460,7 +1439,7 @@ export function useApp() {
     hasVoted,
     submitVoteConfirmed,
     submitVote: _submitVote
-  } = useVote(client, auth, broadcast as any, waitAndReload, t, triggerSupport);
+  } = useVote(rpc.dataClient.value, auth, broadcast as any, waitAndReload, t, triggerSupport);
 
   const {
     walletModal,
@@ -1471,18 +1450,18 @@ export function useApp() {
 
   const handleWalletSubmit = (data: any) => _handleWalletSubmit(data, globalProps);
 
-  const { openNotifModal, openNotification: _openNotification, startPolling: startNotifPolling, togglePushNotifications } = useNotifications(client, auth, t);
+  const { openNotifModal, openNotification: _openNotification, startPolling: startNotifPolling, togglePushNotifications } = useNotifications(rpc.dataClient.value, auth, t);
 
   const openNotification = (notif: Notification) => _openNotification(notif, {
-    openTopic, openProfile, normalizePost, client, config, targetNotifPermlink,
-    selectedCommunity, loading, loadData, forumClient, getForumUrl, getDataUrl,
+    openTopic, openProfile, normalizePost, client: rpc.dataClient.value, config, targetNotifPermlink,
+    selectedCommunity, loading, loadData, forumClient: rpc.forumClient.value, getForumUrl: rpc.getForumUrl, getDataUrl: rpc.getDataUrl,
     auth, switchAccount
   });
 
   onMounted(() => {
     loadLanguage(lang.value);
-    BFPlayer.setClient(client);
-    BFPlayer.registerPlugin(BlurtPlayerPlugin(client, auth));
+    BFPlayer.setClient(rpc.dataClient.value);
+    BFPlayer.registerPlugin(BlurtPlayerPlugin(rpc.dataClient.value, auth));
     setTheme(theme.value);
     window.addEventListener('popstate', handleUrlChange);
     window.addEventListener('focusin', (e) => {
@@ -1511,7 +1490,7 @@ export function useApp() {
         sessions.forEach(session => {
           if (session.type === 'whalevault') {
             auth.accounts.push({ username: session.username, type: 'whalevault', key: null, vp: '…', hasRewards: false });
-            Blockchain.getAccount(client, session.username).then((acc: any) => {
+            Blockchain.getAccount(rpc.dataClient.value, session.username).then((acc: any) => {
               if (acc) {
                 const lastVoteTime = new Date((acc.last_vote_time as string) + 'Z').getTime();
                 const delta = (Date.now() - lastVoteTime) / 1000;
@@ -1557,7 +1536,7 @@ export function useApp() {
           if (session.type === 'whalevault') {
             auth.user = { username: session.username, type: 'whalevault', key: null, vp: '…' };
             auth.accounts.push(auth.user);
-            Blockchain.getAccount(client, session.username).then((acc: any) => {
+            Blockchain.getAccount(rpc.dataClient.value, session.username).then((acc: any) => {
               if (acc) {
                 const lastVoteTime = new Date((acc.last_vote_time as string) + 'Z').getTime();
                 const delta = (Date.now() - lastVoteTime) / 1000;
@@ -1659,7 +1638,7 @@ export function useApp() {
     postPreview, replyPreview, saveDraft, clearDraft,
     imgUploads, onImagePick, onPaste,
     saveReplyDraft,
-    rpcMenuOpen, rpcDataNode, rpcForumNode, rpcDataCustom, rpcForumCustom, applyRpcSettings,
+    ...rpc,
     getNotifIcon,
     loadTopicContext,
     isPostInCommunity,
@@ -1671,6 +1650,6 @@ export function useApp() {
     toggleExploration,
     followingSet,
     player: BFPlayer,
-    client: forumClient,
+    client: rpc.dataClient.value,
     };
     }

@@ -43,6 +43,11 @@ export function useAuth(client: any, t: (k: string) => string) {
   });
 
   const saveSessions = (): void => {
+    if (auth.accounts.length === 0) {
+      localStorage.removeItem('blurtforum_sessions');
+      localStorage.removeItem('blurtforum_session');
+      return;
+    }
     const sessions = auth.accounts.map(u => {
       if (u.type === 'key' && !u.encryptedKey) return null;
       return {
@@ -60,6 +65,8 @@ export function useAuth(client: any, t: (k: string) => string) {
         key: auth.user.encryptedKey || null,
         expires: Date.now() + 30 * 24 * 60 * 60 * 1000
       }));
+    } else {
+      localStorage.removeItem('blurtforum_session');
     }
   };
 

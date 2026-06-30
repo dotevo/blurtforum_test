@@ -12,6 +12,7 @@ import { trackPageView } from '../modules/analytics';
 import { Blockchain } from '../modules/blockchain';
 import { useVote } from './useVote';
 import { useRpc } from './useRpc';
+import { useDrafts } from './useDrafts';
 import { useSupport } from './useSupport';
 import { useWallet } from './useWallet';
 import { useProfile } from './useProfile';
@@ -136,7 +137,7 @@ export function useApp() {
   const quickReplyBody = ref('');
   watch(replyTarget, (newVal) => {
     if (!newVal && activeTopic.value) {
-      replyForm.body = loadReplyDraft(activeTopic.value.author, activeTopic.value.permlink);
+      replyForm.body = drafts.loadReplyDraft(activeTopic.value.author, activeTopic.value.permlink);
     }
   });
   const replyForm   = reactive({ body: '', loading: false, error: '', success: '', beneficiary: { account: '', weight: '' } });
@@ -145,58 +146,10 @@ export function useApp() {
   const postPreview = ref(false);
   const replyPreview = ref(false);
 
-  const getDraftKey = () => `bf-draft-${config.communityAccount}-${activeForum.value?.id || 'x'}`;
-  const saveDraft = (data?: any) => {
-    if (data) {
-      postForm.title = data.title; postForm.body = data.body;
-      if (data.selectedTag) postForm.selectedTag = data.selectedTag;
-      if (data.customTags !== undefined) postForm.customTags = data.customTags;
-    }
-    if (!postForm.title && !postForm.body) return;
-    localStorage.setItem(getDraftKey(), JSON.stringify({ title: postForm.title, body: postForm.body, selectedTag: postForm.selectedTag, customTags: postForm.customTags, ts: Date.now() }));
-  };
-  const clearDraft = () => { localStorage.removeItem(getDraftKey()); postForm.hasDraft = false; };
-  
-  const getReplyDraftKey = (author: string, permlink: string) => `bf-reply-draft-${author}-${permlink}`;
-  const cleanupDrafts = () => {
-    const now = Date.now(); const month = 30 * 24 * 60 * 60 * 1000;
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith('bf-reply-draft-')) {
-          const d = JSON.parse(localStorage.getItem(key)!);
-          if (now - (d.ts || 0) > month) { localStorage.removeItem(key); i--; }
-        }
-      }
-    } catch { /* ignore */ }
-  };
-  const saveReplyDraft = (author: string, permlink: string, body: string) => {
-    if (!body) { localStorage.removeItem(getReplyDraftKey(author, permlink)); return; }
-    localStorage.setItem(getReplyDraftKey(author, permlink), JSON.stringify({ body, ts: Date.now() }));
-    if (Math.random() < 0.1) cleanupDrafts();
-  };
-  const loadReplyDraft = (author: string, permlink: string) => {
-    try {
-      const d = localStorage.getItem(getReplyDraftKey(author, permlink));
-      if (d) return JSON.parse(d).body;
-    } catch { /* ignore */ }
-    return '';
-  };
-  const clearReplyDraft = (author: string, permlink: string) => localStorage.removeItem(getReplyDraftKey(author, permlink));
-
-  const loadDraft = () => {
-    try {
-      const d = localStorage.getItem(getDraftKey());
-      if (d) {
-        const p = JSON.parse(d);
-        postForm.title = p.title || '';
-        postForm.body  = p.body  || '';
-        if (p.selectedTag) postForm.selectedTag = p.selectedTag;
-        if (p.customTags)  postForm.customTags  = p.customTags;
-        postForm.hasDraft = true;
-      }
-    } catch { /* ignore */ }
-  };
+  const drafts = useDrafts();
+  const saveDraft = (data?: any) => drafts.saveDraft(config.communityAccount, activeForum.value?.id, postForm, data);
+  const clearDraft = () => drafts.clearDraft(config.communityAccount, activeForum.value?.id, postForm);
+  const loadDraft = () => drafts.loadDraft(config.communityAccount, activeForum.value?.id, postForm);
 
   const postForm = reactive({
     title: '', body: '', loading: false, error: '', success: '', hasDraft: false,
@@ -649,7 +602,7 @@ export function useApp() {
     bodyCache[`${topic.author}/${topic.permlink}`] = topic.body;
     replyTarget.value = null;
     replyForm.body = '';
-    quickReplyBody.value = loadReplyDraft(topic.author, topic.permlink);
+    quickReplyBody.value = drafts.loadReplyDraft(topic.author, topic.permlink);
     replyForm.error = replyForm.success = '';
     view.value = 'topic';
     syncUrl();
@@ -1014,7 +967,7 @@ export function useApp() {
     try {
       await broadcast([op, options]);
       replyForm.success = t('replySuccess');
-      clearReplyDraft(target.author, target.permlink);
+      drafts.clearReplyDraft(target.author, target.permlink);
       if (data) { data.body = ''; data.title = ''; data.success = t('replySuccess'); }
 
       if (target.permlink === activeTopic.value?.permlink) quickReplyBody.value = '';
@@ -1121,7 +1074,7 @@ export function useApp() {
 
   const startReply = (target: Post): void => {
     replyTarget.value = target; 
-    replyForm.body = loadReplyDraft(target.author, target.permlink);
+    replyForm.body = drafts.loadReplyDraft(target.author, target.permlink);
     replyForm.error = replyForm.success = '';
     fetchFeeInfo().then(() => { feeEstimates.reply = estimateTxFee(2, 0); });
   };
@@ -1637,7 +1590,7 @@ export function useApp() {
     claimRewards,
     postPreview, replyPreview, saveDraft, clearDraft,
     imgUploads, onImagePick, onPaste,
-    saveReplyDraft,
+    saveReplyDraft: drafts.saveReplyDraft,
     ...rpc,
     getNotifIcon,
     loadTopicContext,

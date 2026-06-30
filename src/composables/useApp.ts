@@ -5,7 +5,6 @@
 import {
   ref, reactive, computed, onMounted, nextTick, watch,
 } from 'vue';
-import CryptoJS from 'crypto-js';
 import { useNotifications, notifModal } from './useNotifications';
 import { BFUtils } from '../modules/utils';
 import { trackPageView } from '../modules/analytics';
@@ -13,6 +12,7 @@ import { Blockchain } from '../modules/blockchain';
 import { useVote } from './useVote';
 import { useRpc } from './useRpc';
 import { useDrafts } from './useDrafts';
+import { useImageUpload } from './useImageUpload';
 import { useSupport } from './useSupport';
 import { useWallet } from './useWallet';
 import { useProfile } from './useProfile';
@@ -32,7 +32,6 @@ import type {
   UserSubscription, Notification,
 } from '../types';
 
-import * as dblurt from '@beblurt/dblurt';
 
 export function useApp() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -717,102 +716,6 @@ export function useApp() {
     } catch (err) { console.error('Follow error:', err); showStatus('Social', 'Error updating follow status: ' + ((err as Error).message || err), 'error'); }
   };
 
-  // ── Image upload ──────────────────────────────────────────────────────────
-  const uploadImageFile = async (file: File): Promise<string> => {
-    if (!auth.user) throw new Error('Not logged in');
-    const arrayBuf = await file.arrayBuffer();
-    const fileBytes = new Uint8Array(arrayBuf);
-    const prefix = new TextEncoder().encode('ImageSigningChallenge');
-    const combined = new Uint8Array(prefix.length + fileBytes.length);
-    combined.set(prefix, 0); combined.set(fileBytes, prefix.length);
-    const wordArray = CryptoJS.lib.WordArray.create(combined as unknown as number[]);
-    const hashHex = CryptoJS.SHA256(wordArray).toString(CryptoJS.enc.Hex);
-    const hashBytes = new Uint8Array(hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-    let sigHex: string;
-    if (auth.user.type === 'key') {
-      const privKey = dblurt.PrivateKey.from(auth.user.key!);
-      const sig = privKey.sign(hashBytes as any);
-      sigHex = sig.toString();
-    } else {
-      sigHex = await new Promise((resolve, reject) => {
-        if (!window.blurt_keychain) { reject(new Error('WhaleVault not available')); return; }
-        const bufferObject = { type: 'Buffer', data: Array.from(combined) };
-        (window.blurt_keychain as Record<string, Function>).requestSignBuffer(auth.user!.username, JSON.stringify(bufferObject), 'posting', (res: { success: boolean; result?: string; message?: string }) => {
-          if (res?.success) {
-            let result = res.result ?? '';
-            result = result.split(':')[0];
-            if (result.startsWith('SIG_K1_')) { try { result = dblurt.Signature.fromString(result).toString(); } catch { /* ignore */ } }
-            resolve(result);
-          } else reject(new Error(res?.message ?? 'WV sign error'));
-        });
-      });
-    }
-    const url = `https://img-upload.blurt.blog/${auth.user.username}/${sigHex}`;
-    const formData = new FormData(); formData.append('file', file);
-    const resp = await fetch(url, { method: 'POST', body: formData });
-    if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
-    const data = await resp.json() as { url?: string };
-    if (!data.url) throw new Error('No URL in response: ' + JSON.stringify(data));
-    return data.url;
-  };
-
-  const lastTextarea = ref<HTMLTextAreaElement | null>(null);
-
-  const insertImageIntoBody = (target: 'post' | 'reply', imgUrl: string): void => {
-    const md = `\n![image](${imgUrl})\n`;
-    
-    // Try to insert at cursor in the last focused textarea
-    if (lastTextarea.value && document.contains(lastTextarea.value)) {
-      const el = lastTextarea.value;
-      const start = el.selectionStart;
-      const end = el.selectionEnd;
-      const val = el.value;
-      el.value = val.substring(0, start) + md + val.substring(end);
-      el.selectionStart = el.selectionEnd = start + md.length;
-      el.dispatchEvent(new Event('input'));
-      el.focus();
-      return;
-    }
-
-    if (editModal.show) { editModal.body += md; return; }
-    if (target === 'post') { postForm.body += md; saveDraft(); }
-    else replyForm.body += md;
-  };
-
-  const handleImageUpload = async (file: File, target: 'post' | 'reply'): Promise<void> => {
-    if (checkLock(() => handleImageUpload(file, target))) return;
-    if (!file || !file.type.startsWith('image/')) return;
-    try { insertImageIntoBody(target, await uploadImageFile(file)); }
-    catch (err) {
-      console.error('Image upload error:', err);
-      if (target === 'post') postForm.error = 'Image upload failed: ' + (err as Error).message;
-      else replyForm.error = 'Image upload failed: ' + (err as Error).message;
-    }
-  };
-
-  const imgUploads = reactive({ post: false, reply: false });
-  const onImagePick = async (target: 'post' | 'reply', e: Event) => {
-    const f = (e.target as HTMLInputElement).files?.[0];
-    (e.target as HTMLInputElement).value = '';
-    if (!f) return;
-    imgUploads[target] = true;
-    try { await handleImageUpload(f, target); }
-    finally { imgUploads[target] = false; }
-  };
-  const onPaste = async (target: 'post' | 'reply', e: ClipboardEvent) => {
-    if (e.target instanceof HTMLTextAreaElement) lastTextarea.value = e.target;
-    for (const item of Array.from(e.clipboardData?.items ?? [])) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const f = item.getAsFile()!;
-        imgUploads[target] = true;
-        try { await handleImageUpload(f, target); }
-        finally { imgUploads[target] = false; }
-        break;
-      }
-    }
-  };
-
   // ── Blockchain wait queue ─────────────────────────────────────────────────
   const bcWaitQueue = ref<BcQueueEntry[]>([]);
   const bcQueueExpanded = ref(false);
@@ -1373,6 +1276,22 @@ export function useApp() {
     return false;
   };
 
+
+  // ── Image upload ──────────────────────────────────────────────────────────
+  const images = useImageUpload(auth, checkLock);
+
+  const appendImageMd = (target: string, md: string) => {
+    if (editModal.show) { editModal.body += md; return; }
+    if (target === 'post') { postForm.body += md; saveDraft(); }
+    else replyForm.body += md;
+  };
+  const onImageError = (target: string, message: string) => {
+    if (target === 'post') postForm.error = message;
+    else replyForm.error = message;
+  };
+  const onImagePick = (target: 'post' | 'reply', e: Event) => images.onImagePick(target, e, appendImageMd, onImageError);
+  const onPaste = (target: 'post' | 'reply', e: ClipboardEvent) => images.onPaste(target, e, appendImageMd, onImageError);
+
   const {
     profileUser,
     profileTab,
@@ -1419,7 +1338,7 @@ export function useApp() {
     window.addEventListener('popstate', handleUrlChange);
     window.addEventListener('focusin', (e) => {
       if (e.target instanceof HTMLTextAreaElement) {
-        lastTextarea.value = e.target;
+        images.lastTextarea.value = e.target;
       }
     });
     startNotifPolling();
@@ -1589,7 +1508,7 @@ export function useApp() {
     statusModal, showStatus,
     claimRewards,
     postPreview, replyPreview, saveDraft, clearDraft,
-    imgUploads, onImagePick, onPaste,
+    imgUploads: images.imgUploads, onImagePick, onPaste,
     saveReplyDraft: drafts.saveReplyDraft,
     ...rpc,
     getNotifIcon,

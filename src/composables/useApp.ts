@@ -13,6 +13,7 @@ import { useVote } from './useVote';
 import { useRpc } from './useRpc';
 import { useDrafts } from './useDrafts';
 import { useImageUpload } from './useImageUpload';
+import { usePostForm } from './usePostForm';
 import { useSupport } from './useSupport';
 import { useWallet } from './useWallet';
 import { useProfile } from './useProfile';
@@ -119,7 +120,6 @@ export function useApp() {
   });
 
 
-  const editModal = reactive({ show: false, loading: false, isPost: false, author: '', permlink: '', title: '', body: '', error: '', success: '', target: null as Post | null });
 
   const resumeAction = ref<(() => void) | null>(null);
 
@@ -139,8 +139,6 @@ export function useApp() {
       replyForm.body = drafts.loadReplyDraft(activeTopic.value.author, activeTopic.value.permlink);
     }
   });
-  const replyForm   = reactive({ body: '', loading: false, error: '', success: '', beneficiary: { account: '', weight: '' } });
-
   const showNewPostForm = ref(false);
   const postPreview = ref(false);
   const replyPreview = ref(false);
@@ -149,13 +147,6 @@ export function useApp() {
   const saveDraft = (data?: any) => drafts.saveDraft(config.communityAccount, activeForum.value?.id, postForm, data);
   const clearDraft = () => drafts.clearDraft(config.communityAccount, activeForum.value?.id, postForm);
   const loadDraft = () => drafts.loadDraft(config.communityAccount, activeForum.value?.id, postForm);
-
-  const postForm = reactive({
-    title: '', body: '', loading: false, error: '', success: '', hasDraft: false,
-    devTip: localStorage.getItem('blurtforum_devtip') !== 'false',
-    beneficiary: { account: '', weight: '' },
-    selectedTag: '', customTags: '',
-  });
 
   const payoutModal = reactive<{ show: boolean; post: Partial<Post & { payoutDate?: string }>; beneficiaries: Beneficiary[] }>({ show: false, post: {}, beneficiaries: [] });
   const followModal = reactive({ show: false, user: '', isFollowing: false });
@@ -816,120 +807,7 @@ export function useApp() {
     if (bcWaitQueue.value.length === 0) bcQueueExpanded.value = false;
   };
 
-  // ── Beneficiaries ─────────────────────────────────────────────────────────
-  const prepareBeneficiaries = (customBeneficiary: { account: string; weight: string }, communityAcc: string | null = null): Beneficiary[] => {
-    const bens: Beneficiary[] = [];
-    const author = auth.user?.username;
-    if (!author) return [];
-    if (communityAcc?.startsWith('blurt-') && communityAcc !== author) bens.push({ account: communityAcc, weight: 300 });
-    if (postForm.devTip && author !== 'dotevo') bens.push({ account: 'dotevo', weight: 100 });
-    if (customBeneficiary?.account.trim()) {
-      const acc = customBeneficiary.account.trim().toLowerCase();
-      const weight = Math.min(Math.max(Math.round(parseFloat(customBeneficiary.weight) * 100) || 0, 1), 10000);
-      if (weight > 0 && acc !== author) {
-        const existing = bens.find(b => b.account === acc);
-        if (existing) existing.weight = Math.min(10000, existing.weight + weight);
-        else bens.push({ account: acc, weight });
-      }
-    }
-    return bens.sort((a, b) => a.account.localeCompare(b.account));
-  };
-  const submitReply = async (data?: any): Promise<void> => {
-    const target = data?._target || replyTarget.value;
-    if (checkLock(() => submitReply(data))) return;
-    if (!auth.user || !target) return;
-
-    // Use provided data or fallback to global state
-    const body = (data?.body || replyForm.body).trim();
-    if (!body) { replyForm.error = 'Reply cannot be empty.'; return; }
-
-    replyForm.loading = true; replyForm.error = ''; replyForm.success = '';
-    const communityAcc = activeTopic.value?.category || target.category;
-    const beneficiaries = prepareBeneficiaries(data?.beneficiary || replyForm.beneficiary, communityAcc);
-
-    const op = ['comment', {
-      parent_author: target.author,
-      parent_permlink: target.permlink,
-      author: auth.user.username,
-      permlink: BFUtils.genPermlink('re-' + target.author),
-      title: '',
-      body,
-      json_metadata: JSON.stringify({ app: 'blurtforum/1.0', tags: [communityAcc || config.communityAccount], format: 'markdown' })
-    }];
-
-    const options = ['comment_options', {
-      author: auth.user.username,
-      permlink: (op[1] as Record<string, string>).permlink,
-      max_accepted_payout: '1000000.000 BLURT',
-      percent_steem_dollars: 10000,
-      allow_votes: true,
-      allow_curation_rewards: true,
-      extensions: beneficiaries.length > 0 ? [[0, { beneficiaries }]] : []
-    }];
-
-    try {
-      await broadcast([op, options]);
-      replyForm.success = t('replySuccess');
-      drafts.clearReplyDraft(target.author, target.permlink);
-      if (data) { data.body = ''; data.title = ''; data.success = t('replySuccess'); }
-
-      if (target.permlink === activeTopic.value?.permlink) quickReplyBody.value = '';
-      else replyForm.body = '';
-
-      const parentPermlink = (op[1] as Record<string, string>).parent_permlink;
-      const parentReply = replies.value.find(r => r.permlink === parentPermlink);
-      const optimisticDepth = parentReply ? (parentReply.depth ?? 0) + 1 : 1;
-      const optimistic: Post = { author: auth.user.username, permlink: (op[1] as Record<string, string>).permlink, parent_author: (op[1] as Record<string, string>).parent_author, parent_permlink: parentPermlink, body, created: new Date().toISOString().slice(0, 19), depth: optimisticDepth, pendingPayout: 0, totalPayout: 0, payout: 0, vote_count: 0, active_votes: [], net_rshares: 0, beneficiaries, _qOpen: false, _pending: 'sending', media: null, title: '', url: '', category: '', lastActivity: '', lastAuthor: '', isUnread: false, isRead: true, isFollowing: false, isMuted: false, isPaid: false, isCollapsed: false, replyCount: 0, tags: [] };
-      replies.value = [...replies.value, optimistic];
-      replyTarget.value = null;
-      await waitAndReload(true, auth.user.username, (op[1] as Record<string, string>).permlink);
-    } catch (err) {
-      console.error('Reply error:', err); 
-      replyForm.error = t('replyError') + ' (' + ((err as Error).message || '') + ')'; 
-      if (data) data.error = replyForm.error;
-    }
-    replyForm.loading = false;
-  };
-
-  const submitPost = async (data?: any): Promise<void> => {
-    if (checkLock(() => submitPost(data))) return;
-    if (!auth.user || !activeForum.value) return;
-    
-    const title = (data?.title || postForm.title).trim();
-    const body = (data?.body || postForm.body).trim();
-    if (!title || !body) { postForm.error = 'Title and body are required.'; return; }
-    
-    postForm.loading = true; postForm.error = ''; postForm.success = '';
-    
-    const customTagsVal = data?.customTags ?? postForm.customTags;
-    const selectedTagVal = data?.selectedTag ?? postForm.selectedTag;
-    const beneficiaryVal = data?.beneficiary ?? postForm.beneficiary;
-
-    const customTagsList = customTagsVal.split(',').map((s: string) => s.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')).filter(Boolean);
-    const targetCommunity = config.communityAccount.startsWith('blurt-') ? config.communityAccount : null;
-    const primaryTag = targetCommunity || selectedTagVal || customTagsList[0] || 'blurt';
-    const tags = [primaryTag];
-    if (selectedTagVal && !tags.includes(selectedTagVal)) tags.push(selectedTagVal);
-    for (const ct of customTagsList) { if (tags.length >= 5) break; if (!tags.includes(ct)) tags.push(ct); }
-    
-    const beneficiaries = prepareBeneficiaries(beneficiaryVal, targetCommunity);
-    const op = ['comment', { parent_author: '', parent_permlink: primaryTag, author: auth.user.username, permlink: BFUtils.genPermlink(title), title, body, json_metadata: JSON.stringify({ app: 'blurtforum/1.0', tags, format: 'markdown', community: targetCommunity || undefined }) }];
-    const options = ['comment_options', { author: auth.user.username, permlink: (op[1] as Record<string, string>).permlink, max_accepted_payout: '1000000.000 BLURT', percent_steem_dollars: 10000, allow_votes: true, allow_curation_rewards: true, extensions: beneficiaries.length > 0 ? [[0, { beneficiaries }]] : [] }];
-    try {
-      await broadcast([op, options]);
-      postForm.title = ''; postForm.body = '';
-      if (data) { data.title = ''; data.body = ''; }
-      clearDraft(); showNewPostForm.value = false;
-      showStatus(t('newPost'), t('postSuccess'), 'success');
-      waitAndReload(false, auth.user.username, (op[1] as Record<string, string>).permlink);
-    } catch (err) {
- 
-      console.error('Post error:', err); 
-      showStatus(t('newPost'), (t('postError') || 'Error: ') + ((err as Error).message || err), 'error'); 
-    }
-    postForm.loading = false;
-  };
-
+  // ── Beneficiaries ───────────────────────────────────────────────────────── (now in usePostForm)
   const getFullPost = async (post: { author: string; permlink: string }): Promise<Post> => {
     const found = [
       activeTopic.value,
@@ -1088,35 +966,6 @@ export function useApp() {
     } catch (err) { console.error('Claim rewards error:', err); showStatus(t('claimRewards'), (t('claimError') || 'Error claiming rewards: ') + ((err as Error).message || err), 'error'); }
   };
 
-  const startEdit = (target: Post): void => {
-    editModal.target = target; editModal.author = target.author; editModal.permlink = target.permlink;
-    editModal.title = target.title || ''; editModal.body = target.body; editModal.isPost = !target.parent_author;
-    editModal.error = ''; editModal.success = ''; editModal.loading = false; editModal.show = true;
-  };
-
-  const submitEdit = async (data?: any): Promise<void> => {
-    if (checkLock(() => submitEdit(data))) return;
-    if (!auth.user || !editModal.target) return;
-    editModal.loading = true; editModal.error = ''; editModal.success = '';
-    
-    const body = (data?.body ?? editModal.body).trim();
-    const title = (data?.title ?? editModal.title).trim();
-
-    let meta = editModal.target.json_metadata || '';
-    if (typeof meta !== 'string') { try { meta = JSON.stringify(meta); } catch { meta = ''; } }
-    const op = ['comment', { parent_author: editModal.target.parent_author || '', parent_permlink: editModal.target.parent_permlink || config.communityAccount, author: auth.user.username, permlink: editModal.permlink, title, body, json_metadata: meta }];
-    try {
-      await broadcast([op]);
-      editModal.success = t('updateSuccess');
-      const editedPermlink = editModal.permlink; const editedAuthor = editModal.author; const wasInTopic = view.value === 'topic';
-      editModal.show = false;
-      waitAndReload(wasInTopic, editedAuthor, editedPermlink);
-    } catch (err) { 
-      console.error('Edit error:', err); 
-      editModal.error = t('updateError') + ' (' + ((err as Error).message || '') + ')'; 
-    }
-    editModal.loading = false;
-  };
 
   const navigateToPath = (path: string): void => {
     window.history.pushState({ path }, '', path);
@@ -1276,6 +1125,28 @@ export function useApp() {
     return false;
   };
 
+
+  // ── Post / reply / edit forms ───────────────────────────────────────────────
+  const postFormApi = usePostForm({
+    auth, config, t, checkLock, broadcast, waitAndReload, showStatus,
+  });
+  const { postForm, replyForm, editModal } = postFormApi;
+
+  const submitReply = (data?: any) =>
+    postFormApi.submitReply(replyTarget.value, replies, activeTopic.value?.permlink, quickReplyBody, drafts, data);
+
+  const submitPost = (data?: any) =>
+    postFormApi.submitPost(activeForum.value?.id, ({ author, permlink }) => {
+      showNewPostForm.value = false;
+      waitAndReload(false, author, permlink);
+    }, { clearDraft }, data);
+
+  const startEdit = postFormApi.startEdit;
+
+  const submitEdit = (data?: any) =>
+    postFormApi.submitEdit(view.value === 'topic', ({ author, permlink }, wasInTopic) => {
+      waitAndReload(wasInTopic, author, permlink);
+    }, data);
 
   // ── Image upload ──────────────────────────────────────────────────────────
   const images = useImageUpload(auth, checkLock);

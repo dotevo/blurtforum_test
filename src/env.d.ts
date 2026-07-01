@@ -7,7 +7,6 @@ interface Window {
   __bfPlayerEnabled?: boolean;
   YT?: import('./modules/player').YTNamespace;
   onYouTubeIframeAPIReady?: () => void;
-  PeerTubePlayer?: new (iframe: HTMLElement) => import('./modules/player').PTPlayer;
   whalevault?: import('./modules/whalevault').WVPublicInterface;
   wv_set_polyfill?: (walletName: string, useCid: string, useUrl: string) => void;
   steem_keychain?: Record<string, unknown>;

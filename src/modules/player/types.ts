@@ -108,6 +108,7 @@ export interface BFPlayerAPI {
   deletePlaylist: (id: string) => void;
   renamePlaylist: (id: string, newName: string) => void;
   addTrackToPlaylist: (playlistId: string, track: MediaTrack) => boolean;
-  removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
+//  removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
+  removeTrackFromPlaylist: (playlistId: string, author: string, permlink: string, subId?: string) => void;
   playPlaylist: (playlistId: string, startIndex?: number) => void;
 }

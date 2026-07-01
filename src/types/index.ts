@@ -1,3 +1,4 @@
+import { MediaTrack } from '../modules/player/types';
 export type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode } from '../modules/player/types';
 
 // ─── Blockchain / API types ────────────────────────────────────────────────

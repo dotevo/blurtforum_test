@@ -20,6 +20,7 @@ import { useProfile } from './useProfile';
 import { useAuth } from './useAuth';
 import { useGlobalActivity } from './useGlobalActivity';
 import { BlurtPlayerPlugin } from '../modules/player_blurt/blurt-player-plugin';
+import { SponsoredPlayerPlugin } from '../modules/player_blurt/sponsored-plugin';
 import { BFCommunity, VIRTUAL_FORUMS, DEFAULT_COMMUNITIES } from '../modules/community';
 import { BFPlayer } from '../modules/player/player';
 import { Parser } from '../modules/parser';
@@ -1205,6 +1206,7 @@ export function useApp() {
     loadLanguage(lang.value);
     BFPlayer.setClient(rpc.dataClient.value);
     BFPlayer.registerPlugin(BlurtPlayerPlugin(rpc.dataClient.value, auth));
+    BFPlayer.registerPlugin(SponsoredPlayerPlugin(rpc.dataClient.value));
     setTheme(theme.value);
     window.addEventListener('popstate', handleUrlChange);
     window.addEventListener('focusin', (e) => {

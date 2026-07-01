@@ -120,7 +120,7 @@ const extractCampaigns = (ops: any[]): SponsoredCampaign[] => {
  * Fetches enough account_history pages for SPONSOR_ACCOUNT to cover the last
  * WINDOW_DAYS days, parses valid campaigns and replaces the in-memory cache.
  */
-const fetchCampaigns = async (client: any): Promise<SponsoredCampaign[]> => {
+export const fetchCampaigns = async (client: any): Promise<SponsoredCampaign[]> => {
   const cutoff = Date.now() - WINDOW_DAYS * 86_400_000;
   const bitmask = dblurt.utils.makeBitMaskFilter(
     [dblurt.utils.operationOrders['transfer' as keyof typeof dblurt.utils.operationOrders]]
@@ -169,6 +169,13 @@ export const ensureCampaigns = async (client: any): Promise<SponsoredCampaign[]>
 export const startAutoRefresh = (client: any): void => {
   setInterval(() => { fetchCampaigns(client).catch(() => {}); }, REFRESH_INTERVAL_MS);
 };
+
+/** Full cache as of the last fetch — used by the market/prices modal, which shows
+ *  upcoming and expired campaigns too, not just ones active right now. */
+export const getAllCampaigns = (): SponsoredCampaign[] => cache;
+
+/** Alias kept for callers that want an explicit "trigger a refresh now" name (e.g. the modal's refresh button). */
+export const refreshCampaignsNow = fetchCampaigns;
 
 export const getActiveCampaigns = (now: number = Date.now()): SponsoredCampaign[] =>
   cache.filter(c => now >= c.start && now <= c.end);

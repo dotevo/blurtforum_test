@@ -256,7 +256,6 @@
   "transferNote": "Transpagoj estas nerevokeblaj.",
   "powerNote": "Potencaj operacioj influas vian influon.",
   "playlists": "Ludlistoj",
-  "playing": "ludante",
   "authorRewards": "Aŭtoraj Rekompencoj",
   "curationRewards": "Kuratoraj Rekompencoj",
   "benefactorRewards": "Profitanto",
@@ -313,5 +312,17 @@
   "bp": "BP",
   "whalevault": "WhaleVault",
   "help": "Helpo",
-  "rpc": "RPC"
+  "rpc": "RPC",
+  "sponsoredAds": "Reklamoj de sponsoroj",
+  "checkActiveOn": "Kontroli aktiva je",
+  "today": "Hodiaŭ",
+  "noSponsoredAds": "Neniuj sponsoritaj transigoj troviĝis en la lastaj 14 tagoj.",
+  "sponsor": "Sponsoro",
+  "bps": "BPS",
+  "window": "Periodo",
+  "status": "Stato",
+  "active": "Aktiva",
+  "upcoming": "Venonta",
+  "expired": "Eksvalidiĝinta",
+  "sponsoredHint": "Pli alta BPS = pli granda ŝanco esti elektita, neniam garantio — la elekto estas pezita loterio."
 }

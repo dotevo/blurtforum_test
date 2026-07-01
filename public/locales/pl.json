@@ -291,7 +291,6 @@
   "estimatedAccountValue": "Szacunkowa wartość konta",
   "totalValueDesc": "Suma płynnych tokenów BLURT oraz BP (bez delegacji przychodzących).",
   "externalContent": "Zewnętrzna treść",
-  "source": "Źródło",
   "loadContent": "Załaduj treść",
   "noActivity": "Brak aktywności",
   "authRequired": "Wymagana autoryzacja",
@@ -319,5 +318,17 @@
   "bp": "BP",
   "whalevault": "WhaleVault",
   "help": "Pomoc",
-  "rpc": "RPC"
+  "rpc": "RPC",
+  "sponsoredAds": "Reklamy sponsorowane",
+  "checkActiveOn": "Sprawdź aktywne na",
+  "today": "Dziś",
+  "noSponsoredAds": "Nie znaleziono sponsorowanych transferów w ciągu ostatnich 14 dni.",
+  "sponsor": "Sponsor",
+  "bps": "BPS",
+  "window": "Okno",
+  "status": "Status",
+  "active": "Aktywna",
+  "upcoming": "Nadchodząca",
+  "expired": "Wygasła",
+  "sponsoredHint": "Wyższe BPS = większa szansa na wylosowanie, nigdy gwarancja — wybór to ważona loteria."
 }

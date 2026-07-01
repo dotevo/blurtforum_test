@@ -4,14 +4,22 @@
  * Renders the payout badge and vote button via the player's track-actions
  * slot, using the meta written there by BlurtPlayerPlugin. The generic
  * player core never needs to know these exist.
+ *
+ * Also renders the sponsored-ads "market info" button in the same slot —
+ * unlike the payout badge, it isn't gated on track.permlink, since it's not
+ * about the current track at all, it's a general "what's currently
+ * sponsoring the player, and at what price" view.
  */
+import { ref } from 'vue';
 import MediaPlayer from '../../player/components/MediaPlayer.vue';
 import PayoutBadge from '../../../components/layout/PayoutBadge.vue';
 import VoteButton from '../../../components/layout/VoteButton.vue';
+import SponsoredCampaignsModal from './SponsoredCampaignsModal.vue';
 import type { BFPlayerAPI, MediaTrack } from '../../player/types';
 
-defineProps<{
+const props = defineProps<{
   player: BFPlayerAPI;
+  client: any;
   t: (k: string) => string;
 }>();
 
@@ -39,6 +47,8 @@ const onVote = (track: MediaTrack) => {
     emit('submitVote', { author: track.author, permlink: track.permlink });
   }
 };
+
+const showSponsoredModal = ref(false);
 </script>
 
 <template>
@@ -55,6 +65,40 @@ const onVote = (track: MediaTrack) => {
           @vote="onVote(track)"
         />
       </template>
+
+      <button
+        type="button"
+        class="sp-ads-toggle"
+        :title="t('sponsoredAds') || 'Sponsored ads / current prices'"
+        @click.stop="showSponsoredModal = true"
+      >
+        <i class="fa-solid fa-bullhorn"></i>
+      </button>
     </template>
   </MediaPlayer>
+
+  <SponsoredCampaignsModal
+    v-if="showSponsoredModal"
+    :client="client"
+    :t="t"
+    @close="showSponsoredModal = false"
+  />
 </template>
+
+<style scoped>
+.sp-ads-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--primary, #006699);
+  opacity: 0.7;
+  cursor: pointer;
+  font-size: 13px;
+  transition: opacity 0.2s;
+}
+.sp-ads-toggle:hover { opacity: 1; }
+</style>

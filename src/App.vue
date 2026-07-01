@@ -466,6 +466,7 @@ const {
   <MediaPlayer
     :player="player"
     :t="t"
+    :client="client"
     @open-profile="openProfile"
     @open-topic="(p) => openTopic(p as any)"
     @submit-vote="(p) => submitVote(p as any)"

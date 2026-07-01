@@ -315,5 +315,17 @@
   "bp": "BP",
   "whalevault": "WhaleVault",
   "help": "Hilfe",
-  "rpc": "RPC"
+  "rpc": "RPC",
+  "sponsoredAds": "Gesponserte Anzeigen",
+  "checkActiveOn": "Aktiv prüfen am",
+  "today": "Heute",
+  "noSponsoredAds": "In den letzten 14 Tagen wurden keine gesponserten Überweisungen gefunden.",
+  "sponsor": "Sponsor",
+  "bps": "BPS",
+  "window": "Zeitraum",
+  "status": "Status",
+  "active": "Aktiv",
+  "upcoming": "Bevorstehend",
+  "expired": "Abgelaufen",
+  "sponsoredHint": "Höherer BPS = höhere Auswahlchance, niemals eine Garantie — die Auswahl ist eine gewichtete Lotterie."
 }

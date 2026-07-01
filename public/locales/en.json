@@ -282,5 +282,17 @@
   "bp": "BP",
   "whalevault": "WhaleVault",
   "help": "Help",
-  "rpc": "RPC"
+  "rpc": "RPC",
+  "sponsoredAds": "Sponsored Ads",
+  "checkActiveOn": "Check active on",
+  "today": "Today",
+  "noSponsoredAds": "No sponsored transfers found in the last 14 days.",
+  "sponsor": "Sponsor",
+  "bps": "BPS",
+  "window": "Window",
+  "status": "Status",
+  "active": "Active",
+  "upcoming": "Upcoming",
+  "expired": "Expired",
+  "sponsoredHint": "Higher BPS = higher chance of being picked, never a guarantee — selection is a weighted lottery."
 }

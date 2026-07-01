@@ -2,8 +2,8 @@
 import type { Post } from '../../types';
 import type { AuthUser } from '../../types';
 import { ref, computed, onMounted, onUpdated } from 'vue';
-import { dispatchScanView } from '../../modules/player';
-import ForumMedia from '../player/ForumMedia.ce.vue';
+import { dispatchScanView } from '../../modules/player/player';
+import ForumMedia from '../../modules/player_blurt/components/ForumMedia.ce.vue';
 import ScrollableTabs from '../layout/ScrollableTabs.vue';
 import PayoutBadge from '../layout/PayoutBadge.vue';
 import UserAvatar from '../layout/UserAvatar.vue';

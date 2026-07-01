@@ -3,7 +3,7 @@ import type { Post, Delegation } from '../types';
 import * as Earnings from '../modules/earnings';
 import * as dblurt from '@beblurt/dblurt';
 import { Blockchain } from '../modules/blockchain';
-import { BFPlayer } from '../modules/player';
+import { BFPlayer } from '../modules/player/player';
 
 /**
  * Composable for managing user profile state and logic.

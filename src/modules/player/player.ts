@@ -3,8 +3,8 @@
  * Handles audio/video playback, queuing, playlists, event emitter and plugin API.
  */
 import { reactive, watch, nextTick, ref, computed } from 'vue';
-import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode } from '../types';
-import { trackEvent } from './analytics';
+import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode } from './types';
+import { trackEvent } from '../analytics';
 
 
 // Minimal YouTube IFrame API typings
@@ -64,7 +64,8 @@ export const state = reactive<PlayerState>({
   volume: parseFloat(localStorage.getItem('bf-player-volume') || '0.7'),
   experimental: localStorage.getItem('bf-player-experimental') === 'true',
   isAutoStarting: false,
-  playMode: (localStorage.getItem('bf-player-mode') as PlayMode) || 'sequential'
+  playMode: (localStorage.getItem('bf-player-mode') as PlayMode) || 'sequential',
+  skipLocked: false
 });
 
 const defaultPriorities = ['youtube', 'audio', 'peertube'];
@@ -505,10 +506,17 @@ export const playTrack = async (track: MediaTrack, isManual = false, manualIdx =
   }
 };
 
+const lockSkip = (): void => { state.skipLocked = true; };
+const unlockSkip = (): void => { state.skipLocked = false; };
+
 const playNext = (isAuto = false): void => {
   console.log('[BFPlayer] playNext called, isAuto:', isAuto, 'PlayMode:', state.playMode);
+  if (!isAuto && state.skipLocked) {
+    console.log('[BFPlayer] playNext ignored: skip is locked');
+    return;
+  }
   _emit('next', state.currentTrack);
-  
+
   // Handle repeat 'repeat-one'
   if (isAuto && state.playMode === 'repeat-one' && state.currentTrack) {
     console.log('[BFPlayer] Repeat One: replaying current track');
@@ -621,7 +629,10 @@ const seek = (pct: number): void => {
   else if (currentSource.value?.type === 'peertube' && ptPlayer) ptPlayer.seek(time);
 };
 
-export const addToQueue = (track: MediaTrack): void => { state.queue.push(track); };
+export const addToQueue = (track: MediaTrack, position: 'start' | 'end' = 'end'): void => {
+  if (position === 'start') state.queue.unshift(track);
+  else state.queue.push(track);
+};
 const setAutoQueue = (tracks: MediaTrack[]): void => { state.autoQueue = tracks; };
 
 // ─── DOM-aware Auto-queue ───────────────────────────────────────────────────
@@ -636,12 +647,9 @@ const setAutoQueue = (tracks: MediaTrack[]): void => { state.autoQueue = tracks;
 //   data-src      | direct audio URL (optional)
 //   data-cover    | thumbnail URL (optional)
 //   data-host     | PeerTube host (optional)
-//   data-title    | post title
-//   data-author   | post author
-//   data-permlink | post permlink
-//   data-payout   | payout (float, optional)
-//   data-votecount| vote count (int, optional)
-//   data-voted    | is voted ('true'/'false', optional)
+//   data-title    | display title
+//   data-author   | identity field (opaque to player core)
+//   data-permlink | identity field (opaque to player core)
 //   data-pending  | requires resolution ('true'/'false', optional)
 
 // ─── Track Registration (Vue-centric) ──────────────────────────────────────
@@ -686,9 +694,6 @@ export const registerTrack = (incoming: any): void => {
       author, permlink, subId,
       title: incoming.title || 'Media Content',
       cover: incoming.cover,
-      payout: incoming.payout,
-      voteCount: incoming.voteCount,
-      voted: incoming.voted,
       pending: incoming.pending,
       sources: incomingSources.map(s => ({ ...s })),
       activeSourceIndex: 0
@@ -710,10 +715,9 @@ export const registerTrack = (incoming: any): void => {
     });
     
     // Update metadata
-    if (incoming.cover && (!track.cover || track.cover.includes('images.blurt.blog'))) {
+    if (incoming.cover && !track.cover) {
        track.cover = incoming.cover;
     }
-    if (incoming.payout) track.payout = incoming.payout;
     if (incoming.title && incoming.title !== 'Media Content') track.title = incoming.title;
   }
   
@@ -735,7 +739,7 @@ export const registerTrack = (incoming: any): void => {
       }
     });
 
-    if (track.cover && (!state.currentTrack.cover || state.currentTrack.cover.includes('images.blurt.blog'))) {
+    if (track.cover && !state.currentTrack.cover) {
       state.currentTrack.cover = track.cover;
     }
     if (track.title && track.title !== 'Media Content') state.currentTrack.title = track.title;
@@ -900,7 +904,7 @@ export const BFPlayer: BFPlayerAPI = {
   registerTrack, unregisterTrack, clearTracks,
   setClient,
   initResize, scrollToCurrent, toggleExperimental,
-
+  lockSkip, unlockSkip,
   togglePlayMode,
   on, off, registerPlugin,
   createPlaylist, deletePlaylist, renamePlaylist,

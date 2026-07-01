@@ -1,10 +1,13 @@
-import { PostProcessor } from './post-processor';
-import { Blockchain } from './blockchain';
-import type { BFPlayerAPI, MediaTrack } from '../types';
+import { PostProcessor } from '../post-processor';
+import { Blockchain } from '../blockchain';
+import type { BFPlayerAPI, MediaTrack } from '../player/types';
 
 /**
  * Player Plugin that fetches and updates Blurt-specific metadata
  * (payout, votes) when a track is loaded or changed.
+ *
+ * Blurt data is stored under track.meta (opaque to the player core) and
+ * surfaced to the generic player UI via track.badge.
  */
 export const BlurtPlayerPlugin = (client: any, auth: any) => ({
   name: 'BlurtMetadata',
@@ -25,15 +28,18 @@ export const BlurtPlayerPlugin = (client: any, auth: any) => ({
       if (!raw || !raw.author) return;
 
       const normalized = PostProcessor.normalizePost(raw);
+      const voted = !!(auth.user && normalized.active_votes.some(v => v.voter === auth.user.username && v.percent > 0));
 
-      // Update track properties reactively
-      track.payout = normalized.payout;
-      track.voteCount = normalized.vote_count;
-      
-      if (auth.user) {
-        track.voted = normalized.active_votes.some(v => v.voter === auth.user.username && v.percent > 0);
-      }
-      
+      // Blurt-specific data lives in meta, opaque to the player core.
+      // The UI for this (payout badge, vote button) is rendered by
+      // ForumMediaPlayer via the player's track-actions slot, not by the player itself.
+      track.meta = {
+        ...track.meta,
+        payout: normalized.payout,
+        voteCount: normalized.vote_count,
+        voted,
+      };
+
       // If the track was pending metadata resolution (e.g. cover/title)
       if (track.pending) {
         track.title = normalized.title;

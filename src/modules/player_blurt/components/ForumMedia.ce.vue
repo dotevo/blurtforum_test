@@ -1,8 +1,8 @@
 <script lang="ts">
 import { onMounted, onUnmounted, computed, watch, ref, reactive } from 'vue';
-import { registerTrack, unregisterTrack, playTrack, togglePlay, addToQueue, state } from '../../modules/player';
-import { Parser } from '../../modules/parser';
-import type { MediaTrack, MediaEntryMirror } from '../../types';
+import { registerTrack, unregisterTrack, playTrack, togglePlay, addToQueue, state } from '../../player/player';
+import { Parser } from '../../parser';
+import type { MediaTrack, MediaEntryMirror } from '../../player/types';
 
 
 

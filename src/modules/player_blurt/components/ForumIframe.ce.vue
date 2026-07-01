@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Parser } from '../../modules/parser';
+import { Parser } from '../../parser';
 
 const props = defineProps<{
   dataSrc: string;

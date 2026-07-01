@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { onMounted, watch, nextTick } from 'vue';
-import { dispatchScanView } from '../../modules/player';
+import { dispatchScanView } from '../../modules/player/player';
 import VoteButton from '../layout/VoteButton.vue';
 import PostBeneficiaries from '../layout/PostBeneficiaries.vue';
-import ForumMedia from '../player/ForumMedia.ce.vue';
+import ForumMedia from '../../modules/player_blurt/components/ForumMedia.ce.vue';
 import PayoutBadge from '../layout/PayoutBadge.vue';
 import UserAvatar from '../layout/UserAvatar.vue';
 import PostEditor from '../layout/PostEditor.vue';

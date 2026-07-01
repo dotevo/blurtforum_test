@@ -19,9 +19,9 @@ import { useWallet } from './useWallet';
 import { useProfile } from './useProfile';
 import { useAuth } from './useAuth';
 import { useGlobalActivity } from './useGlobalActivity';
-import { BlurtPlayerPlugin } from '../modules/blurt-player-plugin';
+import { BlurtPlayerPlugin } from '../modules/player_blurt/blurt-player-plugin';
 import { BFCommunity, VIRTUAL_FORUMS, DEFAULT_COMMUNITIES } from '../modules/community';
-import { BFPlayer } from '../modules/player';
+import { BFPlayer } from '../modules/player/player';
 import { Parser } from '../modules/parser';
 import { PostProcessor } from '../modules/post-processor';
 

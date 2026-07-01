@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { state, playTrack, togglePlay, addToQueue } from '../../modules/player';
-import type { Post } from '../../types';
+import { state, playTrack, togglePlay, addToQueue } from '../../player/player';
+import type { Post } from '../../../types';
 import ForumMedia from './ForumMedia.ce.vue';
 
 const props = defineProps<{

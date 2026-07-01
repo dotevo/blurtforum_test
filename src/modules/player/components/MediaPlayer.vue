@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
-import ScrollableTabs from '../layout/ScrollableTabs.vue';
-import VoteButton from '../layout/VoteButton.vue';
-import PlaylistModal from '../modals/PlaylistModal.vue';
-import type { MediaTrack, BFPlayerAPI, Playlist } from '../../types';
-import { currentSource } from '../../modules/player';
+import ScrollableTabs from './ScrollableTabs.vue';
+import PlaylistModal from './PlaylistModal.vue';
+import type { MediaTrack, BFPlayerAPI, Playlist } from '../types';
+import { currentSource } from '../player';
 
 const props = defineProps<{
   player: BFPlayerAPI;
@@ -15,10 +14,8 @@ const vw = ref(typeof window !== 'undefined' ? window.innerWidth : 1200);
 const handleResize = () => { vw.value = window.innerWidth; };
 
 const emit = defineEmits<{
-  openProfile: [username: string];
-  openTopic: [post: { author: string; permlink: string }];
-  submitVote: [post: any];
-  openPayoutModal: [post: any];
+  /** A track's title/author area, or the "open" link, was clicked — host app decides what that means (e.g. open the source post). */
+  trackClick: [track: MediaTrack];
 }>();
 
 // ── Playlists ───────────────────────────────────────────────────────────────
@@ -318,27 +315,16 @@ onUnmounted(() => {
         <div class="bfp-info-top">
           <div class="bfp-track-title">{{ player.state.currentTrack?.title || 'No title' }}</div>
           <div class="bfp-info-spacer"></div>
-          <template v-if="player.state.currentTrack?.permlink">
-            <div class="bfp-post-stats">
-              <span class="badge payout-link" 
-                    :class="(player.state.currentTrack.payout || 0) > 0 ? 'badge-green' : 'badge-blue'"
-                    @click.stop="emit('openPayoutModal', { author: player.state.currentTrack.author, permlink: player.state.currentTrack.permlink, payout: player.state.currentTrack.payout })">
-                {{ (player.state.currentTrack.payout || 0).toFixed(2) }} B
-              </span>
-              <VoteButton 
-                :voted="!!player.state.currentTrack.voted" 
-                :count="player.state.currentTrack.voteCount || 0" 
-                @vote="emit('submitVote', { author: player.state.currentTrack.author, permlink: player.state.currentTrack.permlink })" 
-              />
-              <a
-                href="#"
-                class="bfp-post-link" @click.stop.prevent="emit('openTopic', { author: player.state.currentTrack!.author!, permlink: player.state.currentTrack!.permlink! })" title="Open post"
-              ><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
-            </div>
-          </template>
+          <div class="bfp-post-stats" v-if="player.state.currentTrack">
+            <slot name="track-actions" :track="player.state.currentTrack"></slot>
+            <a
+              href="#"
+              class="bfp-post-link" @click.stop.prevent="emit('trackClick', player.state.currentTrack!)" title="Open"
+            ><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          </div>
         </div>
         <div class="bfp-track-meta">
-          <a class="bfp-author" href="#" @click.prevent="emit('openProfile', player.state.currentTrack!.author!)">
+          <a class="bfp-author" href="#" @click.prevent="emit('trackClick', player.state.currentTrack!)">
             @{{ player.state.currentTrack?.author }}
           </a>
           <span class="bfp-meta-sep">·</span>
@@ -423,17 +409,8 @@ onUnmounted(() => {
           <div class="bfp-video-header-title">{{ player.state.currentTrack?.title }}</div>
           <div class="gs" style="font-size: 10px;">@{{ player.state.currentTrack?.author }}</div>
         </div>
-        <div class="bfp-video-header-stats" v-if="player.state.currentTrack?.permlink">
-          <span class="badge payout-link" 
-                :class="(player.state.currentTrack.payout || 0) > 0 ? 'badge-green' : 'badge-blue'"
-                @click.stop="emit('openPayoutModal', { author: player.state.currentTrack.author, permlink: player.state.currentTrack.permlink, payout: player.state.currentTrack.payout })">
-            {{ (player.state.currentTrack.payout || 0).toFixed(2) }} B
-          </span>
-          <VoteButton 
-            :voted="!!player.state.currentTrack.voted" 
-            :count="player.state.currentTrack.voteCount || 0" 
-            @vote="emit('submitVote', { author: player.state.currentTrack.author, permlink: player.state.currentTrack.permlink })" 
-          />
+        <div class="bfp-video-header-stats" v-if="player.state.currentTrack">
+          <slot name="track-actions" :track="player.state.currentTrack"></slot>
         </div>
       </div>
 
@@ -537,7 +514,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="pq-actions">
-          <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('openTopic', { author: track.author!, permlink: track.permlink! })" title="Open post"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('trackClick', track)" title="Open"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
           <button class="pq-action" @click.stop="player.playTrack(track, false, -1, true)" title="Replay"><i class="fa-solid fa-rotate-right"></i></button>
           <button class="pq-action pq-action--playlist" @click.stop="openPlaylistDropdown(track, $event)" title="Add to playlist"><i class="fa-solid fa-list-ul"></i></button>
         </div>
@@ -573,7 +550,7 @@ onUnmounted(() => {
           <span></span><span></span><span></span><span></span>
         </div>
         <div class="pq-actions">
-          <a v-if="player.state.currentTrack.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('openTopic', { author: player.state.currentTrack.author!, permlink: player.state.currentTrack.permlink! })" title="Open post"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          <a v-if="player.state.currentTrack.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('trackClick', player.state.currentTrack!)" title="Open"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
           <button class="pq-action pq-action--playlist" @click.stop="openPlaylistDropdown(player.state.currentTrack, $event)" title="Add to playlist"><i class="fa-solid fa-list-ul"></i></button>
         </div>
       </div>
@@ -600,7 +577,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="pq-actions">
-          <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('openTopic', { author: track.author!, permlink: track.permlink! })" title="Open post"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('trackClick', track)" title="Open"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
           <button class="pq-action" @click.stop="player.playTrack(track, true, idx)" title="Play now"><i class="fa-solid fa-play"></i></button>
           <button class="pq-action pq-action--playlist" @click.stop="openPlaylistDropdown(track, $event)"><i class="fa-solid fa-list-ul"></i></button>
           <button class="pq-action pq-action--remove" @click.stop="player.state.queue.splice(idx, 1)" title="Remove"><i class="fa-solid fa-xmark"></i></button>
@@ -628,7 +605,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="pq-actions">
-          <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('openTopic', { author: track.author!, permlink: track.permlink! })" title="Open post"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+          <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('trackClick', track)" title="Open"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
           <button class="pq-action pq-action--playlist" @click.stop="openPlaylistDropdown(track, $event)"><i class="fa-solid fa-list-ul"></i></button>
         </div>
       </div>
@@ -696,7 +673,7 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="pl-track-actions">
-              <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('openTopic', { author: track.author!, permlink: track.permlink! })" title="Open post"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+              <a v-if="track.permlink" href="#" class="pq-action pq-action--link" @click.stop.prevent="emit('trackClick', track)" title="Open"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
               <button class="pl-action-btn delete" @click.stop="player.removeTrackFromPlaylist(activePlaylistId!, track.author, track.permlink)"><i class="fa-solid fa-xmark"></i></button>
             </div>
           </div>
@@ -981,7 +958,7 @@ onUnmounted(() => {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bfp-post-stats { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.bfp-post-stats .payout-link { font-size: 10px; padding: 1px 5px; }
+.bfp-post-stats .badge { font-size: 10px; padding: 1px 5px; }
 .bfp-post-stats .bfp-post-link { font-size: 13px; color: var(--bfp-muted); }
 .bfp-post-stats .bfp-post-link:hover { color: var(--bfp-text); }
 
@@ -1544,8 +1521,7 @@ onUnmounted(() => {
   
   .bfp-panel-header { z-index: 10; position: relative; background: var(--bfp-bg); }
 
-  .bfp-post-stats .payout-link,
-  .bfp-post-stats .vote-btn { display: none !important; }
+  .bfp-post-stats .badge { display: none !important; }
   .bfp-info-spacer { display: none; }
 }
 

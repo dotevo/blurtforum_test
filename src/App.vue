@@ -20,7 +20,7 @@ const CommunitiesView = defineAsyncComponent(() => import('./components/forum/Co
 const ProfileView = defineAsyncComponent(() => import('./components/profile/ProfileView.vue'));
 
 // Player
-const MediaPlayer = defineAsyncComponent(() => import('./components/player/MediaPlayer.vue'));
+const MediaPlayer = defineAsyncComponent(() => import('./modules/player_blurt/components/ForumMediaPlayer.vue'));
 
 // Modals (Async)
 const LoginModal = defineAsyncComponent(() => import('./components/modals/LoginModal.vue'));

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUpdated } from 'vue';
-import { dispatchScanView } from '../../modules/player';
+import { dispatchScanView } from '../../modules/player/player';
 import type { Forum, Post, AuthUser } from '../../types';
 import VoteButton from '../layout/VoteButton.vue';
-import ForumMediaContainer from '../player/ForumMediaContainer.vue';
+import ForumMediaContainer from '../../modules/player_blurt/components/ForumMediaContainer.vue';
 import PayoutBadge from '../layout/PayoutBadge.vue';
 import UserAvatar from '../layout/UserAvatar.vue';
 import PostEditor from '../layout/PostEditor.vue';

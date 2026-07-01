@@ -1,8 +1,8 @@
 import { createApp, defineCustomElement } from 'vue';
 import App from './App.vue';
 import './style.css';
-import ForumMedia from './components/player/ForumMedia.ce.vue';
-import ForumIframe from './components/player/ForumIframe.ce.vue';
+import ForumMedia from './modules/player_blurt/components/ForumMedia.ce.vue';
+import ForumIframe from './modules/player_blurt/components/ForumIframe.ce.vue';
 
 // Register ForumMedia as a native Web Component
 const ForumMediaElement = defineCustomElement(ForumMedia);

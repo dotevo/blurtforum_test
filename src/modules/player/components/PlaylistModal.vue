@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import type { MediaTrack } from '../../types';
+import type { MediaTrack } from '../types';
 
 const props = defineProps<{
   show: boolean;

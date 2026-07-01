@@ -1,3 +1,5 @@
+export type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode } from '../modules/player/types';
+
 // ─── Blockchain / API types ────────────────────────────────────────────────
 
 export interface BlurtAccount {
@@ -177,106 +179,6 @@ export interface ActivityItem {
   comment_permlink?: string;
 }
 
-export interface MediaEntryMirror {
-  type: 'audio' | 'youtube' | 'peertube';
-  id: string;
-  src?: string;
-  host?: string;
-  thumb?: string;
-  group?: string;
-  typeIndex?: number;
-}
-
-export interface MediaTrack {
-  author: string;
-  permlink: string;
-  subId?: string;
-  title: string;
-  sources: MediaEntryMirror[];
-  activeSourceIndex: number;
-  cover?: string;
-  payout?: number;
-  voteCount?: number;
-  voted?: boolean;
-  pending?: boolean;
-  _errorHandled?: boolean;
-}
-
-export type PlayMode = 'sequential' | 'shuffle' | 'repeat-all' | 'repeat-one';
-
-export interface PlayerState {
-  enabled: boolean;
-  active: boolean;
-  playing: boolean;
-  loading: boolean;
-  minimized: boolean;
-  expanded: boolean;
-  expandedHeight: number;
-  expandedTab: 'video' | 'queue' | 'playlists' | 'settings';
-  currentTrack: MediaTrack | null;
-  queue: MediaTrack[];
-  autoQueue: MediaTrack[];
-  history: MediaTrack[];
-  progress: number;
-  duration: number;
-  volume: number;
-  experimental: boolean;
-  isAutoStarting: boolean;
-  playMode: PlayMode;
-}
-
-export interface Playlist {
-  id: string;
-  name: string;
-  color: string;
-  createdAt: number;
-  updatedAt: number;
-  tracks: (MediaTrack & { addedAt?: number })[];
-}
-
-export interface PlaylistState {
-  playlists: Playlist[];
-}
-
-export type PlayerEvent =
-  | 'trackChange' | 'play' | 'pause' | 'next' | 'prev'
-  | 'ended' | 'volumeChange' | 'error';
-
-export interface PlayerPlugin {
-  name: string;
-  install?: (player: BFPlayerAPI) => void;
-  onTrackChange?: (track: MediaTrack) => void;
-}
-
-export interface BFPlayerAPI {
-  state: PlayerState;
-  playlistState: PlaylistState;
-  playTrack: (track: MediaTrack, isManual?: boolean, manualIdx?: number, fromHistory?: boolean) => Promise<void>;
-  playNext: (isAuto?: boolean) => void;
-  playPrev: () => void;
-  togglePlay: () => void;
-  seek: (pct: number) => void;
-  addToQueue: (track: MediaTrack) => void;
-  scanView: (container?: Element | null) => void;
-  registerTrack: (incoming: any) => void;
-  unregisterTrack: (trackId: string, type: string, author?: string, permlink?: string) => void;
-  setClient: (client: any) => void;
-  clearTracks: () => void;
-  setAutoQueue: (tracks: MediaTrack[]) => void;
-  initResize: (e: MouseEvent | TouchEvent) => void;
-  scrollToCurrent: () => void;
-  toggleExperimental: (val: boolean) => void;
-  togglePlayMode: () => void;
-  on: (event: PlayerEvent, fn: (data: unknown) => void) => void;
-  off: (event: PlayerEvent, fn: (data: unknown) => void) => void;
-  registerPlugin: (plugin: PlayerPlugin) => void;
-  createPlaylist: (name: string, color?: string) => Playlist | null;
-  deletePlaylist: (id: string) => void;
-  renamePlaylist: (id: string, newName: string) => void;
-  addTrackToPlaylist: (playlistId: string, track: MediaTrack) => boolean;
-  removeTrackFromPlaylist: (playlistId: string, author: string, permlink: string) => void;
-  playPlaylist: (playlistId: string, startIndex?: number) => void;
-}
 
 export interface BcQueueEntry {
   id: number;

@@ -18,6 +18,10 @@ const emit = defineEmits<{
   trackClick: [track: MediaTrack];
 }>();
 
+defineSlots<{
+  'track-actions'(props: { track: MediaTrack; zone: 'mini' | 'expanded' }): unknown;
+}>();
+
 // ── Playlists ───────────────────────────────────────────────────────────────
 const playlistModal = reactive({
   show: false,
@@ -316,7 +320,7 @@ onUnmounted(() => {
           <div class="bfp-track-title">{{ player.state.currentTrack?.title || 'No title' }}</div>
           <div class="bfp-info-spacer"></div>
           <div class="bfp-post-stats" v-if="player.state.currentTrack">
-            <slot name="track-actions" :track="player.state.currentTrack"></slot>
+            <slot name="track-actions" :track="player.state.currentTrack" zone="mini"></slot>
             <a
               href="#"
               class="bfp-post-link" @click.stop.prevent="emit('trackClick', player.state.currentTrack!)" title="Open"
@@ -410,7 +414,7 @@ onUnmounted(() => {
           <div class="gs" style="font-size: 10px;">@{{ player.state.currentTrack?.author }}</div>
         </div>
         <div class="bfp-video-header-stats" v-if="player.state.currentTrack">
-          <slot name="track-actions" :track="player.state.currentTrack"></slot>
+          <slot name="track-actions" :track="player.state.currentTrack" zone="expanded"></slot>
         </div>
       </div>
 
@@ -429,6 +433,17 @@ onUnmounted(() => {
             sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             allow="autoplay"
           ></iframe>
+        </div>
+
+        <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'webtorrent' }" class="bfp-video-iframe-wrap">
+          <!--
+            WebTorrent renders directly into this element via file.renderTo()
+            (see loadWebtorrentSource in player.ts) rather than a src URL —
+            it's a single persistent element, not recreated per track, since
+            WebTorrent attaches/detaches its own stream to whatever element
+            you hand it.
+          -->
+          <video id="bf-wt-player-video" class="bfp-video-iframe" playsinline controls-list="nodownload"></video>
         </div>
 
         <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'audio' }" class="bfp-video-audio-placeholder">

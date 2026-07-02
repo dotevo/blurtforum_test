@@ -6,7 +6,9 @@
  * lets you preview what would be active on a different day (e.g. tomorrow)
  * without waiting for it to actually be that day.
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import ApexCharts from 'apexcharts';
+import type { ApexOptions } from 'apexcharts';
 import { getAllCampaigns, refreshCampaignsNow } from '../sponsored-campaigns';
 import type { SponsoredCampaign } from '../sponsored-campaigns';
 
@@ -53,16 +55,176 @@ const handleRefresh = async (): Promise<void> => {
   }
 };
 
+// ─── Chart: max BPS + ad count per day, 7 days back / 7 days ahead ────────
+// (today fixed in the middle, regardless of which day is selected below)
+
+const DAY_MS = 86_400_000;
+const todayStartMs = (() => {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d.getTime();
+})();
+
+interface DayStat {
+  ms: number;
+  iso: string;
+  label: string;
+  maxBps: number | null;
+  count: number;
+  isFuture: boolean;
+  isToday: boolean;
+}
+
+const dayStats = computed<DayStat[]>(() => {
+  const out: DayStat[] = [];
+  for (let i = -7; i <= 7; i++) {
+    const ms = todayStartMs + i * DAY_MS;
+    const dayEnd = ms + DAY_MS - 1;
+    const active = campaigns.value.filter(c => c.start <= dayEnd && c.end >= ms);
+    const d = new Date(ms);
+    out.push({
+      ms,
+      iso: fmtDate(ms),
+      label: `${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`,
+      maxBps: active.length ? Math.max(...active.map(c => c.bps)) : null,
+      count: active.length,
+      isFuture: ms > todayStartMs,
+      isToday: ms === todayStartMs,
+    });
+  }
+  return out;
+});
+
+const chartEl = ref<HTMLElement | null>(null);
+let chart: ApexCharts | null = null;
+
+const buildChartOptions = (): ApexOptions => {
+  const stats = dayStats.value;
+  const todayIdx = stats.findIndex(d => d.isToday);
+  const categories = stats.map(d => d.label);
+  const countData = stats.map(d => d.count);
+  const pastBps = stats.map((d, i) => (i <= todayIdx ? d.maxBps : null));
+  const futureBps = stats.map((d, i) => (i >= todayIdx ? d.maxBps : null));
+  const maxBpsOverall = Math.max(0.0001, ...stats.map(d => d.maxBps || 0));
+  const maxCountOverall = Math.max(1, ...stats.map(d => d.count));
+  const bpsLabel = props.t('bps') || 'Max BPS';
+  const futureBpsLabel = `${bpsLabel} (${props.t('upcoming') || 'upcoming'})`;
+  const selected = stats.find(d => d.iso === previewDate.value);
+
+  return {
+    chart: {
+      type: 'line',
+      height: 210,
+      toolbar: { show: false },
+      background: 'transparent',
+      fontFamily: 'inherit',
+      events: {
+        dataPointSelection: (_e, _chart, opts) => {
+          const idx = opts?.dataPointIndex;
+          const stat = idx != null ? stats[idx] : undefined;
+          if (stat) previewDate.value = stat.iso;
+        },
+      },
+    },
+    series: [
+      { name: props.t('adsCount') || 'Ads', type: 'column', data: countData },
+      { name: bpsLabel, type: 'line', data: pastBps },
+      { name: futureBpsLabel, type: 'line', data: futureBps },
+    ],
+    colors: ['#98AAB1', '#1a9b78', '#1a9b78'],
+    stroke: { width: [0, 3, 3], dashArray: [0, 0, 6], curve: 'smooth' },
+    markers: { size: [0, 3, 3], strokeWidth: 0, hover: { size: 5 } },
+    plotOptions: { bar: { columnWidth: '55%', borderRadius: 3 } },
+    dataLabels: { enabled: false },
+    legend: { show: true, fontSize: '11px', markers: { size: 8 }, itemMargin: { horizontal: 8, vertical: 0 } },
+    grid: { borderColor: 'rgba(128,128,128,0.15)', strokeDashArray: 3 },
+    xaxis: {
+      categories,
+      labels: {
+        style: { fontSize: '10px', colors: stats.map((_, i) => (i === todayIdx ? '#1a9b78' : '#98AAB1')) },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: [
+      {
+        seriesName: props.t('adsCount') || 'Ads',
+        min: 0, max: maxCountOverall + 1, tickAmount: Math.min(4, maxCountOverall + 1),
+        forceNiceScale: false,
+        decimalsInFloat: 0,
+        labels: { style: { fontSize: '10px' }, formatter: (val: number) => String(Math.round(val)) },
+        title: { text: props.t('adsCount') || 'Ads', style: { fontSize: '10px' } },
+      },
+      {
+        seriesName: bpsLabel,
+        opposite: true, min: 0, max: maxBpsOverall * 1.2, decimalsInFloat: 3,
+        labels: { style: { fontSize: '10px' }, formatter: (val: number) => val.toFixed(3) },
+        title: { text: 'BPS', style: { fontSize: '10px' } },
+      },
+      { seriesName: futureBpsLabel, show: false, min: 0, max: maxBpsOverall * 1.2 },
+    ],
+    tooltip: {
+      shared: true,
+      intersect: false,
+      custom: ({ dataPointIndex }: { dataPointIndex: number }) => {
+        const d = stats[dataPointIndex];
+        if (!d) return '';
+        const tag = d.isToday ? (props.t('today') || 'Today') : d.isFuture ? (props.t('upcoming') || 'Upcoming') : '';
+        return `
+          <div style="padding:8px 10px; font-size:11px; line-height:1.6; background:var(--modal-bg); border:1px solid var(--border-main); border-radius:6px; color:var(--text);">
+            <div style="font-weight:700; margin-bottom:4px;">${d.iso}${tag ? ' · ' + tag : ''}</div>
+            <div>${bpsLabel}: <b>${d.maxBps != null ? d.maxBps.toFixed(4) : '—'}</b></div>
+            <div>${props.t('adsCount') || 'Ads'}: <b>${d.count}</b></div>
+          </div>`;
+      },
+    },
+    annotations: selected
+      ? {
+          xaxis: [{
+            x: selected.label,
+            borderColor: '#1a9b78',
+            label: {
+              text: props.t('selected') || 'Selected',
+              orientation: 'horizontal',
+              style: { fontSize: '9px', background: '#1a9b78', color: '#fff' },
+            },
+          }],
+        }
+      : {},
+  };
+};
+
+const renderOrUpdateChart = async (): Promise<void> => {
+  await nextTick();
+  if (!chartEl.value) return;
+  const options = buildChartOptions();
+  if (!chart) {
+    chart = new ApexCharts(chartEl.value, options);
+    chart.render();
+  } else {
+    chart.updateOptions(options, true, true);
+  }
+};
+
+watch([campaigns, previewDate], renderOrUpdateChart);
+
+onBeforeUnmount(() => {
+  chart?.destroy();
+  chart = null;
+});
+
 onMounted(() => {
   // First open might race the plugin's own initial fetch — make sure we
   // have something rather than showing an empty list forever.
   if (!campaigns.value.length) handleRefresh();
+  renderOrUpdateChart();
 });
 </script>
 
 <template>
+  <Teleport to="body">
   <div class="modal-overlay" @click.self="emit('close')">
-    <div class="modal-box" style="width: 560px; max-width: 92vw;">
+    <div class="modal-box" style="width: 620px; max-width: 94vw;">
       <div class="modal-header">
         <span style="display:flex; align-items:center; gap:8px;">
           <i class="fa-solid fa-bullhorn"></i> {{ t('sponsoredAds') || 'Sponsored Ads' }}
@@ -79,6 +241,8 @@ onMounted(() => {
             <i class="fa-solid fa-arrows-rotate" :class="{ 'fa-spin': loading }"></i>
           </button>
         </div>
+
+        <div ref="chartEl" class="sp-ads-chart"></div>
 
         <div v-if="!rows.length" class="sp-ads-empty">
           {{ t('noSponsoredAds') || 'No sponsored transfers found in the last 14 days.' }}
@@ -109,12 +273,18 @@ onMounted(() => {
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
 .sp-ads-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .sp-ads-date { height: 32px; width: auto; }
 .sp-ads-refresh { margin-left: auto; }
+
+.sp-ads-chart { margin-bottom: 16px; }
+.sp-ads-chart :deep(.apexcharts-series),
+.sp-ads-chart :deep(.apexcharts-point-annotation-marker) { cursor: pointer; }
+.sp-ads-chart :deep(.apexcharts-legend-text) { color: var(--text-muted) !important; }
 
 .sp-ads-empty { font-size: 12px; color: var(--text-muted); padding: 24px 0; text-align: center; }
 

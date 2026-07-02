@@ -5,8 +5,11 @@
  * belongs in a plugin's own metadata, attached via MediaTrack.meta / MediaTrack.badge.
  */
 
+import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
+
 export interface MediaEntryMirror {
-  type: 'audio' | 'youtube' | 'peertube';
+  type: 'audio' | 'youtube' | 'peertube' | 'webtorrent';
+  /** For type 'webtorrent', this holds the full magnet URI (must include xt=urn:btih:). */
   id: string;
   src?: string;
   host?: string;
@@ -53,6 +56,8 @@ export interface PlayerState {
   playMode: PlayMode;
   /** When true, manual skip (playNext called without isAuto) is ignored. Plugins toggle this via lockSkip/unlockSkip. */
   skipLocked: boolean;
+  /** Global WebTorrent upload switch (see webtorrent-pool.ts). Mirrors localStorage so it survives reloads. */
+  seedingEnabled: boolean;
 }
 
 export interface Playlist {
@@ -78,6 +83,25 @@ export interface PlayerPlugin {
   onTrackChange?: (track: MediaTrack) => void;
 }
 
+/** Where a track-action UI contribution is allowed to render. */
+export type TrackActionZone = 'mini' | 'expanded' | 'both';
+
+/**
+ * A single plugin's contribution to the player's track-actions area.
+ * `component` is any Vue component; it receives `track`, `player`, plus
+ * whatever static `props` were registered alongside it, plus any listeners
+ * passed down to the host slot (e.g. openTopic/submitVote) via fallthrough.
+ * The player core never inspects what these components render — it only
+ * decides *whether* to mount them, based on `zone`.
+ */
+export interface TrackActionContribution {
+  id: string;
+  zone: TrackActionZone;
+  component: any;
+  /** Extra static props merged in alongside `track`/`player` (e.g. a plugin's own `client`). */
+  props?: Record<string, unknown>;
+}
+
 export interface BFPlayerAPI {
   state: PlayerState;
   playlistState: PlaylistState;
@@ -101,6 +125,10 @@ export interface BFPlayerAPI {
   on: (event: PlayerEvent, fn: (data: unknown) => void) => void;
   off: (event: PlayerEvent, fn: (data: unknown) => void) => void;
   registerPlugin: (plugin: PlayerPlugin) => void;
+  /** Registers a plugin's own Vue component into the track-actions area (see TrackActionContribution). Idempotent by id. */
+  registerTrackAction: (contribution: TrackActionContribution) => void;
+  /** Contributions currently registered for a given zone (includes 'both'-zone ones). Used by the generic TrackActions.vue host. */
+  getTrackActions: (zone: Exclude<TrackActionZone, 'both'>) => TrackActionContribution[];
   /** Temporarily blocks manual skip (e.g. while a sponsored track must play). Plugins are responsible for calling unlockSkip(). */
   lockSkip: () => void;
   unlockSkip: () => void;
@@ -111,4 +139,18 @@ export interface BFPlayerAPI {
 //  removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
   removeTrackFromPlaylist: (playlistId: string, author: string, permlink: string, subId?: string) => void;
   playPlaylist: (playlistId: string, startIndex?: number) => void;
+
+  // ─── WebTorrent (see webtorrent-pool.ts for the actual implementation) ───
+  /** Turns global upload on/off (e.g. a mobile "don't seed" switch). Mirrored in state.seedingEnabled. */
+  setSeedingEnabled: (enabled: boolean) => void;
+  /** Max bytes the persistent seed cache is allowed to use; oldest-active torrents are evicted first once exceeded. */
+  setMaxSeedStorageBytes: (bytes: number) => void;
+  getMaxSeedStorageBytes: () => number;
+  /** Lifetime upload/download totals, per torrent and overall — survive reloads and individual torrents being evicted. */
+  getWebtorrentStats: () => WebtorrentStats;
+  /** Everything currently persisted (on disk), for a "what am I seeding" settings view. */
+  getWebtorrentManifest: () => SeedManifestEntry[];
+  getWebtorrentStorageEstimate: () => Promise<{ usage: number; quota: number } | null>;
+  /** Deletes all locally seeded data — a "clear my seed data" privacy control. */
+  clearWebtorrentData: () => Promise<void>;
 }

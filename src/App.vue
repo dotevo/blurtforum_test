@@ -468,9 +468,9 @@ const {
     :t="t"
     :client="client"
     @open-profile="openProfile"
-    @open-topic="(p) => openTopic(p as any)"
-    @submit-vote="(p) => submitVote(p as any)"
-    @open-payout-modal="(p) => openPayoutModal(p as any)"
+    @open-topic="(p: any) => openTopic(p as any)"
+    @submit-vote="(p: any) => submitVote(p as any)"
+    @open-payout-modal="(p: any) => openPayoutModal(p as any)"
   />
 
   <!-- ── Modals ─────────────────────────────────────────────────── -->

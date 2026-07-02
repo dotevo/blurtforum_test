@@ -327,5 +327,7 @@
   "active": "Active",
   "upcoming": "À venir",
   "expired": "Expirée",
-  "sponsoredHint": "Un BPS plus élevé signifie une plus grande chance d'être sélectionné, jamais une garantie — la sélection est une loterie pondérée."
+  "sponsoredHint": "Un BPS plus élevé signifie une plus grande chance d'être sélectionné, jamais une garantie — la sélection est une loterie pondérée.",
+  "adsCount": "Annonces",
+  "selected": "Sélectionné"
 }

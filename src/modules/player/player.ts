@@ -3,8 +3,11 @@
  * Handles audio/video playback, queuing, playlists, event emitter and plugin API.
  */
 import { reactive, watch, nextTick, ref, computed } from 'vue';
-import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode } from './types';
+import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution } from './types';
 import { trackEvent } from '../analytics';
+import * as WTPool from './webtorrent-pool';
+import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
+import { isStreamServerReady } from './webtorrent-pool';
 
 
 // Minimal YouTube IFrame API typings
@@ -65,7 +68,8 @@ export const state = reactive<PlayerState>({
   experimental: localStorage.getItem('bf-player-experimental') === 'true',
   isAutoStarting: false,
   playMode: (localStorage.getItem('bf-player-mode') as PlayMode) || 'sequential',
-  skipLocked: false
+  skipLocked: false,
+  seedingEnabled: WTPool.isSeedingEnabled()
 });
 
 const defaultPriorities = ['youtube', 'audio', 'peertube'];
@@ -125,6 +129,37 @@ const registerPlugin = (plugin: PlayerPlugin): void => {
   if (typeof plugin.install === 'function') plugin.install(BFPlayer);
   if (typeof plugin.onTrackChange === 'function') on('trackChange', plugin.onTrackChange.bind(plugin) as (data: unknown) => void);
 };
+
+// ─── Track-action UI registry ──────────────────────────────────────────────
+// Lets plugins contribute their own, independent Vue component to the
+// player's track-actions area, without knowing about each other and without
+// being merged into a single shared host file. `zone` controls where it's
+// allowed to render: the collapsed mini bar, the expanded panel header, or
+// both (the player core has no opinion on what any of this renders).
+
+const _trackActions: TrackActionContribution[] = [];
+
+const registerTrackAction = (contribution: TrackActionContribution): void => {
+  if (!contribution?.id) { console.warn('BFPlayer.registerTrackAction: contribution must have an id'); return; }
+  if (_trackActions.find(a => a.id === contribution.id)) { console.warn(`BFPlayer: track action "${contribution.id}" already registered`); return; }
+  _trackActions.push(contribution);
+};
+
+const getTrackActions = (zone: Exclude<TrackActionZone, 'both'>): TrackActionContribution[] =>
+  _trackActions.filter(a => a.zone === zone || a.zone === 'both');
+
+// ─── WebTorrent settings/introspection (delegates to webtorrent-pool.ts) ──
+
+const setSeedingEnabled = (enabled: boolean): void => {
+  state.seedingEnabled = enabled;
+  WTPool.setSeedingEnabled(enabled);
+};
+const setMaxSeedStorageBytes = (bytes: number): void => WTPool.setMaxStorageBytes(bytes);
+const getMaxSeedStorageBytes = (): number => WTPool.getMaxStorageBytes();
+const getWebtorrentStats = (): WebtorrentStats => WTPool.getStats();
+const getWebtorrentManifest = (): SeedManifestEntry[] => WTPool.getManifest();
+const getWebtorrentStorageEstimate = (): Promise<{ usage: number; quota: number } | null> => WTPool.getStorageEstimate();
+const clearWebtorrentData = (): Promise<void> => WTPool.clearAllSeedData();
 
 // ─── Internals ─────────────────────────────────────────────────────────────
 
@@ -264,6 +299,71 @@ const initAudio = (): void => {
   });
 };
 
+let wtVideoEl: HTMLVideoElement | null = null;
+
+const initWT = (): void => {
+  if (wtVideoEl) return;
+  wtVideoEl = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
+  if (!wtVideoEl) { console.warn('[BFPlayer] #bf-wt-player-video element not found in DOM'); return; }
+  wtVideoEl.volume = state.volume;
+  const isWTTrack = () => currentSource.value?.type === 'webtorrent';
+  wtVideoEl.addEventListener('play', () => { if (isWTTrack()) { state.playing = true; state.loading = false; } });
+  wtVideoEl.addEventListener('pause', () => { if (isWTTrack()) state.playing = false; });
+  wtVideoEl.addEventListener('waiting', () => { if (isWTTrack()) state.loading = true; });
+  wtVideoEl.addEventListener('playing', () => { if (isWTTrack()) { state.loading = false; if (wtVideoEl?.duration) state.duration = wtVideoEl.duration; } });
+  wtVideoEl.addEventListener('timeupdate', () => {
+    if (wtVideoEl && isWTTrack() && wtVideoEl.duration > 0) {
+      state.duration = wtVideoEl.duration;
+      state.progress = (wtVideoEl.currentTime / wtVideoEl.duration) * 100;
+    }
+  });
+  wtVideoEl.addEventListener('ended', () => { if (isWTTrack()) { _emit('ended', state.currentTrack); playNext(true); } });
+  wtVideoEl.addEventListener('error', (e) => {
+    if (isWTTrack()) { console.error('BFPlayer WebTorrent video error:', e); handleError('WebTorrent playback error'); }
+  });
+};
+
+/**
+ * activeSource.id is the magnet URI by convention (see MediaEntryMirror doc comment).
+ *
+ * NOTE: WebTorrent >=2.0 removed file.renderTo() (the old MediaSource-based
+ * renderer). Its replacement, file.streamTo(), just points wtVideoEl.src at
+ * a URL served by the in-browser HTTP server WTPool sets up via a Service
+ * Worker (see setUpStreamServer() in webtorrent-pool.ts) — it does not take
+ * a callback, so playback errors now surface through the <video> element's
+ * own 'error' event, which initWT() already listens for above.
+ */
+const loadWebtorrentSource = async (activeSource: MediaEntryMirror, title: string): Promise<void> => {
+  initWT();
+  if (!wtVideoEl) { handleError('WebTorrent video element not found'); return; }
+  state.loading = true;
+  try {
+    if (!isStreamServerReady()) {
+      console.error('[BFPlayer] WebTorrent: stream server not ready — Service Worker registration likely failed. See earlier [WT] setUpStreamServer errors in the console.');
+      handleError('WebTorrent streaming is unavailable in this browser/session');
+      return;
+    }
+
+    const torrent = await WTPool.getOrAddTorrent(activeSource.id, title);
+    if (currentSource.value !== activeSource) return; // user already skipped away while we were loading
+
+    WTPool.protectFromEviction(torrent.infoHash);
+    WTPool.markActive(torrent.infoHash);
+
+    const file = torrent.files.find((f: any) => /\.(mp4|webm|mkv|mov|m4v|mp3|ogg|oga|wav|flac)$/i.test(f.name))
+      || torrent.files.reduce((a: any, b: any) => (a.length > b.length ? a : b));
+
+    console.log('[BFPlayer] WebTorrent: streaming file', file?.name, 'size', file?.length, 'of', torrent.files.length, 'file(s)');
+
+    file.streamTo(wtVideoEl);
+    wtVideoEl.autoplay = true;
+  } catch (e) {
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : JSON.stringify(e);
+    console.error('[BFPlayer] WebTorrent load error:', detail, e);
+    handleError('Could not load magnet link');
+  }
+};
+
 const loadYTAPI = (): Promise<void> => {
   if (window.YT) return Promise.resolve();
   return new Promise(resolve => {
@@ -312,6 +412,13 @@ const initPT = (): void => {
   const PTConstructor = window.PeerTubePlayer as any;
   if (PTConstructor) {
     ptPlayer = new PTConstructor(iframe);
+    // We push our own volume into the embed first (below), but that's an
+    // async postMessage — the very next playbackStatusUpdate can still
+    // reflect the embed's pre-sync volume. Ignore just that first report so
+    // we never clobber state.volume with a stale value; every update after
+    // that genuinely reflects the embed (including the user adjusting it
+    // inside the iframe), so it's safe to trust from then on.
+    let ptVolumeSynced = false;
     ptPlayer!.ready.then(() => {
        state.loading = false;
        ptPlayer!.setVolume(state.volume);
@@ -322,7 +429,11 @@ const initPT = (): void => {
           if (stats && typeof stats.position !== 'undefined' && stats.duration > 0) {
             state.progress = (stats.position / stats.duration) * 100;
             state.duration = stats.duration;
-            state.volume = stats.volume;
+            if (ptVolumeSynced) {
+              state.volume = stats.volume;
+            } else {
+              ptVolumeSynced = true;
+            }
             if (stats.playbackState === 'ended') playNext(true);
           }
        });
@@ -469,6 +580,8 @@ export const playTrack = async (track: MediaTrack, isManual = false, manualIdx =
     state.queue.splice(manualIdx, 1);
   }
 
+  if (wtVideoEl && activeSource.type !== 'webtorrent') { wtVideoEl.pause(); }
+
   if (activeSource.type === 'audio') {
     console.log('[BFPlayer] Initializing Audio playback...');
     initAudio();
@@ -503,6 +616,9 @@ export const playTrack = async (track: MediaTrack, isManual = false, manualIdx =
       console.log('[BFPlayer] Triggering PT init after nextTick');
       setTimeout(() => initPT(), 1000); 
     });
+  } else if (activeSource.type === 'webtorrent') {
+    console.log('[BFPlayer] Initializing WebTorrent playback...', activeSource.id);
+    void loadWebtorrentSource(activeSource, track.title);
   }
 };
 
@@ -615,10 +731,12 @@ export const togglePlay = (): void => {
     if (currentSource.value.type === 'audio' && audioObj) audioObj.pause();
     if (currentSource.value.type === 'youtube' && ytPlayer) ytPlayer.pauseVideo();
     if (currentSource.value.type === 'peertube' && ptPlayer) ptPlayer.pause();
+    if (currentSource.value.type === 'webtorrent' && wtVideoEl) wtVideoEl.pause();
   } else {
     if (currentSource.value.type === 'audio' && audioObj) audioObj.play();
     if (currentSource.value.type === 'youtube' && ytPlayer) ytPlayer.playVideo();
     if (currentSource.value.type === 'peertube' && ptPlayer) ptPlayer.play();
+    if (currentSource.value.type === 'webtorrent' && wtVideoEl) wtVideoEl.play();
   }
 };
 
@@ -627,6 +745,7 @@ const seek = (pct: number): void => {
   if (currentSource.value?.type === 'youtube' && ytPlayer) ytPlayer.seekTo(time);
   else if (currentSource.value?.type === 'audio' && audioObj) audioObj.currentTime = time;
   else if (currentSource.value?.type === 'peertube' && ptPlayer) ptPlayer.seek(time);
+  else if (currentSource.value?.type === 'webtorrent' && wtVideoEl) wtVideoEl.currentTime = time;
 };
 
 export const addToQueue = (track: MediaTrack, position: 'start' | 'end' = 'end'): void => {
@@ -881,6 +1000,7 @@ watch(() => state.volume, v => {
   if (audioObj) audioObj.volume = v;
   if (ytPlayer) ytPlayer.setVolume(v * 100);
   if (ptPlayer) ptPlayer.setVolume(v);
+  if (wtVideoEl) wtVideoEl.volume = v;
   localStorage.setItem('bf-player-volume', String(v));
   _emit('volumeChange', v);
 });
@@ -907,6 +1027,9 @@ export const BFPlayer: BFPlayerAPI = {
   lockSkip, unlockSkip,
   togglePlayMode,
   on, off, registerPlugin,
+  registerTrackAction, getTrackActions,
   createPlaylist, deletePlaylist, renamePlaylist,
   addTrackToPlaylist, removeTrackFromPlaylist, playPlaylist,
+  setSeedingEnabled, setMaxSeedStorageBytes, getMaxSeedStorageBytes,
+  getWebtorrentStats, getWebtorrentManifest, getWebtorrentStorageEstimate, clearWebtorrentData,
 };

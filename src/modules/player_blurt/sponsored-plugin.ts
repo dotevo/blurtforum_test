@@ -1,5 +1,6 @@
 import type { BFPlayerAPI, MediaTrack } from '../player/types';
 import { Parser } from '../parser';
+import SponsoredTrackAction from './components/SponsoredTrackAction.vue';
 import {
   ensureCampaigns,
   startAutoRefresh,
@@ -99,6 +100,15 @@ export const SponsoredPlayerPlugin = (client: any) => {
 
       ensureCampaigns(client).catch(e => console.warn('[SponsoredPlugin] initial fetch failed:', e));
       startAutoRefresh(client);
+
+      // Own UI contribution, independent of any other plugin's — deliberately
+      // 'expanded' only, so it never shows in the collapsed mini bar.
+      p.registerTrackAction({
+        id: 'sponsored-market-info',
+        zone: 'expanded',
+        component: SponsoredTrackAction,
+        props: { client },
+      });
 
       p.on('next', (outgoing) => {
         // Leaving any track — sponsored or not — cancels a previously armed

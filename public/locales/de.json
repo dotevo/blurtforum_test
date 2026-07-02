@@ -327,5 +327,7 @@
   "active": "Aktiv",
   "upcoming": "Bevorstehend",
   "expired": "Abgelaufen",
-  "sponsoredHint": "Höherer BPS = höhere Auswahlchance, niemals eine Garantie — die Auswahl ist eine gewichtete Lotterie."
+  "sponsoredHint": "Höherer BPS = höhere Auswahlchance, niemals eine Garantie — die Auswahl ist eine gewichtete Lotterie.",
+  "adsCount": "Anzeigen",
+  "selected": "Ausgewählt"
 }

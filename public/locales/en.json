@@ -294,5 +294,7 @@
   "active": "Active",
   "upcoming": "Upcoming",
   "expired": "Expired",
-  "sponsoredHint": "Higher BPS = higher chance of being picked, never a guarantee — selection is a weighted lottery."
+  "sponsoredHint": "Higher BPS = higher chance of being picked, never a guarantee — selection is a weighted lottery.",
+  "adsCount": "Ads",
+  "selected": "Selected"
 }

@@ -324,5 +324,7 @@
   "active": "Aktiva",
   "upcoming": "Venonta",
   "expired": "Eksvalidiĝinta",
-  "sponsoredHint": "Pli alta BPS = pli granda ŝanco esti elektita, neniam garantio — la elekto estas pezita loterio."
+  "sponsoredHint": "Pli alta BPS = pli granda ŝanco esti elektita, neniam garantio — la elekto estas pezita loterio.",
+  "adsCount": "Reklamoj",
+  "selected": "Elektita"
 }

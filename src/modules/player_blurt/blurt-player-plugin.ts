@@ -1,19 +1,26 @@
 import { PostProcessor } from '../post-processor';
 import { Blockchain } from '../blockchain';
+import BlurtTrackActions from './components/BlurtTrackActions.vue';
 import type { BFPlayerAPI, MediaTrack } from '../player/types';
 
 /**
  * Player Plugin that fetches and updates Blurt-specific metadata
  * (payout, votes) when a track is loaded or changed.
  *
- * Blurt data is stored under track.meta (opaque to the player core) and
- * surfaced to the generic player UI via track.badge.
+ * Blurt data is stored under track.meta (opaque to the player core).
+ * The payout badge / vote button UI is its own independent component
+ * (BlurtTrackActions.vue), registered below via registerTrackAction —
+ * it doesn't need to know about, or be bundled with, any other plugin's UI.
  */
 export const BlurtPlayerPlugin = (client: any, auth: any) => ({
   name: 'BlurtMetadata',
 
-  install(_player: BFPlayerAPI) {
-    console.log('BlurtMetadataPlugin installed');
+  install(player: BFPlayerAPI) {
+    player.registerTrackAction({
+      id: 'blurt-payout-vote',
+      zone: 'both',
+      component: BlurtTrackActions,
+    });
   },
 
   /**

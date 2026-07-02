@@ -330,5 +330,7 @@
   "active": "Aktywna",
   "upcoming": "Nadchodząca",
   "expired": "Wygasła",
-  "sponsoredHint": "Wyższe BPS = większa szansa na wylosowanie, nigdy gwarancja — wybór to ważona loteria."
+  "sponsoredHint": "Wyższe BPS = większa szansa na wylosowanie, nigdy gwarancja — wybór to ważona loteria.",
+  "adsCount": "Reklamy",
+  "selected": "Wybrane"
 }

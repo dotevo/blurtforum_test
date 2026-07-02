@@ -106,6 +106,20 @@ export const Parser = {
           return url;
         });
 
+        // Auto-embed WebTorrent magnet links (not matched by the http(s)-only regex above)
+        const magnetRegex = /(magnet:\?xt=urn:[a-z0-9]+:[a-zA-Z0-9]+[^\s\)\>\]<"']*)/gi;
+        line = line.replace(magnetRegex, (uri) => {
+          const media = this.detectMedia(uri);
+          if (media) {
+            const mediaKey = `${media.type}:${media.id}`;
+            if (seenMedia.has(mediaKey)) return uri;
+            seenMedia.add(mediaKey);
+            typeCounters[media.type] = (typeCounters[media.type] || 0) + 1;
+            return tokenize(this.getExperimentalPlaceholder(media.type, media.id, media.host || '', context, currentGroup, typeCounters[media.type]));
+          }
+          return uri;
+        });
+
         // Explicit [[MEDIA:...]]
         line = line.replace(/\[\[MEDIA:([^:]+):([^:\]]+):([^:\]]*)\]\]/g, (_match, type, id, host) => {
           const mediaKey = `${type}:${id}`;
@@ -204,6 +218,12 @@ export const Parser = {
   /** Detects media type from text */
   detectMedia(text: string | undefined): any | null {
     if (!text) return null;
+    // WebTorrent magnet link — id is the full magnet URI (must include xt=urn:btih:)
+    const magnetMatch = text.match(/magnet:\?xt=urn:[a-z0-9]+:[a-zA-Z0-9]+[^\s\)\>\]<"']*/i);
+    if (magnetMatch) {
+      const uri = magnetMatch[0].replace(/[).,;]$/, '');
+      return { type: 'webtorrent', id: uri };
+    }
     const ytMatch = text.match(/https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/|v\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
     if (ytMatch) {
       const id = ytMatch[1];
@@ -263,6 +283,21 @@ export const Parser = {
         }
       }
 
+      // 2.5 Detect WebTorrent magnet links (not matched by the http(s)-only regex above)
+      const magnetMatches = processedLine.matchAll(/magnet:\?xt=urn:[a-z0-9]+:[a-zA-Z0-9]+[^\s\)\>\]<"']*/gi);
+      for (const match of magnetMatches) {
+        const uri = match[0].replace(/[).,;]$/, '');
+        const media = this.detectMedia(uri);
+        if (media) {
+          const key = `${media.type}:${media.id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            typeCounters[media.type] = (typeCounters[media.type] || 0) + 1;
+            results.push({ ...media, group: currentGroup, typeIndex: typeCounters[media.type] });
+          }
+        }
+      }
+
       // 3. Explicit syntax
       const explicitMatches = trimmed.matchAll(/\[\[MEDIA:([^:]+):([^:\]]+):([^:\]]*)\]\]/g);
       for (const match of explicitMatches) {
@@ -284,9 +319,11 @@ export const Parser = {
     const author = context?.author || 'post';
     const permlink = context?.permlink || '';
     const isPending = (type === 'audio' && id.length < 30) || (type === 'peertube');
+    // Magnet URIs contain raw & characters — escape for safe use inside an HTML attribute.
+    const idAttr = id.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
     return `<div class="forum-media-card-wrapper">
-              <forum-media data-type="${type}" data-id="${id}" data-host="${host}" 
+              <forum-media data-type="${type}" data-id="${idAttr}" data-host="${host}" 
                  data-title="${title}" data-author="${author}" data-permlink="${permlink}"
                  data-pending="${isPending}" data-group="${group}" data-index="${index}"
                  mode="card"></forum-media>

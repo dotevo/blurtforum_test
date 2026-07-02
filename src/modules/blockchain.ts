@@ -98,25 +98,32 @@ export const Blockchain = {
       const voteWeight = weight * 100;
       const usedPower = Math.ceil(rawVP * voteWeight / 10000 / 50);
       const vpAfterRaw = rawVP - usedPower;
-      
+
       const vpCostPct = (usedPower / 100).toFixed(2);
       const vpAfter   = (vpAfterRaw / 100).toFixed(2);
-      
-      const vestingShares    = parseFloat(acc.vesting_shares as string);
-      const receivedVesting  = parseFloat(acc.received_vesting_shares as string || '0');
-      const delegatedVesting = parseFloat(acc.delegated_vesting_shares as string || '0');
-      const effectiveVests   = vestingShares + receivedVesting - delegatedVesting;
-      
-      const microVests = BigInt(Math.floor(effectiveVests * 1000000));
-      const rs = (microVests * BigInt(usedPower)) / 10000n;
-      
-      const rcStr = fund.recent_claims as string;
-      const rc = BigInt(typeof rcStr === 'string' ? (rcStr.split(' ')[0] || rcStr) : String(rcStr));
-      const rb = parseFloat(fund.reward_balance as string);
-      
+
+      // Effective vesting shares in micro-VESTS (precision 6)
+      const vestingShares    = parseFloat(String(acc.vesting_shares).split(' ')[0]);
+      const receivedVesting  = parseFloat(String(acc.received_vesting_shares || '0').split(' ')[0]);
+      const delegatedVesting = parseFloat(String(acc.delegated_vesting_shares || '0').split(' ')[0]);
+      const effectiveVests   = (vestingShares + receivedVesting - delegatedVesting) * 1e6;
+
+      // rshares = usedPower * effectiveMicroVests / 10000
+      // matches reference formula: power * vestingShares / 10000
+      // where power = voting_power * voteWeight / 10000 / 50 = usedPower
+      const rshares = (usedPower * effectiveVests) / 10000;
+
+      // Blurt uses a modified quadratic curve with s=2e12 to dampen small votes:
+      // voteValue = rshares*(rshares + 2s)/(rshares + 4s) / recentClaims * rewardBalance
+      const s = 2_000_000_000_000;
+      const rc = parseFloat(String(fund.recent_claims).split(' ')[0]);
+      const rb = parseFloat(String(fund.reward_balance).split(' ')[0]);
+
       let voteValue = 0;
-      if (rc > 0n) voteValue = (Number(rs) / Number(rc)) * rb;
-      
+      if (rc > 0 && rshares > 0) {
+        voteValue = rshares * (rshares + 2 * s) / (rshares + 4 * s) / rc * rb;
+      }
+
       const voteFee = this.estimateTxFee(1, 150);
       
       return { vpCostPct, vpAfter, voteValue: voteValue.toFixed(4), fee: voteFee };

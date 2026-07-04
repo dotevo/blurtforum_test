@@ -12,10 +12,27 @@
  */
 import { ref } from 'vue';
 import SponsoredCampaignsModal from './SponsoredCampaignsModal.vue';
+import type { BFPlayerAPI, MediaTrack } from '../../player/types';
 
 defineProps<{
   client: any;
   t?: (k: string) => string;
+  // track/player are forwarded to every registered track-action by
+  // TrackActions.vue/ForumMediaPlayer.vue's blanket v-bind="$attrs", even
+  // though this component doesn't need them. Declaring them (even unused)
+  // turns them into real props instead of $attrs, so Vue stops warning
+  // about "extraneous non-props attributes" on this fragment-root component.
+  track?: MediaTrack;
+  player?: BFPlayerAPI;
+}>();
+
+defineEmits<{
+  // Not used by this fully self-contained component, but forwarded by the
+  // same blanket $attrs mechanism above — declaring these absorbs the
+  // listeners instead of leaving them as "extraneous non-emits listeners".
+  openProfile: [payload: unknown];
+  submitVote: [payload: unknown];
+  openPayoutModal: [payload: unknown];
 }>();
 
 const showModal = ref(false);

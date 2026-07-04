@@ -11,16 +11,27 @@
  */
 import PayoutBadge from '../../../components/layout/PayoutBadge.vue';
 import VoteButton from '../../../components/layout/VoteButton.vue';
-import type { MediaTrack } from '../../player/types';
+import type { BFPlayerAPI, MediaTrack } from '../../player/types';
 
 const props = defineProps<{
   track: MediaTrack;
   t?: (k: string) => string; // unused here, declared only to absorb the fallthrough from TrackActions.vue
+  // player/client are forwarded to every registered track-action by
+  // TrackActions.vue/ForumMediaPlayer.vue's blanket v-bind="$attrs", even
+  // though this component doesn't need them. Declaring them (even unused)
+  // turns them into real props instead of $attrs, so Vue stops warning
+  // about "extraneous non-props attributes" on this fragment-root component.
+  player?: BFPlayerAPI;
+  client?: unknown;
 }>();
 
 const emit = defineEmits<{
   openPayoutModal: [post: { author: string; permlink: string; payout?: number }];
   submitVote: [post: { author: string; permlink: string }];
+  // Not used by this component, but forwarded by the same blanket $attrs
+  // mechanism above — declaring it absorbs the listener instead of leaving
+  // it as an "extraneous non-emits event listener".
+  openProfile: [payload: unknown];
 }>();
 
 const onPayoutClick = () => {

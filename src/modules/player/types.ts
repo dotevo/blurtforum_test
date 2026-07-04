@@ -153,4 +153,6 @@ export interface BFPlayerAPI {
   getWebtorrentStorageEstimate: () => Promise<{ usage: number; quota: number } | null>;
   /** Deletes all locally seeded data — a "clear my seed data" privacy control. */
   clearWebtorrentData: () => Promise<void>;
+  /** Manually (re)attach playback to a specific file index in the currently-loaded torrent — lets the UI offer a per-file "Play" action instead of only the automatic best-file pick. */
+  playWebtorrentFile: (fileIndex: number) => void;
 }

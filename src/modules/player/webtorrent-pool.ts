@@ -1,486 +1,548 @@
 /**
  * modules/player/webtorrent-pool.ts
  *
- * Manages a single, page-lifetime WebTorrent client shared by every
- * 'webtorrent' track. Responsibilities:
+ * Thin adapter around the standalone, already-working torrent-lib.js
+ * (TorrentLibrary) — NOT a from-scratch WebTorrent integration. The previous
+ * version of this file drove the `webtorrent` npm package directly and had
+ * a laundry list of open bugs (bundler-vs-browser-build issues, no
+ * position-aware download window, manual srt/vtt conversion, etc.) — all of
+ * that is now solved inside torrent-lib.js, which is a verified-working
+ * standalone PoC. This file's only job is to:
  *
- *  - Persistent storage per torrent (IndexedDB via indexeddb-chunk-store),
- *    so already-downloaded pieces survive a page reload and are immediately
- *    seedable again, without redownloading anything.
- *  - A user-configurable storage budget (bytes) with LRU eviction — when
- *    adding data would exceed the budget, the least-recently-active torrent
- *    is fully deleted (both the live torrent, if loaded, and its IndexedDB
- *    store) until we're back under budget.
- *  - A global seeding on/off switch (client.throttleUpload), e.g. for
- *    disabling upload on mobile/metered connections.
- *  - Lifetime transfer stats (bytes uploaded/downloaded, total and per
- *    torrent) that survive both individual torrents being evicted and the
- *    page reloading — torrent.uploaded/downloaded reset whenever a new
- *    Torrent JS object is created, so we track deltas into localStorage.
+ *   1. own the one shared TorrentLibrary instance for the page's lifetime
+ *      (lazy-constructed on first use, same as the old pool's initPromise
+ *      pattern), and
+ *   2. keep the public surface the rest of the player already depends on
+ *      (player.ts, WebtorrentVideo.vue, WebtorrentInfoModal.vue,
+ *      WebtorrentSettingsModal.vue) so swapping the engine underneath
+ *      didn't require rewriting every call site — while also exposing the
+ *      new capabilities (piece maps, subtitle conversion, playback buffer,
+ *      richer stats) those call sites now use instead of hand-rolling them.
  *
- * Lazy-loaded: webtorrent and indexeddb-chunk-store are only dynamically
- * imported once a 'webtorrent' track is actually encountered, so nobody
- * who doesn't use this feature pays for it in bundle size.
- *
- * WEBTORRENT VERSION NOTE (upgraded 1.x -> 3.x):
- * As of WebTorrent 2.0, in-browser playback via `file.renderTo()` (the old
- * MediaSource-based renderer) was REMOVED. Its replacement, `file.streamTo()`
- * (used in player.ts), works completely differently: it doesn't attach a
- * MediaSource to the video element directly — it points the element's `src`
- * at a URL served by an in-browser HTTP server that WebTorrent runs through
- * a Service Worker. That means a Service Worker registration +
- * `client.createServer(...)` are no longer optional — they're a hard
- * prerequisite for playback in 2.x/3.x. See `initWebtorrent()` below.
- *
- * The Service Worker script (`sw.min.js`) ships inside the `webtorrent`
- * package itself (`node_modules/webtorrent/dist/sw.min.js`). With Vite,
- * don't hand-copy it — use `vite-plugin-static-copy` (see vite.config.ts)
- * so it's re-copied from node_modules on every build and never goes stale
- * relative to whatever webtorrent version is actually installed.
- *
- * No knowledge of Blurt or identity lives here — "only talk to peers who
- * can sign with a Blurt account" is a future plugin (player-blurt-seed)
- * layered on top of this, not something this module does.
+ * torrent-lib.js itself is intentionally NOT modified — see its own header
+ * comment, and see torrent-lib.d.ts for a note on the one piece of build
+ * wiring (the CDN import for the webtorrent bundle) that needs to survive
+ * bundling for this to actually work here the same way it does in the
+ * standalone PoC.
  */
+import { TorrentLibrary } from './torrent-lib.js';
+import type {
+  TorrentLibSnapshot, TorrentLibPieceMap, TorrentLibPlaybackHandle, TorrentLibSubtitleTrack,
+} from './torrent-lib.js';
 
-// ─── Debug logging ──────────────────────────────────────────────────────────
-// Mobile remote-debug consoles (vConsole/eruda etc.) often JSON.stringify
-// console args, which collapses Error objects to "{}" (message/stack are
-// non-enumerable). So we always log a plain-string description alongside
-// the raw object, and log every stage of the load so a stuck/failed load
-// is diagnosable from the console alone.
-const WT_DEBUG = true; // flip to false to silence
+const WT_DEBUG = true;
 const wlog = (...args: unknown[]): void => { if (WT_DEBUG) console.log('[WT]', ...args); };
-const describeError = (e: unknown): string => {
-  if (e instanceof Error) return `${e.name}: ${e.message}${e.stack ? `\n${e.stack}` : ''}`;
-  try { return JSON.stringify(e); } catch { return String(e); }
-};
 
-// ─── localStorage keys & defaults ──────────────────────────────────────────
-
-const MANIFEST_KEY = 'bf-player-wt-manifest';
+// ─── localStorage keys & defaults (same keys as the old pool, so an
+// existing user's quota/seeding preference survives the swap) ─────────────
 const QUOTA_KEY = 'bf-player-wt-quota';
 const SEEDING_KEY = 'bf-player-wt-seeding';
-const STATS_KEY = 'bf-player-wt-stats';
-
 const DEFAULT_QUOTA_BYTES = 500 * 1024 * 1024; // 500 MB
-const QUOTA_HEADROOM = 0.9; // evict down to 90% of budget, not right up to the edge
-const STATS_FLUSH_INTERVAL_MS = 30_000;
-/** How long we wait for torrent metadata (peers/trackers) before giving up with a clear error. */
-const METADATA_TIMEOUT_MS = 30_000;
 
-/**
- * Path the WebTorrent Service Worker is registered at, and the scope it's
- * registered with. MUST be derived from the app's actual base path
- * (Vite's `import.meta.env.BASE_URL`), not hardcoded to '/':
- *  - `base: './'` (relative, used for local/file-based serving) resolves
- *    relative to the *current document's* URL, not the site root.
- *  - GitHub Pages deploys under `/repo-name/`, set via `VITE_BASE` in CI —
- *    a Service Worker can only be registered with a scope at or below the
- *    path of the script itself, so `scope: '/'` from a page served at
- *    `/repo-name/` would be rejected by the browser outright.
- * Both cases are covered by just reusing whatever base Vite already
- * computed for every other asset.
- */
-const SW_PATH = `${import.meta.env.BASE_URL}sw.min.js`;
-const SW_SCOPE = import.meta.env.BASE_URL;
-/** How long we wait for the Service Worker to activate before giving up on streaming. */
-const SW_ACTIVATION_TIMEOUT_MS = 15_000;
-
+// ─── Public types (unchanged shape from the old pool, so types.ts and
+// consumers that only care about "downloaded/uploaded totals" don't need to
+// change) ───────────────────────────────────────────────────────────────────
 export interface SeedManifestEntry {
   infoHash: string;
   magnetURI: string;
   title: string;
   sizeBytes: number;
   lastActiveAt: number;
+  /** Whole-torrent download progress (0–1), not just the currently-playing file's streaming window. */
+  progress: number;
+  /** Whole torrent fully downloaded — safe to play back with zero network (once metadata is cached too, see downloadEntireTorrent). */
+  done: boolean;
+  /** Whether the user asked us to keep downloading every file, not just what's needed to stream the active one. */
+  fullDownload: boolean;
 }
-
 export interface TorrentStatsEntry {
   title: string;
   uploaded: number;
   downloaded: number;
 }
-
 export interface WebtorrentStats {
   totalUploaded: number;
   totalDownloaded: number;
   perTorrent: Record<string, TorrentStatsEntry>;
 }
 
-const readJSON = <T>(key: string, fallback: T): T => {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-const writeJSON = (key: string, value: unknown): void => {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full/unavailable, best effort */ }
+// Re-exported so components can type against the library's richer snapshot
+// (files[].isSub, wires[].bitfieldPct, allTime, timeRemaining, etc.) instead
+// of the flattened shape the old pool used to hand-roll.
+export type { TorrentLibSnapshot as TorrentSnapshot, TorrentLibPieceMap as PieceMap, TorrentLibSubtitleTrack as SubtitleTrack };
+
+const readNumber = (key: string, fallback: number): number => {
+  const raw = Number(localStorage.getItem(key));
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
 };
 
-const readManifest = (): SeedManifestEntry[] => readJSON(MANIFEST_KEY, []);
-const writeManifest = (entries: SeedManifestEntry[]): void => writeJSON(MANIFEST_KEY, entries);
+// ─── "Download whole torrent" tracking ─────────────────────────────────────
+// Streaming playback only ever downloads a small lookahead/behind window
+// around the currently-playing position (see torrent-lib.js's
+// PlaybackBuffer, driven from attachPlayback()) — great for "start watching
+// immediately", useless for "grab the whole thing now so it plays back with
+// no connection at all later" (e.g. before a flight, or a phone with a
+// spotty connection — the actual motivating case for this feature, since a
+// future offline-capable mobile app can't rely on fetching anything at
+// play-time). torrent-lib.js itself has no concept of "select every file",
+// so this is layered on entirely from here, using the library's already-
+// public `client` handle rather than modifying torrent-lib.js.
+const FULL_DOWNLOAD_KEY = 'bf-player-wt-full-downloads';
+const fullDownloadHashes = new Set<string>(
+  (() => {
+    try { return JSON.parse(localStorage.getItem(FULL_DOWNLOAD_KEY) || '[]') as string[]; }
+    catch { return []; }
+  })(),
+);
+const saveFullDownloadHashes = (): void =>
+  localStorage.setItem(FULL_DOWNLOAD_KEY, JSON.stringify([...fullDownloadHashes]));
 
-const readStats = (): WebtorrentStats => readJSON(STATS_KEY, { totalUploaded: 0, totalDownloaded: 0, perTorrent: {} });
-const writeStats = (stats: WebtorrentStats): void => writeJSON(STATS_KEY, stats);
+/** Selects every file's pieces for download, on top of whatever attachPlayback() already selected for the active file. */
+const selectAllFiles = (infoHash: string): void => {
+  const t = lib?.client?.torrents?.find((x: any) => x.infoHash === infoHash);
+  t?.files?.forEach((f: any) => f.select());
+};
+
+// ─── Shared instance ────────────────────────────────────────────────────────
+let lib: TorrentLibrary | null = null;
+let initPromise: Promise<TorrentLibrary> | null = null;
+
+/**
+ * Ensures the shared TorrentLibrary exists and has finished init() (Service
+ * Worker registration/recovery, storage.persist(), resuming persisted
+ * torrents). Safe to call repeatedly — subsequent calls return the same
+ * promise. Every other export in this file that needs the instance awaits
+ * this first, so callers never have to think about init ordering themselves.
+ */
+export const initWebtorrent = (): Promise<TorrentLibrary> => {
+  if (initPromise) return initPromise;
+  wlog('initWebtorrent: constructing TorrentLibrary…');
+  initPromise = (async () => {
+    const quotaBytes = readNumber(QUOTA_KEY, DEFAULT_QUOTA_BYTES);
+
+    const instance = new TorrentLibrary({
+      dbPrefix: 'bfp-wt',
+      // sw.js is copied into /public by the app itself (see project README);
+      // must be served from the origin root so its scope covers /webtorrent/*.
+      swPath: '/sw.js',
+      storageQuotaMB: quotaBytes / (1024 * 1024),
+    });
+
+    instance.on('error', (err: Error) => console.error('[WT] client-level error:', err));
+    instance.on('warning', (msg: string) => console.warn('[WT] warning:', msg));
+    instance.on('torrent-error', ({ infoHash, error }: { infoHash: string; error: Error }) =>
+      console.warn('[WT] torrent error for', infoHash, '—', error?.message || error));
+    // Extra lifecycle logging (per user request: "dodaj dużo dodatkowych
+    // logów") — everything here is low-frequency (fires once per lifecycle
+    // event, never on a tick/progress cadence), so it's safe to always leave on.
+    instance.on('server-ready', () => wlog('event: server-ready — on-the-fly streaming is available'));
+    instance.on('server-retrying', () => wlog('event: server-retrying — attempting to reconnect the streaming Service Worker'));
+    instance.on('server-retry-needed', () => console.warn('[WT] event: server-retry-needed — streaming SW could not be (re)connected automatically; user action may be required'));
+    instance.on('persistent-storage', (granted: boolean) => wlog('event: persistent-storage granted =', granted));
+    instance.on('no-peers', ({ infoHash, type }: { infoHash: string; type: string }) => console.warn('[WT] event: no-peers for', infoHash, '(', type, ') — dead tracker/no seeders/blocked network are the usual causes'));
+    instance.on('torrent-done', (snap: TorrentLibSnapshot) => wlog('event: torrent-done —', snap.name, snap.infoHash));
+    instance.on('storage-evicted', (evicted: Array<{ infoHash: string; name?: string }>) => console.warn('[WT] event: storage-evicted —', evicted.map(e => e.name || e.infoHash)));
+    instance.on('torrents-changed', (list: TorrentLibSnapshot[]) => wlog('event: torrents-changed — now tracking', list.length, 'torrent(s):', list.map(t => `${t.name || t.infoHash}(${t.files?.length ?? 0} files)`)));
+    // Re-apply "download whole torrent" selections whenever the torrent list
+    // changes — most importantly right after _restoreFromStorage() resumes a
+    // previous session's torrents at startup, since that path (inside
+    // torrent-lib.js) always re-adds with the library's own default
+    // (deselect-everything-until-played) behavior, with no way for it to know
+    // this particular hash was previously flagged for a full download.
+    instance.on('torrents-changed', () => fullDownloadHashes.forEach(hash => selectAllFiles(hash)));
+
+    // Work around a real bug in torrent-lib.js: _restoreFromStorage() (called
+    // from inside init(), see torrent-lib.js#_restoreFromStorage) iterates
+    // `state.getList()` and calls `client.add()` for every entry with NO
+    // existing-torrent guard (unlike addTorrent(), which does check first).
+    // If that persisted list ever contains two entries for the same
+    // infoHash — which is exactly what "Cannot add duplicate torrent
+    // <hash>" thrown from inside _restoreFromStorage means — every reload
+    // trips over it. We fix this at the data source instead of touching
+    // torrent-lib.js itself: wrap the instance's own getList() to
+    // de-duplicate by infoHash before the library ever reads it.
+    const rawGetList = instance.state.getList.bind(instance.state);
+    instance.state.getList = () => {
+      const seen = new Set<string>();
+      const deduped = rawGetList().filter((entry: { infoHash: string }) => {
+        if (seen.has(entry.infoHash)) {
+          console.warn('[WT] dropping duplicate persisted manifest entry for', entry.infoHash);
+          return false;
+        }
+        seen.add(entry.infoHash);
+        return true;
+      });
+      return deduped;
+    };
+
+    wlog('initWebtorrent: calling instance.init() (SW registration + resume)…');
+    await instance.init();
+    instance.client?.throttleUpload?.(isSeedingEnabled() ? -1 : 0);
+
+    lib = instance;
+    wlog('initWebtorrent: ready. streaming server ready =', instance.serverReady, '— persisted torrents:', instance.state.getList().length);
+    return instance;
+  })();
+  return initPromise;
+};
+
+/** Awaits init and returns the instance — internal helper for every export below. */
+const ensureLib = (): Promise<TorrentLibrary> => lib ? Promise.resolve(lib) : initWebtorrent();
 
 // ─── Settings: quota + seeding switch ──────────────────────────────────────
 
-export const getMaxStorageBytes = (): number => {
-  const raw = Number(localStorage.getItem(QUOTA_KEY));
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_QUOTA_BYTES;
-};
+export const getMaxStorageBytes = (): number => readNumber(QUOTA_KEY, DEFAULT_QUOTA_BYTES);
 
 export const setMaxStorageBytes = (bytes: number): void => {
-  localStorage.setItem(QUOTA_KEY, String(Math.max(0, Math.floor(bytes))));
-  void enforceQuota();
+  const clamped = Math.max(0, Math.floor(bytes));
+  localStorage.setItem(QUOTA_KEY, String(clamped));
+  lib?.setStorageQuotaMB(clamped / (1024 * 1024));
 };
 
 export const isSeedingEnabled = (): boolean => localStorage.getItem(SEEDING_KEY) !== 'off';
 
 export const setSeedingEnabled = (enabled: boolean): void => {
   localStorage.setItem(SEEDING_KEY, enabled ? 'on' : 'off');
-  client?.throttleUpload(enabled ? -1 : 0);
+  lib?.client?.throttleUpload?.(enabled ? -1 : 0);
 };
 
-// ─── Client + active torrents ──────────────────────────────────────────────
+// ─── Identity ───────────────────────────────────────────────────────────────
 
-let client: any = null;
-let IdbChunkStore: any = null;
-let initPromise: Promise<void> | null = null;
-/** True once client.createServer() has succeeded — file.streamTo() will throw/no-op before this. */
-let streamServerReady = false;
-export const isStreamServerReady = (): boolean => streamServerReady;
-const active = new Map<string, { torrent: any; title: string }>(); // infoHash -> live torrent
-const statsBaseline = new Map<string, { uploaded: number; downloaded: number }>();
-let protectedInfoHash: string | null = null;
-let statsFlushTimer: ReturnType<typeof setInterval> | null = null;
+export const parseInfoHash = (magnetURI: string): string | null =>
+  TorrentLibrary.extractMagnetInfoHash(magnetURI);
 
-/** Never evicted by quota enforcement — call with the currently-loaded track's infoHash, or null. */
-export const protectFromEviction = (infoHash: string | null): void => { protectedInfoHash = infoHash; };
-
-/** Bumps lastActiveAt without changing size — call when a track starts playing. */
-export const markActive = (infoHash: string): void => {
-  const manifest = readManifest();
-  const idx = manifest.findIndex(e => e.infoHash === infoHash);
-  if (idx >= 0) {
-    manifest[idx] = { ...manifest[idx], lastActiveAt: Date.now() };
-    writeManifest(manifest);
-  }
-};
-
-const parseInfoHash = (magnetURI: string): string | null => {
-  const m = magnetURI.match(/xt=urn:btih:([a-zA-Z0-9]+)/i);
-  return m ? m[1].toLowerCase() : null;
-};
-
-const touchManifestEntry = (infoHash: string, magnetURI: string, title: string, sizeBytes?: number): void => {
-  const manifest = readManifest();
-  const idx = manifest.findIndex(e => e.infoHash === infoHash);
-  const entry: SeedManifestEntry = {
-    infoHash,
-    magnetURI,
-    title,
-    sizeBytes: sizeBytes ?? manifest[idx]?.sizeBytes ?? 0,
-    lastActiveAt: Date.now(),
-  };
-  if (idx >= 0) manifest[idx] = entry; else manifest.push(entry);
-  writeManifest(manifest);
-};
-
-const makeStoreFactory = (infoHash: string) => (chunkLength: number, opts: any) =>
-  new IdbChunkStore(chunkLength, { ...opts, name: `bfp-wt-${infoHash}` });
-
-const wireTorrentTracking = (torrent: any, infoHash: string, title: string): void => {
-  statsBaseline.set(infoHash, { uploaded: 0, downloaded: 0 });
-  torrent.on('download', () => touchManifestEntry(infoHash, torrent.magnetURI, title, torrent.length));
-  torrent.on('error', (err: Error) => console.warn('[webtorrent-pool] torrent error', infoHash, err));
-};
+// ─── Loading / lifecycle ───────────────────────────────────────────────────
 
 /**
- * Registers the WebTorrent Service Worker and starts client.createServer()
- * against it. Required once per page load before any file.streamTo() call
- * will work (see WEBTORRENT VERSION NOTE at the top of this file).
- * Non-fatal on failure: we log clearly and leave streamServerReady false,
- * so callers can surface a real error instead of a silently-stuck spinner.
+ * Loads (or returns the already-loaded) torrent for a magnet URI, resolving
+ * to a plain snapshot once metadata is available. `title` is accepted only
+ * for call-site compatibility with the previous pool — the library names
+ * torrents from their own metadata (`torrent.name`), it never needed our
+ * title in the first place.
+ *
+ * torrent-lib.js's own addTorrent() has no timeout: its Promise only
+ * resolves once WebTorrent's `client.add()` callback fires, which requires
+ * at least one peer to hand over the torrent's metadata (magnet links carry
+ * no file list up front). If no peer ever does — dead tracker, no seeders,
+ * a firewalled network — that Promise just hangs forever with no error,
+ * which looks exactly like "spinner never stops, nothing gets logged,
+ * nothing plays." We add a timeout at this call site (NOT inside
+ * torrent-lib.js) so that failure mode becomes a visible error instead.
  */
-const setUpStreamServer = async (): Promise<void> => {
-  if (streamServerReady) return;
-  if (!('serviceWorker' in navigator)) {
-    wlog('setUpStreamServer: navigator.serviceWorker unavailable — streaming will not work (unsupported browser or non-HTTPS origin)');
-    return;
+const ADD_TORRENT_TIMEOUT_MS = 45_000;
+
+// ─── In-flight add coalescing ──────────────────────────────────────────────
+// Real bug we hit in testing: click Play on torrent A, click Play on torrent
+// B, then click back to A — this produced a console "Cannot add duplicate
+// torrent <hash>" and the UI just hung (no video, no error surfaced to the
+// user). Root cause is a race between two things that can both be trying to
+// register the SAME infoHash with the underlying client at once:
+//   1) torrent-lib.js's own _restoreFromStorage() (fired once, inside
+//      instance.init(), for every torrent persisted from a previous
+//      session/click) calling client.add() for a hash, and
+//   2) this file's own addTorrent() call for that same hash triggered by the
+//      user clicking Play again before #1's callback has fired.
+// TorrentLibrary.addTorrent() only guards against a torrent that's already
+// FULLY registered (found via client.torrents) — it has no way to know an
+// add for the same hash is already *in flight*. When that race is lost, the
+// underlying client's duplicate check fires as a client-level 'error' event
+// (not a promise rejection!), so it never reaches our try/catch — it just
+// looks like the click silently did nothing while the console fills with
+// "[WT] client-level error: Cannot add duplicate torrent …".
+// We fix this AT THIS LAYER (not inside torrent-lib.js) by keeping our own
+// map of in-flight adds per infoHash: any getOrAddTorrent() call for a hash
+// that's already being added (by us OR, once #1 above resolves, correctly
+// long-since finished) waits on that same promise instead of ever calling
+// addTorrent() a second time. As a belt-and-braces fallback, if the
+// duplicate error still slips through (e.g. it came from the OTHER add
+// attempt, not this one), we recover by reading back the now-live torrent
+// instead of surfacing an unrecoverable error to the player.
+const pendingAdds = new Map<string, Promise<TorrentLibSnapshot>>();
+
+export const getOrAddTorrent = async (magnetURI: string, _title?: string): Promise<TorrentLibSnapshot> => {
+  const instance = await ensureLib();
+  const knownHash = TorrentLibrary.extractMagnetInfoHash(magnetURI);
+  wlog('getOrAddTorrent: requesting metadata for', magnetURI.slice(0, 90), '· infoHash =', knownHash);
+
+  // Fast path: already fully loaded (covers "click back to a torrent we
+  // already played this session", the exact case that used to throw).
+  if (knownHash) {
+    const already = instance.getTorrent(knownHash);
+    if (already && already.files?.length) {
+      wlog('getOrAddTorrent: already loaded, returning live snapshot —', already.name, '·', already.files.length, 'file(s)');
+      return already;
+    }
   }
-  try {
-    wlog('setUpStreamServer: registering', SW_PATH, 'with scope', SW_SCOPE, '…');
-    await navigator.serviceWorker.register(SW_PATH, { scope: SW_SCOPE });
-    const registration = await navigator.serviceWorker.ready;
-    const sw = registration.active || registration.installing || registration.waiting;
 
-    if (!sw) throw new Error('Service worker registration has no worker (active/installing/waiting all null)');
-
-    await (sw.state === 'activated' ? Promise.resolve() : new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error(`Service worker did not activate within ${SW_ACTIVATION_TIMEOUT_MS / 1000}s`)), SW_ACTIVATION_TIMEOUT_MS);
-      sw.addEventListener('statechange', () => {
-        if (sw.state === 'activated') { clearTimeout(timeout); resolve(); }
-      });
-    }));
-
-    wlog('setUpStreamServer: service worker activated, calling client.createServer()…');
-    client.createServer({ controller: registration });
-    streamServerReady = true;
-    wlog('setUpStreamServer: stream server ready.');
-  } catch (e) {
-    console.error('[WT] setUpStreamServer: FAILED —', describeError(e), '— webtorrent playback will not work until this is fixed. ' +
-      `Check that ${SW_PATH} is actually deployed and served over HTTPS (or localhost).`);
+  // Coalesce: if there's already an add in flight for this exact hash
+  // (whether kicked off by us a moment ago, or logically still-settling from
+  // startup's _restoreFromStorage), piggyback on that instead of calling
+  // addTorrent() again.
+  if (knownHash && pendingAdds.has(knownHash)) {
+    wlog('getOrAddTorrent: add already in flight for', knownHash, '— waiting on it instead of re-adding');
+    return pendingAdds.get(knownHash)!;
   }
-};
 
-/** Ensures the shared client exists, requests durable storage, resumes anything already on disk. */
-export const initWebtorrent = (): Promise<void> => {
-  if (initPromise) return initPromise;
-  wlog('initWebtorrent: starting…');
-  initPromise = (async () => {
+  // Offline-first metadata: torrent-lib.js's own _restoreFromStorage() (run
+  // once at startup) already prefers a cached .torrent metadata buffer over
+  // the bare magnet URI when one exists (see its cacheTorrentMeta/
+  // getCachedTorrentMeta calls) — but the public addTorrent() method THIS
+  // function calls does not: it always adds via the raw magnet, which needs
+  // at least one live peer to hand over the file list before anything can
+  // play. That's a real gap for a torrent we've already fully cached the
+  // metadata for in an earlier session (e.g. replaying it from the Settings
+  // "stored torrents" list, or — the actual point of caching this at all —
+  // a future offline-capable mobile app that may have no network at play
+  // time). Fix it at this layer instead of touching torrent-lib.js: if we
+  // already have this hash's metadata cached, pass that buffer through
+  // instead of the magnet, so no peer/tracker round-trip is needed at all.
+  const cachedMeta = knownHash ? instance.state.getCachedTorrentMeta(knownHash) : null;
+  const torrentId = cachedMeta || magnetURI;
+  if (cachedMeta) wlog('getOrAddTorrent: using cached .torrent metadata for', knownHash, '— no network needed to resolve the file list');
+
+  const attempt = (async (): Promise<TorrentLibSnapshot> => {
+    let timeoutHandle: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error(
+        `Timed out after ${ADD_TORRENT_TIMEOUT_MS / 1000}s waiting for torrent metadata — no peer sent it (dead tracker, no seeders, or a blocked network).`,
+      )), ADD_TORRENT_TIMEOUT_MS);
+    });
     try {
-      wlog('initWebtorrent: importing webtorrent + indexeddb-chunk-store modules…');
-      const [wtMod, idbMod] = await Promise.all([import('webtorrent'), import('indexeddb-chunk-store')]);
-      const WebTorrentCtor = (wtMod as any).default || wtMod;
-      IdbChunkStore = (idbMod as any).default || idbMod;
-      wlog('initWebtorrent: modules loaded, constructing client…');
-
-      client = new WebTorrentCtor();
-
-      // Without this, an 'error' emitted on the client itself (as opposed to
-      // a specific torrent) is unhandled and — depending on the EventEmitter
-      // polyfill in play — can surface as an opaque, hard-to-trace uncaught
-      // exception rather than something we can log with context.
-      client.on('error', (err: Error) => {
-        console.error('[WT] client-level error:', describeError(err), err);
-      });
-      client.on('warning', (err: Error) => {
-        console.warn('[WT] client-level warning:', describeError(err), err);
-      });
-
-      client.throttleUpload(isSeedingEnabled() ? -1 : 0);
-      wlog('initWebtorrent: client ready. WebRTC support:', typeof RTCPeerConnection !== 'undefined', 'client._debugId:', client._debugId);
-
-      // WebTorrent >=2.0 requires an in-browser HTTP server (backed by a
-      // Service Worker) for playback: file.streamTo() just points the
-      // <video> element at a URL this server generates. Without this,
-      // streamTo() has nothing to stream and playback silently never
-      // starts. This is new since 1.x, where renderTo() didn't need it.
-      await setUpStreamServer();
-
-      if ((navigator as any).storage?.persist) {
-        try {
-          const persisted = await (navigator as any).storage.persist();
-          wlog('initWebtorrent: storage.persist() ->', persisted);
-        } catch (e) { wlog('initWebtorrent: storage.persist() failed (non-fatal):', describeError(e)); }
+      const snap = await Promise.race([instance.addTorrent(torrentId), timeout]);
+      wlog('getOrAddTorrent: metadata received —', snap.name, '·', snap.files.length, 'file(s) ·', snap.infoHash);
+      return snap;
+    } catch (err) {
+      // Recovery path for the exact race described above: if the client
+      // rejected/threw because of a duplicate, the torrent is (or is about
+      // to be) live under the client anyway — hand back its snapshot
+      // instead of propagating a scary, unrecoverable error.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (knownHash && /duplicate/i.test(msg)) {
+        wlog('getOrAddTorrent: caught a duplicate-add race for', knownHash, '— recovering by reading the live torrent instead of failing');
+        for (let i = 0; i < 10; i++) {
+          const live = instance.getTorrent(knownHash);
+          if (live && live.files?.length) {
+            wlog('getOrAddTorrent: recovered snapshot for', knownHash, 'after duplicate-add race —', live.name);
+            return live;
+          }
+          await new Promise(r => setTimeout(r, 300));
+        }
       }
-
-      // Resume everything already on disk so it's immediately seedable again,
-      // without the user needing to open it — this is the whole point of
-      // persisting in the first place.
-      const manifest = readManifest();
-      wlog('initWebtorrent: resuming', manifest.length, 'persisted torrent(s)…');
-      await Promise.all(manifest.map(entry => resumeEntry(entry).catch(e =>
-        console.warn('[webtorrent-pool] resume failed for', entry.infoHash, describeError(e))
-      )));
-
-      statsFlushTimer = setInterval(flushStats, STATS_FLUSH_INTERVAL_MS);
-      window.addEventListener('beforeunload', flushStats);
-      wlog('initWebtorrent: done.');
-    } catch (e) {
-      console.error('[WT] initWebtorrent: FAILED —', describeError(e));
-      throw e;
+      console.error('[WT] getOrAddTorrent: failed for', knownHash, '—', msg);
+      throw err;
+    } finally {
+      clearTimeout(timeoutHandle!);
     }
   })();
-  return initPromise;
+
+  if (knownHash) {
+    pendingAdds.set(knownHash, attempt);
+    attempt.finally(() => {
+      if (pendingAdds.get(knownHash) === attempt) pendingAdds.delete(knownHash);
+    });
+  }
+  return attempt;
 };
 
-/** Stops the periodic stats flush and the beforeunload hook. Safe to call even if init never ran. */
-export const destroyWebtorrentPool = (): void => {
-  if (statsFlushTimer) { clearInterval(statsFlushTimer); statsFlushTimer = null; }
-  window.removeEventListener('beforeunload', flushStats);
-  flushStats();
-};
-
-const resumeEntry = (entry: SeedManifestEntry): Promise<void> => {
-  if (active.has(entry.infoHash)) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const torrent = client.add(
-      entry.magnetURI,
-      { store: makeStoreFactory(entry.infoHash), destroyStoreOnDestroy: true },
-      (t: any) => {
-        active.set(entry.infoHash, { torrent: t, title: entry.title });
-        wireTorrentTracking(t, entry.infoHash, entry.title);
-        resolve();
-      }
-    );
-    torrent.on('error', () => resolve()); // one bad resume shouldn't block the rest
-  });
-};
+export const getTorrent = (infoHash: string): TorrentLibSnapshot | null => lib ? lib.getTorrent(infoHash) : null;
+export const getTorrents = (): TorrentLibSnapshot[] => lib ? lib.getTorrents() : [];
 
 /**
- * Loads (or returns the already-loaded) torrent for a magnet URI. Resolves
- * once metadata is available and torrent.files is populated.
+ * Back-compat name for getTorrent(): a FRESH plain snapshot every call (not
+ * a live mutable object) — important for Vue prop change-detection in
+ * WebtorrentVideo.vue, see that component's comment on why a mutated-in-place
+ * object wouldn't trigger a re-render of its child.
  */
-export const getOrAddTorrent = async (magnetURI: string, title: string): Promise<any> => {
-  await initWebtorrent();
+export const getActiveTorrent = (infoHash: string): TorrentLibSnapshot | null => getTorrent(infoHash);
 
-  const infoHash = parseInfoHash(magnetURI);
-  if (!infoHash) throw new Error('[webtorrent-pool] magnet URI has no btih, cannot identify torrent');
+export const removeTorrent = (infoHash: string): void => lib?.removeTorrent(infoHash);
+export const copyMagnetURI = (infoHash: string): string | null => lib?.copyMagnetURI(infoHash) ?? null;
 
-  const existing = active.get(infoHash);
-  if (existing) {
-    wlog('getOrAddTorrent: already active, reusing:', infoHash);
-    touchManifestEntry(infoHash, magnetURI, title, existing.torrent.length);
-    return existing.torrent;
+// ─── Streaming server ───────────────────────────────────────────────────────
+
+export const isStreamingServerReady = (): boolean => lib?.serverReady ?? false;
+
+/** Resolves once init() has settled one way or the other (never rejects) — mirrors the old pool's contract used by player.ts. */
+export const waitForStreamingServer = async (): Promise<boolean> => {
+  try {
+    const instance = await ensureLib();
+    return instance.serverReady;
+  } catch {
+    return false;
   }
+};
 
-  wlog('getOrAddTorrent: adding new torrent, infoHash =', infoHash);
+export const retryServiceWorker = (): Promise<boolean> => lib?.retryServiceWorker() ?? Promise.resolve(false);
 
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let progressTimer: ReturnType<typeof setInterval> | null = null;
+// ─── Playback ───────────────────────────────────────────────────────────────
 
-    const timeoutTimer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      if (progressTimer) clearInterval(progressTimer);
-      const numPeers = torrent?.numPeers ?? 0;
-      const msg = `Timed out after ${METADATA_TIMEOUT_MS / 1000}s waiting for torrent metadata ` +
-        `(peers found: ${numPeers}). Trackers likely unreachable from this network — ` +
-        `check that WebSocket trackers (wss://…) aren't blocked, and that at least one ` +
-        `webseed (ws=) or reachable wss tracker is present in the magnet.`;
-      console.error('[WT]', msg);
-      reject(new Error(msg));
-    }, METADATA_TIMEOUT_MS);
+/**
+ * Starts playback of a specific file into `videoEl`, using the library's
+ * position-aware download window (PlaybackBuffer in torrent-lib.js). This
+ * replaces the previous file.renderTo()/manual-blob-fallback dance entirely
+ * — the library decides streaming-vs-full-download-blob internally and
+ * wires videoEl.src accordingly.
+ */
+export const attachPlayback = (
+  infoHash: string, fileIndex: number, videoEl: HTMLVideoElement,
+  opts: { lookaheadSec?: number; behindSec?: number } = {},
+): TorrentLibPlaybackHandle => {
+  if (!lib) throw new Error('[webtorrent-pool] attachPlayback called before initWebtorrent() resolved');
+  const handle = lib.attachPlayback(infoHash, fileIndex, videoEl, opts);
+  // attachPlayback() (inside torrent-lib.js) always deselects every other
+  // file before setting up its own lookahead window for the active one —
+  // if the user asked us to download this torrent in full, re-widen the
+  // selection back out to everything right after.
+  if (fullDownloadHashes.has(infoHash)) selectAllFiles(infoHash);
+  return handle;
+};
 
-    const torrent = client.add(
-      magnetURI,
-      { store: makeStoreFactory(infoHash), destroyStoreOnDestroy: true },
-      (t: any) => {
-        wlog('getOrAddTorrent: metadata ready. files:', t.files?.map((f: any) => f.name), 'length:', t.length, 'numPeers:', t.numPeers);
-        if (settled) { wlog('getOrAddTorrent: ready fired after settle (timeout/error already happened) — ignoring'); return; }
-        settled = true;
-        clearTimeout(timeoutTimer);
-        if (progressTimer) clearInterval(progressTimer);
-        active.set(infoHash, { torrent: t, title });
-        wireTorrentTracking(t, infoHash, title);
-        touchManifestEntry(infoHash, magnetURI, title, t.length);
-        void enforceQuota();
-        resolve(t);
-      }
-    );
+export const detachPlayback = (): void => lib?.detachPlayback();
 
-    wlog('getOrAddTorrent: client.add() called, infoHash on torrent object:', torrent.infoHash);
+/**
+ * "Download whole torrent" — selects every file's pieces, not just the
+ * lookahead window around whatever's currently playing, so the torrent ends
+ * up fully present in local IndexedDB storage and can be played back later
+ * with zero network at all (offline, airplane mode, a future standalone
+ * mobile app, etc). Persisted across reloads via fullDownloadHashes/
+ * FULL_DOWNLOAD_KEY, and re-applied automatically after every
+ * torrents-changed event (see initWebtorrent above) and every
+ * attachPlayback() call, since both of those otherwise narrow the selection
+ * back down to just the active file's streaming window.
+ */
+export const downloadEntireTorrent = (infoHash: string): void => {
+  fullDownloadHashes.add(infoHash);
+  saveFullDownloadHashes();
+  selectAllFiles(infoHash);
+};
 
-    torrent.on('error', (err: Error) => {
-      console.error('[WT] torrent error for', infoHash, '—', describeError(err));
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutTimer);
-      if (progressTimer) clearInterval(progressTimer);
-      reject(err);
-    });
-    torrent.on('warning', (err: Error) => {
-      console.warn('[WT] torrent warning for', infoHash, '—', describeError(err));
-    });
-    torrent.on('infoHash', () => wlog('getOrAddTorrent: infoHash event, discovery starting'));
-    torrent.on('metadata', () => wlog('getOrAddTorrent: metadata event (got .torrent info from peers/ut_metadata)'));
-    torrent.on('wire', (wire: any) => wlog('getOrAddTorrent: peer connected via', wire.type || 'unknown transport', '- total peers now', torrent.numPeers));
-    torrent.on('noPeers', (announceType: string) => wlog('getOrAddTorrent: noPeers from', announceType, '- still trying other sources'));
+/** Stops expanding the download beyond what's needed to stream — doesn't discard any pieces already saved. */
+export const cancelFullDownload = (infoHash: string): void => {
+  fullDownloadHashes.delete(infoHash);
+  saveFullDownloadHashes();
+};
 
-    // Periodic heartbeat while we wait, so a stuck load is visible in real
-    // time rather than only at the 30s timeout.
-    progressTimer = setInterval(() => {
-      wlog('getOrAddTorrent: still waiting… numPeers =', torrent.numPeers, 'ready =', torrent.ready, 'discovery =', !!torrent.discovery);
-    }, 5000);
+export const isFullDownload = (infoHash: string): boolean => fullDownloadHashes.has(infoHash);
+
+/**
+ * Deselects the actively-downloading file while leaving the torrent fully
+ * connected and seedable — "stop pulling new pieces, keep sharing what we
+ * have." `infoHash` is kept only for call-site compatibility (only one file
+ * plays at a time, so there's nothing to disambiguate).
+ */
+export const pauseDownload = (_infoHash: string): void => { lib?.detachPlayback(); };
+
+/** No-op with the new engine: playback resumes normally via the next attachPlayback() call. Kept for call-site compatibility. */
+export const resumeDownload = (_infoHash: string): void => { /* intentionally empty, see comment above */ };
+
+export const markActive = (infoHash: string): void => {
+  const snap = getTorrent(infoHash);
+  lib?.quota.touch(infoHash, snap?.name);
+};
+
+/** No-op: the library already protects whichever file is actively attached from quota eviction (torrent-lib.js#_enforceQuota only ever evicts non-active hashes). Kept for call-site compatibility. */
+export const protectFromEviction = (_infoHash: string | null): void => { /* intentionally empty, see comment above */ };
+
+// ─── Piece map / progress bar (new — powers the "downloaded/to-download" bar) ─
+
+export const getFilePieceMap = (infoHash: string, fileIndex: number, buckets = 150): TorrentLibPieceMap | null =>
+  lib ? lib.getFilePieceMap(infoHash, fileIndex, buckets) : null;
+
+export const getTorrentPieceMap = (infoHash: string, buckets = 150): TorrentLibPieceMap | null =>
+  lib ? lib.getTorrentPieceMap(infoHash, buckets) : null;
+
+// ─── Subtitles (delegates entirely to the library's format detection +
+// SRT/VTT/ASS/SSA/SUB/SBV/SAMI → WebVTT conversion + language guess) ────────
+
+export const getSubtitleTrack = (infoHash: string, fileIndex: number): Promise<TorrentLibSubtitleTrack> => {
+  if (!lib) return Promise.reject(new Error('[webtorrent-pool] WebTorrent not initialized yet'));
+  return lib.getSubtitleTrack(infoHash, fileIndex);
+};
+
+// ─── Downloads ──────────────────────────────────────────────────────────────
+
+export const downloadFileBlob = (infoHash: string, fileIndex: number): Promise<{ blob: Blob; url: string; name: string }> => {
+  if (!lib) return Promise.reject(new Error('[webtorrent-pool] WebTorrent not initialized yet'));
+  return lib.downloadFileBlob(infoHash, fileIndex);
+};
+
+// ─── Stats / manifest (settings modal + BFPlayerAPI) ──────────────────────
+
+/** Everything currently persisted (on disk), for a "what am I seeding" settings view. */
+export const getManifest = (): SeedManifestEntry[] => {
+  if (!lib) return [];
+  const list: Array<{ infoHash: string; magnetURI: string; name?: string; length?: number; addedAt?: number }> = lib.state.getList();
+  return list.map(e => {
+    const live = lib!.getTorrent(e.infoHash);
+    return {
+      infoHash: e.infoHash,
+      magnetURI: e.magnetURI,
+      title: e.name || e.infoHash,
+      sizeBytes: e.length || 0,
+      lastActiveAt: e.addedAt || 0,
+      progress: live?.progress ?? 0,
+      done: live?.done ?? false,
+      fullDownload: fullDownloadHashes.has(e.infoHash),
+    };
   });
 };
 
-// ─── Quota enforcement (LRU) ────────────────────────────────────────────────
-
-const destroyTorrentData = (infoHash: string): Promise<void> => {
-  const entry = active.get(infoHash);
-  active.delete(infoHash);
-  statsBaseline.delete(infoHash);
-
-  const cleanup = entry
-    ? new Promise<void>(resolve => entry.torrent.destroy(() => resolve())) // destroyStoreOnDestroy wipes IndexedDB too
-    : new Promise<void>(resolve => {
-        const req = indexedDB.deleteDatabase(`bfp-wt-${infoHash}`);
-        req.onsuccess = req.onerror = req.onblocked = () => resolve();
-      });
-
-  return cleanup.then(() => {
-    writeManifest(readManifest().filter(e => e.infoHash !== infoHash));
-    const stats = readStats();
-    delete stats.perTorrent[infoHash];
-    writeStats(stats);
-  });
+/** Actual on-disk usage per the library's own QuotaManager bookkeeping (more accurate than summing manifest sizeBytes, since that's the whole-torrent length, not bytes actually written to IndexedDB yet). */
+export const getManifestUsageBytes = async (): Promise<number> => {
+  if (!lib) return 0;
+  const usage = await lib.getStorageUsage();
+  return usage.usedBytes;
 };
 
-const enforceQuota = async (): Promise<void> => {
-  const budget = getMaxStorageBytes();
-  const target = budget * QUOTA_HEADROOM;
-  let manifest = readManifest()
-    .filter(e => e.infoHash !== protectedInfoHash)
-    .sort((a, b) => a.lastActiveAt - b.lastActiveAt); // oldest-active first
-
-  let total = readManifest().reduce((sum, e) => sum + e.sizeBytes, 0);
-
-  while (total > target && manifest.length > 0) {
-    const victim = manifest.shift()!;
-    await destroyTorrentData(victim.infoHash);
-    total -= victim.sizeBytes;
-  }
-};
-
-/** Deletes everything we've ever seeded — for a "clear my seed data" privacy control. */
-export const clearAllSeedData = async (): Promise<void> => {
-  const manifest = readManifest();
-  await Promise.all(manifest.map(e => destroyTorrentData(e.infoHash)));
-  writeManifest([]);
-};
-
-// ─── Stats ──────────────────────────────────────────────────────────────────
-
-const flushStats = (): void => {
-  const stats = readStats();
-  for (const [infoHash, { torrent, title }] of active) {
-    const baseline = statsBaseline.get(infoHash) || { uploaded: 0, downloaded: 0 };
-    const deltaUp = Math.max(0, torrent.uploaded - baseline.uploaded);
-    const deltaDown = Math.max(0, torrent.downloaded - baseline.downloaded);
-
-    const prev = stats.perTorrent[infoHash] || { title, uploaded: 0, downloaded: 0 };
-    stats.perTorrent[infoHash] = { title, uploaded: prev.uploaded + deltaUp, downloaded: prev.downloaded + deltaDown };
-    stats.totalUploaded += deltaUp;
-    stats.totalDownloaded += deltaDown;
-
-    statsBaseline.set(infoHash, { uploaded: torrent.uploaded, downloaded: torrent.downloaded });
-  }
-  writeStats(stats);
-};
-
-/** Lifetime stats (survive reloads and individual torrents being evicted). */
+/** Lifetime upload/download totals, per torrent and overall — read from the library's own per-torrent persisted stats. */
 export const getStats = (): WebtorrentStats => {
-  flushStats(); // don't make the caller wait up to 30s for fresh numbers
-  return readStats();
+  const manifest = getManifest();
+  const perTorrent: Record<string, TorrentStatsEntry> = {};
+  let totalDownloaded = 0;
+  let totalUploaded = 0;
+  for (const entry of manifest) {
+    const snap = getTorrent(entry.infoHash);
+    const downloaded = snap?.allTime?.downloaded ?? 0;
+    const uploaded = snap?.allTime?.uploaded ?? 0;
+    perTorrent[entry.infoHash] = { title: entry.title, downloaded, uploaded };
+    totalDownloaded += downloaded;
+    totalUploaded += uploaded;
+  }
+  return { totalDownloaded, totalUploaded, perTorrent };
 };
-
-// ─── Introspection ──────────────────────────────────────────────────────────
-
-export const getManifest = (): SeedManifestEntry[] => readManifest();
-
-export const getManifestUsageBytes = (): number =>
-  readManifest().reduce((sum, e) => sum + e.sizeBytes, 0);
 
 /** Browser-level context (not just our own usage) for a settings UI, e.g. "12 GB free". */
 export const getStorageEstimate = async (): Promise<{ usage: number; quota: number } | null> => {
-  const storage = (navigator as any).storage;
+  const storage = (navigator as { storage?: StorageManager }).storage;
   if (!storage?.estimate) return null;
   const { usage, quota } = await storage.estimate();
   return { usage: usage || 0, quota: quota || 0 };
 };
+
+/** Deletes everything we've ever seeded — for a "clear my seed data" privacy control. */
+export const clearAllSeedData = async (): Promise<void> => {
+  if (!lib) return;
+  for (const entry of getManifest()) lib.removeTorrent(entry.infoHash);
+};
+
+// ─── Global stats / events (new — for a live "total speed / peers" readout) ─
+
+export const getGlobalStats = () => lib?.getGlobalStats() ?? {
+  downloadSpeed: 0, uploadSpeed: 0, numPeers: 0, activeTorrents: 0,
+  allTimeDownloaded: 0, allTimeUploaded: 0, totalTorrents: 0,
+};
+
+/**
+ * Forwards to the library's own event emitter (torrents-changed,
+ * torrent-stats, global-tick, buffer-window, range-requested, torrent-done,
+ * torrent-error, warning, error, storage-evicted, server-ready,
+ * server-retrying, server-retry-needed). Only call after initWebtorrent()
+ * has resolved (or from inside a component that's guaranteed to mount after
+ * a webtorrent track has already triggered init) — events fired before the
+ * instance exists aren't queued.
+ */
+export const on = (evt: string, fn: (...args: any[]) => void): (() => void) => {
+  if (!lib) { console.warn('[webtorrent-pool] on() called before init — listener not attached:', evt); return () => {}; }
+  return lib.on(evt, fn);
+};
+export const off = (evt: string, fn: (...args: any[]) => void): void => lib?.off(evt, fn);

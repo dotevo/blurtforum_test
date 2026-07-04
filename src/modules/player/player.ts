@@ -7,7 +7,6 @@ import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState
 import { trackEvent } from '../analytics';
 import * as WTPool from './webtorrent-pool';
 import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
-import { isStreamServerReady } from './webtorrent-pool';
 
 
 // Minimal YouTube IFrame API typings
@@ -300,6 +299,7 @@ const initAudio = (): void => {
 };
 
 let wtVideoEl: HTMLVideoElement | null = null;
+let wtActiveInfoHash: string | null = null; // whichever torrent we're actively fetching pieces for right now
 
 const initWT = (): void => {
   if (wtVideoEl) return;
@@ -319,48 +319,225 @@ const initWT = (): void => {
   });
   wtVideoEl.addEventListener('ended', () => { if (isWTTrack()) { _emit('ended', state.currentTrack); playNext(true); } });
   wtVideoEl.addEventListener('error', (e) => {
-    if (isWTTrack()) { console.error('BFPlayer WebTorrent video error:', e); handleError('WebTorrent playback error'); }
+    if (!isWTTrack()) return;
+    const err = wtVideoEl?.error;
+    console.error('[BFPlayer] WebTorrent video element error:', e, '· MediaError code/message:', err?.code, err?.message);
+    handleError('WebTorrent playback error');
   });
+  // Extra diagnostic-only listeners (per user request: "dodaj dużo
+  // dodatkowych logów") — these fire rarely enough (once per state
+  // transition, not per frame/tick) that leaving them on permanently is
+  // cheap, and they're exactly the events you'd want in the console when
+  // "nothing plays and there's no error."
+  wtVideoEl.addEventListener('loadedmetadata', () => { if (isWTTrack()) console.log('[BFPlayer] WebTorrent video: loadedmetadata — duration =', wtVideoEl?.duration); });
+  wtVideoEl.addEventListener('loadeddata', () => { if (isWTTrack()) console.log('[BFPlayer] WebTorrent video: loadeddata'); });
+  wtVideoEl.addEventListener('canplay', () => { if (isWTTrack()) console.log('[BFPlayer] WebTorrent video: canplay'); });
+  wtVideoEl.addEventListener('stalled', () => { if (isWTTrack()) console.warn('[BFPlayer] WebTorrent video: stalled — browser is trying to fetch data but nothing is arriving'); });
+  wtVideoEl.addEventListener('suspend', () => { if (isWTTrack()) console.log('[BFPlayer] WebTorrent video: suspend (browser paused fetching, often normal once buffered)'); });
+  wtVideoEl.addEventListener('abort', () => { if (isWTTrack()) console.log('[BFPlayer] WebTorrent video: abort (fetch aborted — normal during stopAll()/track switch)'); });
 };
 
+// Interrupting a <video> element's in-flight network fetch by clearing its
+// src / calling .load() (which stopAll() below does on every track switch)
+// makes the browser reject an *internal* resource-fetch promise with
+// "AbortError: The fetching process for the media resource was aborted by
+// the user agent at the user's request." This is NOT the promise returned by
+// our own .play() call (that one is already handled via .catch() at every
+// call site) — it's a separate, browser-internal promise, so no try/catch at
+// any call site can catch it. It's a well-documented, harmless side effect
+// of stopping playback this way, but it still spams the console as a red
+// "Uncaught (in promise)" error. We filter exactly this one known-benign
+// signature (and only this one), so real errors stay visible.
+if (typeof window !== 'undefined' && !(window as any).__bfPlayerAbortFilterInstalled) {
+  (window as any).__bfPlayerAbortFilterInstalled = true;
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const isExpectedMediaAbort = reason instanceof DOMException
+      && reason.name === 'AbortError'
+      && /fetching process for the media resource was aborted/i.test(reason.message || '');
+    if (isExpectedMediaAbort) {
+      console.debug('[BFPlayer] Ignoring expected media-fetch abort (caused by stopAll() interrupting a track switch):', reason.message);
+      event.preventDefault();
+    }
+  });
+}
+
 /**
- * activeSource.id is the magnet URI by convention (see MediaEntryMirror doc comment).
- *
- * NOTE: WebTorrent >=2.0 removed file.renderTo() (the old MediaSource-based
- * renderer). Its replacement, file.streamTo(), just points wtVideoEl.src at
- * a URL served by the in-browser HTTP server WTPool sets up via a Service
- * Worker (see setUpStreamServer() in webtorrent-pool.ts) — it does not take
- * a callback, so playback errors now surface through the <video> element's
- * own 'error' event, which initWT() already listens for above.
+ * activeSource.id is the magnet URI by convention (see MediaEntryMirror doc
+ * comment). File selection, the streaming-vs-full-download-blob decision,
+ * and the position-aware download window are all handled inside
+ * torrent-lib.js's attachPlayback() now — see webtorrent-pool.ts's header
+ * comment for why this used to be duplicated (badly) here.
  */
-const loadWebtorrentSource = async (activeSource: MediaEntryMirror, title: string): Promise<void> => {
+const loadWebtorrentSource = async (activeSource: MediaEntryMirror, track: MediaTrack): Promise<void> => {
   initWT();
   if (!wtVideoEl) { handleError('WebTorrent video element not found'); return; }
+  const title = track.title;
+  console.log('[BFPlayer] WebTorrent: loadWebtorrentSource start for', title, '·', activeSource.id.slice(0, 90));
   state.loading = true;
   try {
-    if (!isStreamServerReady()) {
-      console.error('[BFPlayer] WebTorrent: stream server not ready — Service Worker registration likely failed. See earlier [WT] setUpStreamServer errors in the console.');
-      handleError('WebTorrent streaming is unavailable in this browser/session');
+    await WTPool.initWebtorrent(); // ensures the SW registration attempt has settled before we ask attachPlayback to decide stream-vs-blob
+    console.log('[BFPlayer] WebTorrent: init settled, streaming server ready =', WTPool.isStreamingServerReady());
+
+    const snap = await WTPool.getOrAddTorrent(activeSource.id, title);
+    if (currentSource.value !== activeSource) {
+      console.warn('[BFPlayer] WebTorrent: abandoning load — currentSource changed while waiting for metadata', {
+        wasLoading: title, nowPlaying: currentSource.value?.id?.slice(0, 60),
+      });
       return;
     }
 
-    const torrent = await WTPool.getOrAddTorrent(activeSource.id, title);
-    if (currentSource.value !== activeSource) return; // user already skipped away while we were loading
+    WTPool.markActive(snap.infoHash);
+    wtActiveInfoHash = snap.infoHash;
 
-    WTPool.protectFromEviction(torrent.infoHash);
-    WTPool.markActive(torrent.infoHash);
+    // Prefer the torrent's own metadata name over the forum post title —
+    // post titles are frequently unrelated to what's actually behind the
+    // magnet link (e.g. a throwaway reply post used just to host a link).
+    // Keep the original post title in track.meta so it isn't lost (e.g. for
+    // future UI that wants to show both), but only ever swap it in once we
+    // have a real name — never fall back to showing the bare infoHash.
+    if (snap.name && snap.name !== snap.infoHash) {
+      if (!track.meta) track.meta = {};
+      if (track.meta.postTitle === undefined) track.meta.postTitle = title;
+      if (track.title !== snap.name) {
+        track.title = snap.name;
+        console.log('[BFPlayer] WebTorrent: using torrent metadata name as track title:', snap.name);
+      }
+    }
 
-    const file = torrent.files.find((f: any) => /\.(mp4|webm|mkv|mov|m4v|mp3|ogg|oga|wav|flac)$/i.test(f.name))
-      || torrent.files.reduce((a: any, b: any) => (a.length > b.length ? a : b));
+    // Full file listing up front — the single most useful log line when
+    // "metadata arrived but nothing plays": shows immediately whether the
+    // torrent even has a video file, whether it's natively playable in this
+    // browser, and which one we're about to pick.
+    console.log('[BFPlayer] WebTorrent: file list for', snap.name, '—', snap.files.map(f =>
+      `[${f.index}] ${f.name} (${f.length}B, video=${f.isVideo}, audio=${f.isAudio}, sub=${f.isSub}, nativePlayable=${f.nativePlayable})`,
+    ));
 
-    console.log('[BFPlayer] WebTorrent: streaming file', file?.name, 'size', file?.length, 'of', torrent.files.length, 'file(s)');
+    // Selection mirrors the verified-working standalone PoC (index.html's
+    // autoPlayBestVideo): among video files, pick the LARGEST one, not just
+    // the first isVideo match. Torrents commonly bundle a small sample/
+    // trailer clip alongside the real movie file (e.g. "Sample/sample.mp4");
+    // plain .find() picks whichever comes first in the torrent's own file
+    // order, which is NOT guaranteed to be the real content — a very
+    // plausible explanation for "correct file list shown, but nothing
+    // meaningful plays, duration 0:00" on some torrents. We also prefer a
+    // nativePlayable file (the browser can actually decode it) over one that
+    // isn't, same spirit as the PoC's warn-but-still-let-you-try behavior.
+    const videoFiles = snap.files.filter(f => f.isVideo).sort((a, b) => b.length - a.length);
+    const audioFiles = snap.files.filter(f => f.isAudio).sort((a, b) => b.length - a.length);
+    const nativeVideo = videoFiles.find(f => f.nativePlayable);
+    const file = nativeVideo || videoFiles[0] || audioFiles[0]
+      || snap.files.reduce((a, b) => (a.length > b.length ? a : b));
+    if (!file) { handleError('No playable file found in this torrent'); return; }
 
-    file.streamTo(wtVideoEl);
-    wtVideoEl.autoplay = true;
+    if (videoFiles.length > 1) {
+      console.log('[BFPlayer] WebTorrent: multiple video files found, candidates by size:', videoFiles.map(f => `${f.name} (${f.length}B)`));
+    }
+    if (file.isVideo && !file.nativePlayable) {
+      console.warn('[BFPlayer] WebTorrent: selected file', file.name, 'is not natively playable in this browser (e.g. MKV/AVI codec) — expect it to fail or show only sound, if anything.');
+    }
+    console.log('[BFPlayer] WebTorrent: playing file', file.name, 'size', file.length, 'of', snap.files.length, 'file(s), index', file.index);
+
+    const handle = WTPool.attachPlayback(snap.infoHash, file.index, wtVideoEl, {
+      lookaheadSec: 90, behindSec: 15,
+    });
+    console.log('[BFPlayer] WebTorrent: attachPlayback returned', {
+      streaming: handle.streaming, videoSrc: wtVideoEl.src || '(empty)', readyState: wtVideoEl.readyState,
+      networkState: wtVideoEl.networkState, paused: wtVideoEl.paused,
+    });
+    if (currentSource.value !== activeSource) {
+      console.warn('[BFPlayer] WebTorrent: abandoning attach — currentSource changed mid-attach');
+      handle.detach();
+      return;
+    }
+
+    // Watchdog: if we're still "loading" and duration is still 0 a few
+    // seconds after attaching, something is silently stuck (SW not actually
+    // serving bytes, wrong file selected, peers stalled, etc.) — exactly the
+    // "no error, no video, 0:00 forever" symptom, so make it loud in the
+    // console with everything we know at that moment instead of leaving it a
+    // silent mystery.
+    const watchdogSource = activeSource;
+    setTimeout(() => {
+      if (currentSource.value !== watchdogSource) return; // user moved on already
+      if (!wtVideoEl || wtVideoEl.duration > 0) return; // it's fine
+      console.warn('[BFPlayer] WebTorrent WATCHDOG: 6s after attach, video still has no duration/data. Diagnostic snapshot:', {
+        videoSrc: wtVideoEl.src || '(empty)',
+        readyState: wtVideoEl.readyState, // 0=NOTHING,1=METADATA,2=CURRENT,3=FUTURE,4=ENOUGH
+        networkState: wtVideoEl.networkState, // 0=EMPTY,1=IDLE,2=LOADING,3=NO_SOURCE
+        error: wtVideoEl.error ? { code: wtVideoEl.error.code, message: wtVideoEl.error.message } : null,
+        paused: wtVideoEl.paused,
+        streamingServerReady: WTPool.isStreamingServerReady(),
+        torrentSnapshot: WTPool.getTorrent(snap.infoHash),
+      });
+      console.warn('[BFPlayer] WebTorrent WATCHDOG: likely causes — (1) Service Worker not actually intercepting range requests for this origin/scope (check DevTools → Application → Service Workers, and the Network tab for the streamURL request), (2) selected file has a codec the browser cannot decode even though the container extension looked native, (3) zero peers actually sending data (see numPeers/downloadSpeed above).');
+    }, 6000);
+
+    if (handle.streaming) {
+      if (wtVideoEl.src) {
+        wtVideoEl.play().then(() => {
+          console.log('[BFPlayer] WebTorrent: play() promise resolved');
+        }).catch((err) => {
+          // Most commonly an autoplay-policy rejection (needs a user gesture),
+          // not a real failure — the <video controls> play button still works.
+          console.warn('[BFPlayer] WebTorrent: autoplay blocked, tap play to start:', err?.name, err?.message || err);
+        });
+      } else {
+        // Full-download blob fallback: attachPlayback() resolves file.blob()
+        // and assigns videoEl.src asynchronously, so there's nothing to
+        // play() yet on this tick — wait for the element to actually have data.
+        console.log('[BFPlayer] WebTorrent: no streaming server, but torrent is fully downloaded — waiting for blob to attach');
+        wtVideoEl.addEventListener('loadeddata', () => {
+          console.log('[BFPlayer] WebTorrent: blob attached, src =', wtVideoEl?.src);
+          wtVideoEl?.play().catch((err) => console.warn('[BFPlayer] WebTorrent: autoplay blocked:', err?.message || err));
+        }, { once: true });
+      }
+    } else {
+      console.warn('[BFPlayer] WebTorrent: handle.streaming is false — no Service Worker / streaming server, and torrent is not fully downloaded yet.');
+      handleError('Streaming unavailable in this browser/context — wait for the download to finish and try again');
+    }
   } catch (e) {
     const detail = e instanceof Error ? `${e.name}: ${e.message}` : JSON.stringify(e);
     console.error('[BFPlayer] WebTorrent load error:', detail, e);
     handleError('Could not load magnet link');
+  }
+};
+
+/**
+ * Manually (re)attach playback to a specific file index within whatever
+ * torrent is currently loaded — the equivalent of the standalone PoC's
+ * per-file "▶ Play" button. Exposed so the UI (WebtorrentInfoModal's file
+ * list) can let the user override the automatic "largest video file"
+ * selection, which matters for two real cases: (1) auto-selection guessed
+ * wrong (rare, but possible with unusual torrent layouts), and (2) the user
+ * just wants to manually sanity-check whether a specific file plays at all
+ * while debugging — the exact workflow the user relied on in index.html.
+ */
+export const playWebtorrentFile = (fileIndex: number): void => {
+  if (currentSource.value?.type !== 'webtorrent' || !wtActiveInfoHash || !wtVideoEl) {
+    console.warn('[BFPlayer] playWebtorrentFile: no active WebTorrent track to attach to');
+    return;
+  }
+  const infoHash = wtActiveInfoHash;
+  const snap = WTPool.getTorrent(infoHash);
+  const file = snap?.files.find(f => f.index === fileIndex);
+  if (!snap || !file) {
+    console.warn('[BFPlayer] playWebtorrentFile: file', fileIndex, 'not found in torrent', infoHash);
+    return;
+  }
+  console.log('[BFPlayer] playWebtorrentFile: manually switching to file', file.name, `[${fileIndex}]`, 'nativePlayable =', file.nativePlayable);
+  if (wtVideoEl.src?.startsWith('blob:')) { try { URL.revokeObjectURL(wtVideoEl.src); } catch { /* ignore */ } }
+  state.loading = true;
+  const handle = WTPool.attachPlayback(infoHash, fileIndex, wtVideoEl, { lookaheadSec: 90, behindSec: 15 });
+  console.log('[BFPlayer] playWebtorrentFile: attachPlayback returned', {
+    streaming: handle.streaming, videoSrc: wtVideoEl.src || '(empty)', readyState: wtVideoEl.readyState,
+  });
+  if (handle.streaming && wtVideoEl.src) {
+    wtVideoEl.play().then(() => console.log('[BFPlayer] playWebtorrentFile: play() resolved'))
+      .catch(err => console.warn('[BFPlayer] playWebtorrentFile: autoplay blocked, tap play to start:', err?.name, err?.message || err));
+  } else if (!handle.streaming) {
+    console.warn('[BFPlayer] playWebtorrentFile: streaming unavailable for this file — no SW / not fully downloaded.');
+    handleError('Streaming unavailable in this browser/context — wait for the download to finish and try again');
   }
 };
 
@@ -464,6 +641,27 @@ const stopAll = (): void => {
   if (ytPlayer?.stopVideo) { try { ytPlayer.stopVideo(); } catch { /* ignore */ } }
   if (ptPlayer?.pause) { try { ptPlayer.pause(); } catch { /* ignore */ } }
   ptPlayer = null; // Important: reset PT player instance
+  if (wtVideoEl && wtVideoEl.src) {
+    console.log('[BFPlayer] stopAll: tearing down WebTorrent video element (had src =', wtVideoEl.src.slice(0, 80), ')');
+    wtVideoEl.pause();
+    // torrent-lib.js's full-download fallback assigns a blob: URL directly to
+    // videoEl.src without tracking/revoking it itself — do that housekeeping
+    // here instead of inside the (unmodified) library.
+    if (wtVideoEl.src.startsWith('blob:')) { try { URL.revokeObjectURL(wtVideoEl.src); } catch { /* ignore */ } }
+    wtVideoEl.removeAttribute('src');
+    // NOTE: .load() here interrupts any in-flight fetch for the previous
+    // track — expected/necessary, but see the 'unhandledrejection' filter
+    // installed in initWT() above for why that produces a (harmless)
+    // AbortError in the console.
+    wtVideoEl.load();
+  }
+  if (wtActiveInfoHash) {
+    console.log('[BFPlayer] stopAll: pausing download for', wtActiveInfoHash, '(torrent stays in the pool and keeps seeding)');
+    // Stop pulling new pieces for whatever we were just watching — but
+    // leave it in the pool so it keeps seeding whatever's already down.
+    WTPool.pauseDownload(wtActiveInfoHash);
+    wtActiveInfoHash = null;
+  }
   state.playing = false; 
   state.progress = 0;
   state.duration = 0;
@@ -580,8 +778,6 @@ export const playTrack = async (track: MediaTrack, isManual = false, manualIdx =
     state.queue.splice(manualIdx, 1);
   }
 
-  if (wtVideoEl && activeSource.type !== 'webtorrent') { wtVideoEl.pause(); }
-
   if (activeSource.type === 'audio') {
     console.log('[BFPlayer] Initializing Audio playback...');
     initAudio();
@@ -618,7 +814,7 @@ export const playTrack = async (track: MediaTrack, isManual = false, manualIdx =
     });
   } else if (activeSource.type === 'webtorrent') {
     console.log('[BFPlayer] Initializing WebTorrent playback...', activeSource.id);
-    void loadWebtorrentSource(activeSource, track.title);
+    void loadWebtorrentSource(activeSource, track);
   }
 };
 
@@ -722,6 +918,15 @@ export const togglePlay = (): void => {
     playTrack(state.currentTrack);
     return;
   }
+  if (currentSource.value.type === 'webtorrent' && !wtVideoEl) {
+    // Same "restored from localStorage but never actually loaded" case as
+    // audio/youtube/peertube above — without this branch, wtVideoEl stays
+    // null forever and every click on play silently no-ops (and any
+    // subsequent manual file-select via playWebtorrentFile() also no-ops,
+    // since it requires wtVideoEl/wtActiveInfoHash to already be set).
+    playTrack(state.currentTrack);
+    return;
+  }
 
   if (currentSource.value.type === 'youtube' && ytPlayer?.getPlayerState) {
     state.playing = ytPlayer.getPlayerState() === window.YT!.PlayerState.PLAYING;
@@ -736,7 +941,9 @@ export const togglePlay = (): void => {
     if (currentSource.value.type === 'audio' && audioObj) audioObj.play();
     if (currentSource.value.type === 'youtube' && ytPlayer) ytPlayer.playVideo();
     if (currentSource.value.type === 'peertube' && ptPlayer) ptPlayer.play();
-    if (currentSource.value.type === 'webtorrent' && wtVideoEl) wtVideoEl.play();
+    if (currentSource.value.type === 'webtorrent' && wtVideoEl) {
+      wtVideoEl.play().catch((err) => console.warn('[BFPlayer] WebTorrent: play() rejected:', err?.message || err));
+    }
   }
 };
 
@@ -1032,4 +1239,5 @@ export const BFPlayer: BFPlayerAPI = {
   addTrackToPlaylist, removeTrackFromPlaylist, playPlaylist,
   setSeedingEnabled, setMaxSeedStorageBytes, getMaxSeedStorageBytes,
   getWebtorrentStats, getWebtorrentManifest, getWebtorrentStorageEstimate, clearWebtorrentData,
+  playWebtorrentFile,
 };

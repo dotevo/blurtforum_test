@@ -2,6 +2,8 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import ScrollableTabs from './ScrollableTabs.vue';
 import PlaylistModal from './PlaylistModal.vue';
+import WebtorrentVideo from './WebtorrentVideo.vue';
+import WebtorrentSettingsModal from './WebtorrentSettingsModal.vue';
 import type { MediaTrack, BFPlayerAPI, Playlist } from '../types';
 import { currentSource } from '../player';
 
@@ -27,6 +29,9 @@ const playlistModal = reactive({
   show: false,
   track: null as MediaTrack | null
 });
+
+// ── WebTorrent settings ──────────────────────────────────────────────────────
+const showWebtorrentSettings = ref(false);
 
 const handlePlaylistConfirm = (name: string, color: string, track: MediaTrack | null) => {
   const pl = props.player.createPlaylist(name, color);
@@ -435,16 +440,7 @@ onUnmounted(() => {
           ></iframe>
         </div>
 
-        <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'webtorrent' }" class="bfp-video-iframe-wrap">
-          <!--
-            WebTorrent renders directly into this element via file.renderTo()
-            (see loadWebtorrentSource in player.ts) rather than a src URL —
-            it's a single persistent element, not recreated per track, since
-            WebTorrent attaches/detaches its own stream to whatever element
-            you hand it.
-          -->
-          <video id="bf-wt-player-video" class="bfp-video-iframe" playsinline controls-list="nodownload"></video>
-        </div>
+        <WebtorrentVideo :t="t" />
 
         <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'audio' }" class="bfp-video-audio-placeholder">
           <img v-if="effectiveCover" :src="effectiveCover" class="bfp-placeholder-cover" alt="" @error="handleImgError(effectiveCover)" />
@@ -504,6 +500,18 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="bfp-settings-header" style="margin-top:18px;">
+          <strong>{{ t('webtorrent') || 'WebTorrent' }}</strong>
+        </div>
+        <div class="bfp-settings-body">
+          <p class="gs" style="margin-bottom:12px; font-size:11px; opacity:0.8;">
+            {{ t('webtorrentSettingsHint') || 'Manage storage, seeding, and see live download/upload stats.' }}
+          </p>
+          <button class="btn btn-ghost" @click="showWebtorrentSettings = true">
+            <i class="fa-solid fa-magnet"></i> {{ t('webtorrentSettings') || 'WebTorrent storage & stats' }}
+          </button>
         </div>
       </div>
 
@@ -729,6 +737,12 @@ onUnmounted(() => {
   :t="t"
   @close="playlistModal.show = false"
   @confirm="handlePlaylistConfirm"
+/>
+
+<WebtorrentSettingsModal
+  :show="showWebtorrentSettings"
+  :t="t"
+  @close="showWebtorrentSettings = false"
 />
 </template>
 

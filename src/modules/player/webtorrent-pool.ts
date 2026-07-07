@@ -124,7 +124,7 @@ export const initWebtorrent = (): Promise<TorrentLibrary> => {
       dbPrefix: 'bfp-wt',
       // sw.js is copied into /public by the app itself (see project README);
       // must be served from the origin root so its scope covers /webtorrent/*.
-      swPath: '/sw.js',
+      swPath: './sw.js',
       storageQuotaMB: quotaBytes / (1024 * 1024),
     });
 

@@ -177,7 +177,7 @@ export const initWebtorrent = (): Promise<TorrentLibrary> => {
 
     wlog('initWebtorrent: calling instance.init() (SW registration + resume)…');
     await instance.init();
-    instance.client?.throttleUpload?.(isSeedingEnabled() ? -1 : 0);
+    instance.client?.throttleUpload?.(isSeedingEnabled() ? -1 : SEEDING_OFF_UPLOAD_CAP);
 
     lib = instance;
     wlog('initWebtorrent: ready. streaming server ready =', instance.serverReady, '— persisted torrents:', instance.state.getList().length);
@@ -223,9 +223,25 @@ export const isSeedingEnabled = (): boolean => {
   return !isMobileDevice();
 };
 
+/**
+ * Real bug this closes: "seeding off" was implemented as
+ * `client.throttleUpload(0)`. In WebTorrent/bittorrent-protocol, the upload
+ * throttle limits the connection's ENTIRE outgoing byte pipe, not just
+ * piece-data uploads — a rate of exactly 0 chokes literally everything,
+ * including the tiny protocol messages (`interested`, `request`, `have`,
+ * `bitfield`) a peer needs to send just to ASK for pieces. So "seeding off"
+ * didn't just stop uploading to others, it silently stopped downloading
+ * too — matching "had to switch seeding on before it would even start
+ * downloading" exactly. A few KB/s is still nothing meaningfully seedable
+ * (a single piece is commonly hundreds of KB to a few MB, so seeding a
+ * whole piece at this rate takes minutes) while leaving more than enough
+ * headroom for protocol control traffic to flow immediately.
+ */
+const SEEDING_OFF_UPLOAD_CAP = 2 * 1024; // 2 KB/s — "no meaningful seeding", not "no traffic at all"
+
 export const setSeedingEnabled = (enabled: boolean): void => {
   localStorage.setItem(SEEDING_KEY, enabled ? 'on' : 'off');
-  lib?.client?.throttleUpload?.(enabled ? -1 : 0);
+  lib?.client?.throttleUpload?.(enabled ? -1 : SEEDING_OFF_UPLOAD_CAP);
 };
 
 // ─── Identity ───────────────────────────────────────────────────────────────

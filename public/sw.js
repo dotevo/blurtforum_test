@@ -5,7 +5,7 @@
   const bufferWindows = new Map();
   let cancelled = false;
 
-  const SW_BUILD = "wtp-sw-4-fixed";
+  const SW_BUILD = "wtp-sw-3-fixed";
   console.log("[SW] script evaluated, build:", SW_BUILD);
 
   function getCleanUrlKey(url) {
@@ -21,15 +21,9 @@
   }
 
   // ── REQUEST TELEMETRY ────────────────────────────────────────────
-  // NOTE: this name AND the message "type" below must match what
-  // torrent-lib.js's TorrentLibrary listens for (BroadcastChannel
-  // 'wtp-stream-requests', message type 'wtp-range-requested') — they had
-  // drifted apart, which meant the main thread's _onRangeRequested() never
-  // fired and the 'range-requested' event (used to react to the real,
-  // post-clamp byte range being fetched right now) was silently dead.
   let telemetryChannel = null;
   try {
-    telemetryChannel = new BroadcastChannel("wtp-stream-requests");
+    telemetryChannel = new BroadcastChannel("wtp-sw-telemetry");
   } catch (e) {
     console.warn("[SW] BroadcastChannel disabled or unsupported:", e);
   }
@@ -46,7 +40,7 @@
           end = m[2] ? parseInt(m[2], 10) : null;
         }
       }
-      telemetryChannel.postMessage({ type: "wtp-range-requested", url, start, end, destination, ts: Date.now() });
+      telemetryChannel.postMessage({ type: "range-requested", url, start, end, destination });
     } catch (e) {
       console.error("[SW] failed to post telemetry:", e);
     }

@@ -8,19 +8,19 @@
   const SW_BUILD = "wtp-sw-3-fixed-verbose-en";
   console.log("[SW] Script evaluated, build:", SW_BUILD);
 
-  function getCleanUrlKey(url) {
-    if (!url) return url;
-    try {
-      const u = new URL(url);
-      const idx = u.pathname.indexOf('/webtorrent/');
-      if (idx !== -1) {
-        return u.pathname.slice(idx);
-      }
-    } catch (e) {
-      console.error("[SW] URL parsing error in getCleanUrlKey:", url, e);
+function getCleanUrlKey(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url, location.origin);
+    const idx = u.pathname.indexOf('/webtorrent/');
+    if (idx !== -1) {
+      return u.pathname.slice(idx);
     }
-    return url;
+  } catch (e) {
+    console.error("[SW] URL parsing error in getCleanUrlKey:", url, e);
   }
+  return url;
+}
 
   // ── REQUEST TELEMETRY ────────────────────────────────────────────
   let telemetryChannel = null;

@@ -941,6 +941,7 @@ export class TorrentLibrary extends Emitter {
         this.state.upsert({ infoHash: torrent.infoHash, magnetURI: torrent.magnetURI, name: torrent.name, length: torrent.length, addedAt: Date.now() });
         this.state.cacheTorrentMeta(torrent);
         this.quota.touch(torrent.infoHash, torrent.name);
+        this._fixStreamURLs(torrent);
         this._wireTorrentEvents(torrent);
         this.emit('torrents-changed', this.getTorrents());
         resolve(this._snapshot(torrent));
@@ -963,6 +964,18 @@ export class TorrentLibrary extends Emitter {
     t.on('done', () => { persist(); this.emit('torrent-done', this._snapshot(t)); this.emit('torrents-changed', this.getTorrents()); });
     t.on('error', err => this.emit('torrent-error', { infoHash: t.infoHash, error: err }));
     t.on('noPeers', type => this.emit('no-peers', { infoHash: t.infoHash, type }));
+  }
+
+  _fixStreamURLs(t) {
+    const base = location.pathname.substring(0, location.pathname.lastIndexOf('/'));
+    if (base && base !== '/') {
+      t.files.forEach(file => {
+        if (file.streamURL && file.streamURL.startsWith('/webtorrent/') && !file.streamURL.startsWith(base)) {
+          console.log(`[Library] Patching streamURL for GH Pages: ${file.streamURL} -> ${base}${file.streamURL}`);
+          file.streamURL = base + file.streamURL;
+        }
+      });
+    }
   }
 
   removeTorrent(infoHash) {
@@ -993,6 +1006,7 @@ export class TorrentLibrary extends Emitter {
       this.client.add(torrentId, opts, torrent => {
         this.state.upsert({ ...info, name: torrent.name, length: torrent.length });
         this.state.cacheTorrentMeta(torrent);
+        this._fixStreamURLs(torrent);
         this._wireTorrentEvents(torrent);
         this.emit('torrents-changed', this.getTorrents());
       });
@@ -1004,6 +1018,7 @@ export class TorrentLibrary extends Emitter {
     this.detachPlayback();
     const t = this._findTorrent(infoHash);
     if (!t) throw new Error(`Torrent ${infoHash} is not loaded in the client`);
+    this._fixStreamURLs(t);
     const file = t.files[fileIndex];
     if (!file) throw new Error(`File [${fileIndex}] does not exist in the torrent`);
 

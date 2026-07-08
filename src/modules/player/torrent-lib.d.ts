@@ -149,7 +149,7 @@ export class TorrentLibrary {
 
   attachPlayback(
     infoHash: string, fileIndex: number, videoEl: HTMLMediaElement,
-    opts?: { lookaheadSec?: number; behindSec?: number }
+    opts?: { lookaheadSec?: number; behindSec?: number; shouldKeepFull?: () => boolean }
   ): TorrentLibPlaybackHandle;
   detachPlayback(): void;
 

@@ -35,6 +35,19 @@ const browserEstimate = ref<{ usage: number; quota: number } | null>(null);
 const clearing = ref(false);
 
 async function refresh(): Promise<void> {
+  // Real bug this closes: getStats()/getManifest() both read from the
+  // shared TorrentLibrary instance (`lib` inside webtorrent-pool.ts), which
+  // is only ever constructed lazily, the first time something actually
+  // tries to play a webtorrent track. Opening this modal before that ever
+  // happened meant `lib` was still null, so both calls silently returned
+  // empty results FOREVER (nothing in here ever triggers init on its own) —
+  // "nothing shown in WebTorrent settings, so previously-downloaded movies
+  // can't be replayed" even though they're sitting on disk the whole time.
+  // initWebtorrent() itself resumes any persisted torrents from a previous
+  // session as part of its own init() (see torrent-lib.js's
+  // _restoreFromStorage), so awaiting it here is exactly what's needed to
+  // make that list show up, with no other changes required.
+  await WTPool.initWebtorrent();
   stats.value = WTPool.getStats();
   manifest.value = WTPool.getManifest();
   // Actual on-disk usage per torrent-lib.js's own QuotaManager bookkeeping
@@ -113,7 +126,19 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
 </script>
 
 <template>
-<div v-if="show" class="modal-overlay" @click.self="emit('close')">
+<!--
+  Teleported straight to <body>: without this, the overlay renders wherever
+  this component happens to sit in the page's DOM tree. If any ancestor
+  (including MediaPlayer.vue itself, which uses position:fixed with its own
+  z-index for the mini bar / expanded panel) establishes a CSS stacking
+  context, this overlay's z-index is only ever compared against its OWN
+  siblings inside that context — it can end up rendered *behind* unrelated
+  page elements that have a higher z-index in a different stacking context,
+  no matter how high a z-index we give it here. Teleporting to <body> plus a
+  deliberately very high z-index sidesteps that entirely.
+-->
+<Teleport to="body">
+<div v-if="show" class="modal-overlay" style="z-index: 99999;" @click.self="emit('close')">
   <div class="modal-box" style="width: 480px; max-width: 92vw;">
     <div class="modal-header">
       <span style="display:flex; align-items:center; gap:8px;">
@@ -205,4 +230,5 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
     </div>
   </div>
 </div>
+</Teleport>
 </template>

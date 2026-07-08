@@ -93,6 +93,38 @@ export const currentSource = computed<MediaEntryMirror | null>(() => {
   return state.currentTrack.sources[state.currentTrack.activeSourceIndex || 0];
 });
 
+/**
+ * Compares two MediaEntryMirror sources by VALUE (type + id) instead of by
+ * JS object reference.
+ *
+ * Real bug this closes: `state` is `reactive(...)`, so reading
+ * `state.currentTrack.sources[i]` returns a Vue reactivity Proxy wrapping
+ * the raw source object — a genuinely different JS reference from the raw
+ * object (e.g. `activeSource` captured directly off the `track` argument
+ * inside playTrack() before that track was ever assigned into `state`).
+ * `currentSource.value !== activeSource` was therefore true almost any time
+ * `track` wasn't ALREADY a reactive object before playTrack() ran (e.g. any
+ * manually-constructed MediaTrack — a "play this stored torrent" entry from
+ * WebtorrentSettingsModal, a freshly-built track from a forum post/embed,
+ * etc.) — even while playing the exact same source, never mind actually
+ * switching to a different one. That's what caused "switch to a different
+ * webtorrent link, and it just hangs at 0:00 with the previous video's
+ * duration showing" — loadWebtorrentSource() legitimately fetched the new
+ * torrent's metadata, then immediately abandoned attaching it because this
+ * comparison wrongly believed the user had already navigated away, leaving
+ * the video element stuck showing whatever the PREVIOUS torrent had loaded.
+ * Tracks played via any path that already hands playTrack() an
+ * already-reactive object (e.g. clicking an entry that came from the
+ * playlist / "recently played" list, both backed by reactive state) never
+ * hit this, which lined up with "picking it from playlist/last played
+ * works fine".
+ */
+const sameSource = (a: MediaEntryMirror | null | undefined, b: MediaEntryMirror | null | undefined): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.type === b.type && a.id === b.id;
+};
+
 window.__bfPlayerEnabled = state.enabled;
 
 
@@ -380,7 +412,7 @@ const loadWebtorrentSource = async (activeSource: MediaEntryMirror, track: Media
     console.log('[BFPlayer] WebTorrent: init settled, streaming server ready =', WTPool.isStreamingServerReady());
 
     const snap = await WTPool.getOrAddTorrent(activeSource.id, title);
-    if (currentSource.value !== activeSource) {
+    if (!sameSource(currentSource.value, activeSource)) {
       console.warn('[BFPlayer] WebTorrent: abandoning load — currentSource changed while waiting for metadata', {
         wasLoading: title, nowPlaying: currentSource.value?.id?.slice(0, 60),
       });
@@ -445,7 +477,7 @@ const loadWebtorrentSource = async (activeSource: MediaEntryMirror, track: Media
       streaming: handle.streaming, videoSrc: wtVideoEl.src || '(empty)', readyState: wtVideoEl.readyState,
       networkState: wtVideoEl.networkState, paused: wtVideoEl.paused,
     });
-    if (currentSource.value !== activeSource) {
+    if (!sameSource(currentSource.value, activeSource)) {
       console.warn('[BFPlayer] WebTorrent: abandoning attach — currentSource changed mid-attach');
       handle.detach();
       return;
@@ -459,7 +491,7 @@ const loadWebtorrentSource = async (activeSource: MediaEntryMirror, track: Media
     // silent mystery.
     const watchdogSource = activeSource;
     setTimeout(() => {
-      if (currentSource.value !== watchdogSource) return; // user moved on already
+      if (!sameSource(currentSource.value, watchdogSource)) return; // user moved on already
       if (!wtVideoEl || wtVideoEl.duration > 0) return; // it's fine
       console.warn('[BFPlayer] WebTorrent WATCHDOG: 6s after attach, video still has no duration/data. Diagnostic snapshot:', {
         videoSrc: wtVideoEl.src || '(empty)',

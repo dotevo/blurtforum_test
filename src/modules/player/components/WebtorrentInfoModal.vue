@@ -44,7 +44,8 @@ const wires = computed(() => {
 </script>
 
 <template>
-<div v-if="show" class="modal-overlay" @click.self="emit('close')">
+<Teleport to="body">
+<div v-if="show" class="modal-overlay" style="z-index: 99999;" @click.self="emit('close')">
   <div class="modal-box" style="width: 460px; max-width: 92vw;">
     <div class="modal-header">
       <span style="display:flex; align-items:center; gap:8px;">
@@ -121,6 +122,7 @@ const wires = computed(() => {
     </div>
   </div>
 </div>
+</Teleport>
 </template>
 
 <style scoped>

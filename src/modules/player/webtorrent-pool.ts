@@ -199,7 +199,29 @@ export const setMaxStorageBytes = (bytes: number): void => {
   lib?.setStorageQuotaMB(clamped / (1024 * 1024));
 };
 
-export const isSeedingEnabled = (): boolean => localStorage.getItem(SEEDING_KEY) !== 'off';
+// Coarse, dependency-free mobile check (no need for anything fancier here —
+// worst case on an odd device is just "seeding defaults the desktop way
+// until the user picks a value explicitly", which is harmless).
+const isMobileDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const uaData = (navigator as any).userAgentData;
+  if (uaData && typeof uaData.mobile === 'boolean') return uaData.mobile;
+  return /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent || '');
+};
+
+/**
+ * Defaults to OFF on phones (metered data / battery — per user request:
+ * "na telefonie seedowanie powinno być domyślnie wyłączone"), ON everywhere
+ * else, but only ever as a *default*: once the user has explicitly flipped
+ * the switch (in either direction) that saved choice always wins, on any
+ * device.
+ */
+export const isSeedingEnabled = (): boolean => {
+  const stored = localStorage.getItem(SEEDING_KEY);
+  if (stored === 'on') return true;
+  if (stored === 'off') return false;
+  return !isMobileDevice();
+};
 
 export const setSeedingEnabled = (enabled: boolean): void => {
   localStorage.setItem(SEEDING_KEY, enabled ? 'on' : 'off');
@@ -307,8 +329,33 @@ export const getOrAddTorrent = async (magnetURI: string, _title?: string): Promi
         `Timed out after ${ADD_TORRENT_TIMEOUT_MS / 1000}s waiting for torrent metadata — no peer sent it (dead tracker, no seeders, or a blocked network).`,
       )), ADD_TORRENT_TIMEOUT_MS);
     });
+
+    // Real bug this closes: TorrentLibrary.addTorrent()'s Promise only ever
+    // *resolves*, via client.add()'s success callback — a client-level
+    // 'error' (e.g. exactly the "Cannot add duplicate torrent <hash>" race
+    // described above) is only ever emitted as an 'error' EVENT on the
+    // shared client (see initWebtorrent()'s `instance.on('error', ...)`),
+    // never as a rejection of THIS specific addTorrent() call. Previously
+    // that meant this attempt just sat there for the full 45s timeout
+    // before the /duplicate/i recovery below could ever run — which, from
+    // the user's side, looked exactly like "clicking a different torrent
+    // just hangs" even though it would have quietly recovered eventually.
+    // Listening for the client's error event here and settling THIS
+    // attempt immediately (instead of only logging it) makes the existing
+    // duplicate-recovery loop below actually reachable in well under a
+    // second instead of ~45s.
+    let earlyReject: ((err: Error) => void) | null = null;
+    const earlyError = new Promise<never>((_, reject) => { earlyReject = reject; });
+    const onClientError = (err: Error): void => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (knownHash && msg.toLowerCase().includes(knownHash.toLowerCase())) {
+        earlyReject?.(err instanceof Error ? err : new Error(msg));
+      }
+    };
+    instance.on('error', onClientError);
+
     try {
-      const snap = await Promise.race([instance.addTorrent(torrentId), timeout]);
+      const snap = await Promise.race([instance.addTorrent(torrentId), timeout, earlyError]);
       wlog('getOrAddTorrent: metadata received —', snap.name, '·', snap.files.length, 'file(s) ·', snap.infoHash);
       return snap;
     } catch (err) {
@@ -332,6 +379,7 @@ export const getOrAddTorrent = async (magnetURI: string, _title?: string): Promi
       throw err;
     } finally {
       clearTimeout(timeoutHandle!);
+      instance.off('error', onClientError);
     }
   })();
 
@@ -388,7 +436,18 @@ export const attachPlayback = (
   opts: { lookaheadSec?: number; behindSec?: number } = {},
 ): TorrentLibPlaybackHandle => {
   if (!lib) throw new Error('[webtorrent-pool] attachPlayback called before initWebtorrent() resolved');
-  const handle = lib.attachPlayback(infoHash, fileIndex, videoEl, opts);
+  // shouldKeepFull is checked LIVE (a function, not a one-time snapshot) by
+  // torrent-lib.js's PlaybackBuffer, so toggling "download whole torrent" on
+  // or off mid-playback takes effect immediately — see torrent-lib.js's
+  // PlaybackBuffer._recalc() for why this is needed at all: without it, the
+  // buffer's own per-second "deselect everything outside the ~1min window"
+  // housekeeping was undoing the full-download selection below on every
+  // tick, so a "full download" only ever actually kept ~1 minute ahead of
+  // playback instead of grabbing the whole file in the background.
+  const handle = lib.attachPlayback(infoHash, fileIndex, videoEl, {
+    ...opts,
+    shouldKeepFull: () => fullDownloadHashes.has(infoHash),
+  });
   // attachPlayback() (inside torrent-lib.js) always deselects every other
   // file before setting up its own lookahead window for the active one —
   // if the user asked us to download this torrent in full, re-widen the

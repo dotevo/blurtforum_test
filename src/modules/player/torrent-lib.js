@@ -459,6 +459,15 @@ class PlaybackBuffer {
     this.behindSec = opts.behindSec ?? 8;
     this.onWindowChange = opts.onWindowChange || (() => {});
     this.notifySW = opts.notifySW || (() => {});
+    // When set, tells us the caller wants this file downloaded in full (not
+    // just the streaming window) — e.g. webtorrent-pool.ts's "download whole
+    // torrent" feature. Checked live (a function, not a snapshot boolean) so
+    // toggling "download whole torrent" on/off mid-playback takes effect
+    // immediately without having to reattach playback. See _recalc() below
+    // for why this matters: without it, this class actively fights any
+    // full-file selection by deselecting everything outside the small
+    // lookahead/behind window every second.
+    this.shouldKeepFull = opts.shouldKeepFull || (() => false);
     this._destroyed = false;
     this._timer = null;
     this._curWindow = null;
@@ -510,11 +519,19 @@ console.log(`[Buffer] ⏱️ Wideo: ${curTime.toFixed(1)}s | startByte: ${startB
       } catch (e) { console.warn('[PlaybackBuffer] select failed:', e); }
     }
 
-    // Best-effort deselect for pieces outside the current window
-    try {
-      if (newStart > this.startPiece) t.deselect(this.startPiece, newStart - 1);
-      if (newEnd < this.endPiece) t.deselect(newEnd + 1, this.endPiece);
-    } catch (e) {}
+    // Best-effort deselect for pieces outside the current window — but NOT
+    // if the caller asked us to download this whole file anyway. Without
+    // this guard, "download entire torrent" (webtorrent-pool.ts) selects
+    // every piece once, and then THIS timer (ticking every second) immediately
+    // deselects everything outside the small lookahead/behind window again,
+    // so the file only ever downloads ~1 minute ahead of playback no matter
+    // what the user asked for.
+    if (!this.shouldKeepFull()) {
+      try {
+        if (newStart > this.startPiece) t.deselect(this.startPiece, newStart - 1);
+        if (newEnd < this.endPiece) t.deselect(newEnd + 1, this.endPiece);
+      } catch (e) {}
+    }
 
     // Hard limit the Service Worker to prevent over-downloading from open-ended Range requests
     this.notifySW(endByte);
@@ -1009,6 +1026,7 @@ export class TorrentLibrary extends Emitter {
     this._activeBuffer = new PlaybackBuffer(t, file, videoEl, {
       lookaheadSec: opts.lookaheadSec ?? 60,
       behindSec: opts.behindSec ?? 8,
+      shouldKeepFull: opts.shouldKeepFull,
       onWindowChange: win => this.emit('buffer-window', { infoHash, fileIndex, ...win }),
       notifySW: makeSWNotifier(file),
     });

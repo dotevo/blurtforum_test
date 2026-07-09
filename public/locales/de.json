@@ -358,5 +358,18 @@
   "pieceMapDownloaded": "Heruntergeladen",
   "pieceMapMissing": "Fehlend",
   "pieceMapWindow": "Fenster",
-  "pieceMapOverrange": "Außerhalb des Bereichs"
+  "pieceMapOverrange": "Außerhalb des Bereichs",
+  "audioTrack": "Tonspur",
+  "audioTrackMode": "Tonspurmodus",
+  "audioTrackModeDub": "Synchronisation (Dubbing)",
+  "audioTrackModeLektor": "Voice-over (Lektor)",
+  "audioTrackOffset": "Audio-Versatz",
+  "audioTrackOrigVolume": "Original-Lautstärke",
+  "audioTrackOriginal": "Original-Tonspur",
+  "audioTrackSettings": "Tonspur-Einstellungen",
+  "audioTrackVolume": "Tonspur-Lautstärke",
+  "done": "Fertig",
+  "downloadWholeTorrent": "Ganzen Torrent herunterladen",
+  "moreOptions": "Mehr Optionen",
+  "noNativePlayback": "Natives Abspielen nicht unterstützt"
 }

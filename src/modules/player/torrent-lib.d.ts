@@ -28,6 +28,7 @@ export function ext(name: string): string;
 export function isVideo(name: string): boolean;
 export function isAudio(name: string): boolean;
 export function isSub(name: string): boolean;
+export function isLectorTrack(name: string): boolean;
 export function isNativePlayable(name: string): boolean;
 export function detectSubtitleLang(filename: string): string;
 export const NATIVE_PLAYABLE_EXT: Set<string>;
@@ -97,11 +98,10 @@ export interface TorrentLibExtraAudioHandle {
   file: any;
   torrent: any;
   setMode: (mode: 'lektor' | 'dub') => void;
-  setDuckLevel: (pct: number) => void;
+  setOrigVolume: (pct: number) => void;
+  setTrackVolume: (pct: number) => void;
   setOffsetMs: (ms: number) => void;
   getOffsetMs: () => number;
-  setLookahead: (sec: number) => void;
-  setBehind: (sec: number) => void;
   detach: () => void;
 }
 
@@ -154,8 +154,7 @@ export class TorrentLibrary {
   detachPlayback(): void;
 
   attachExtraAudio(infoHash: string, fileIndex: number, opts?: {
-    mode?: 'lektor' | 'dub'; duckLevel?: number; offsetMs?: number;
-    lookaheadSec?: number; behindSec?: number;
+    mode?: 'lektor' | 'dub'; origVolume?: number; trackVolume?: number; offsetMs?: number;
   }): TorrentLibExtraAudioHandle;
   detachExtraAudio(): void;
 

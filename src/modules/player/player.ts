@@ -333,6 +333,120 @@ const initAudio = (): void => {
 let wtVideoEl: HTMLVideoElement | null = null;
 let wtActiveInfoHash: string | null = null; // whichever torrent we're actively fetching pieces for right now
 
+/**
+ * The file index actually attached to playback right now — set right after
+ * a successful attachPlayback()/playWebtorrentFile(), read by
+ * WebtorrentVideo.vue's piece-map bar. Previously that component guessed
+ * this via `files.find(f => f.isVideo || f.isAudio)` (the first video/audio
+ * file in the torrent, full stop) instead of tracking what was actually
+ * selected — harmless for a single-video-file torrent, but wrong the moment
+ * a torrent has more than one video/audio file (e.g. multiple quality
+ * versions, or once alternate audio tracks are involved), showing progress
+ * for the wrong file entirely.
+ */
+export const wtActiveFileIndex = ref<number | null>(null);
+
+// ── Alternate audio track (lektor/dub) ─────────────────────────────────────
+// See torrent-lib.js's attachExtraAudio for the actual sync/volume/offset
+// mechanics; this layer just tracks which file is picked, exposes reactive
+// state for the UI, and remembers the user's settings per-torrent.
+export const wtAudioTrackIndex = ref<number | null>(null); // null = original audio only
+export const wtAudioMode = ref<'lektor' | 'dub'>('dub'); // 'lektor' = alongside original, 'dub' = replaces it
+export const wtAudioOffsetMs = ref<number>(0);
+export const wtAudioOrigVolume = ref<number>(0); // original video track's volume
+export const wtAudioTrackVolume = ref<number>(1); // alternate track's own volume
+
+let wtExtraAudioHandle: ReturnType<typeof WTPool.attachExtraAudio> | null = null;
+
+const AUDIO_SETTINGS_PREFIX = 'bf-player-wt-audio:';
+interface StoredWtAudioSettings {
+  fileIndex: number; mode: 'lektor' | 'dub'; offsetMs: number; origVolume: number; trackVolume: number;
+}
+const loadWtAudioSettings = (infoHash: string): StoredWtAudioSettings | null => {
+  try {
+    const raw = localStorage.getItem(AUDIO_SETTINGS_PREFIX + infoHash);
+    return raw ? (JSON.parse(raw) as StoredWtAudioSettings) : null;
+  } catch { return null; }
+};
+const saveWtAudioSettings = (infoHash: string | null): void => {
+  if (!infoHash) return;
+  if (wtAudioTrackIndex.value == null) { localStorage.removeItem(AUDIO_SETTINGS_PREFIX + infoHash); return; }
+  const data: StoredWtAudioSettings = {
+    fileIndex: wtAudioTrackIndex.value, mode: wtAudioMode.value, offsetMs: wtAudioOffsetMs.value,
+    origVolume: wtAudioOrigVolume.value, trackVolume: wtAudioTrackVolume.value,
+  };
+  try { localStorage.setItem(AUDIO_SETTINGS_PREFIX + infoHash, JSON.stringify(data)); } catch { /* quota — non-critical */ }
+};
+
+/** Resets the reactive audio-track UI state without touching localStorage — used when switching to a different torrent (the engine already tore down the previous extra-audio handle via detachPlayback()). */
+const resetWtAudioTrackState = (): void => {
+  wtExtraAudioHandle = null;
+  wtAudioTrackIndex.value = null;
+  wtAudioMode.value = 'dub';
+  wtAudioOffsetMs.value = 0;
+  wtAudioOrigVolume.value = 0;
+  wtAudioTrackVolume.value = 1;
+};
+
+/**
+ * Selects (or clears, with fileIndex = null) an alternate audio track for
+ * whatever webtorrent is currently attached. Defaults the mode from the
+ * filename convention (see torrent-lib.js's isLectorTrack) unless this
+ * exact file already has saved settings for this torrent, in which case
+ * those are restored instead.
+ */
+export const selectWebtorrentAudioTrack = (fileIndex: number | null): void => {
+  if (!wtActiveInfoHash) return;
+  const infoHash = wtActiveInfoHash;
+
+  if (fileIndex == null) {
+    WTPool.detachExtraAudio();
+    resetWtAudioTrackState();
+    saveWtAudioSettings(infoHash);
+    return;
+  }
+
+  const snap = WTPool.getTorrent(infoHash);
+  const file = snap?.files.find(f => f.index === fileIndex);
+  if (!file) return;
+
+  const persisted = loadWtAudioSettings(infoHash);
+  const reuse = !!persisted && persisted.fileIndex === fileIndex;
+  const mode: 'lektor' | 'dub' = reuse ? persisted!.mode : (WTPool.isLectorTrack(file.name) ? 'lektor' : 'dub');
+  const origVolume = reuse ? persisted!.origVolume : (mode === 'lektor' ? 0.15 : 0);
+  const trackVolume = reuse ? persisted!.trackVolume : 1;
+  const offsetMs = reuse ? persisted!.offsetMs : 0;
+
+  wtExtraAudioHandle = WTPool.attachExtraAudio(infoHash, fileIndex, { mode, origVolume, trackVolume, offsetMs });
+  wtAudioTrackIndex.value = fileIndex;
+  wtAudioMode.value = mode;
+  wtAudioOffsetMs.value = offsetMs;
+  wtAudioOrigVolume.value = origVolume;
+  wtAudioTrackVolume.value = trackVolume;
+  saveWtAudioSettings(infoHash);
+};
+
+export const setWebtorrentAudioMode = (mode: 'lektor' | 'dub'): void => {
+  wtAudioMode.value = mode;
+  wtExtraAudioHandle?.setMode(mode);
+  saveWtAudioSettings(wtActiveInfoHash);
+};
+export const setWebtorrentAudioOffsetMs = (ms: number): void => {
+  wtAudioOffsetMs.value = ms;
+  wtExtraAudioHandle?.setOffsetMs(ms);
+  saveWtAudioSettings(wtActiveInfoHash);
+};
+export const setWebtorrentAudioOrigVolume = (v: number): void => {
+  wtAudioOrigVolume.value = v;
+  wtExtraAudioHandle?.setOrigVolume(v);
+  saveWtAudioSettings(wtActiveInfoHash);
+};
+export const setWebtorrentAudioTrackVolume = (v: number): void => {
+  wtAudioTrackVolume.value = v;
+  wtExtraAudioHandle?.setTrackVolume(v);
+  saveWtAudioSettings(wtActiveInfoHash);
+};
+
 const initWT = (): void => {
   if (wtVideoEl) return;
   wtVideoEl = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
@@ -482,6 +596,17 @@ const loadWebtorrentSource = async (activeSource: MediaEntryMirror, track: Media
       handle.detach();
       return;
     }
+    wtActiveFileIndex.value = file.index;
+    // New source, new torrent — the engine already tore down any extra
+    // audio track from the previous torrent (attachPlayback -> detachPlayback
+    // -> detachExtraAudio internally), but our own reactive UI state doesn't
+    // know that yet, so reset it before possibly restoring a saved choice
+    // for THIS torrent below.
+    resetWtAudioTrackState();
+    const savedAudio = loadWtAudioSettings(snap.infoHash);
+    if (savedAudio && snap.files.some(f => f.index === savedAudio.fileIndex && f.isAudio)) {
+      selectWebtorrentAudioTrack(savedAudio.fileIndex);
+    }
 
     // Watchdog: if we're still "loading" and duration is still 0 a few
     // seconds after attaching, something is silently stuck (SW not actually
@@ -564,6 +689,15 @@ export const playWebtorrentFile = (fileIndex: number): void => {
   console.log('[BFPlayer] playWebtorrentFile: attachPlayback returned', {
     streaming: handle.streaming, videoSrc: wtVideoEl.src || '(empty)', readyState: wtVideoEl.readyState,
   });
+  wtActiveFileIndex.value = file.index;
+  // attachPlayback() already tore down any extra audio track at the engine
+  // level (detachPlayback -> detachExtraAudio) — re-sync our reactive state
+  // and, if this torrent had a saved audio-track choice, restore it.
+  resetWtAudioTrackState();
+  const savedAudio = loadWtAudioSettings(infoHash);
+  if (savedAudio && snap.files.some(f => f.index === savedAudio.fileIndex && f.isAudio)) {
+    selectWebtorrentAudioTrack(savedAudio.fileIndex);
+  }
   if (handle.streaming && wtVideoEl.src) {
     wtVideoEl.play().then(() => console.log('[BFPlayer] playWebtorrentFile: play() resolved'))
       .catch(err => console.warn('[BFPlayer] playWebtorrentFile: autoplay blocked, tap play to start:', err?.name, err?.message || err));
@@ -693,6 +827,8 @@ const stopAll = (): void => {
     // leave it in the pool so it keeps seeding whatever's already down.
     WTPool.pauseDownload(wtActiveInfoHash);
     wtActiveInfoHash = null;
+    wtActiveFileIndex.value = null;
+    resetWtAudioTrackState();
   }
   state.playing = false; 
   state.progress = 0;

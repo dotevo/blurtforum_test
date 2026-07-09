@@ -43,6 +43,14 @@ export function isVideo(n) { return VIDEO_EXT.has(ext(n)); }
 export function isAudio(n) { return AUDIO_EXT.has(ext(n)); }
 export function isSub(n) { return SUB_EXT.has(ext(n)); }
 export function isNativePlayable(n) { return NATIVE_PLAYABLE_EXT.has(ext(n)); }
+// Filename convention for an alternate audio track that should play ALONGSIDE
+// the original (a "lektor"/narrator track, common for PL releases) rather
+// than replacing it outright — e.g. "lektor.pl.mp3" or "lector.mp3". Anything
+// else defaults to "dub" (replaces the original) elsewhere.
+export function isLectorTrack(n) {
+  const base = String(n || '').split(/[\\/]/).pop() || '';
+  return /^(lektor|lector)\./i.test(base);
+}
 
 // ═════════════════════════════════════════════════════════════════
 // SUBTITLE CONVERSION — SRT/SBV/SAMI/ASS/SUB → WebVTT + language guess.
@@ -125,10 +133,27 @@ function assToVtt(ass) {
   return vtt;
 }
 function decodeSubtitleBytes(buf) {
-  try { return new TextDecoder('utf-8').decode(buf); }
+  // Real bug this fixes: TextDecoder('utf-8') does NOT throw on invalid byte
+  // sequences by default — it silently substitutes them with U+FFFD (�)
+  // instead. That means the try/catch below never actually caught anything;
+  // every non-UTF-8 subtitle (most older Polish .srt releases are
+  // windows-1250, not UTF-8) just silently decoded into garbled text/mojibake
+  // instead of falling back to the right codepage. `{ fatal: true }` makes
+  // the decoder actually throw on invalid sequences, so this fallback chain
+  // finally does something.
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
   catch (e) {
-    try { return new TextDecoder('windows-1250').decode(buf); }
-    catch (e2) { return new TextDecoder('latin-1').decode(buf); }
+    // windows-1250 is the standard codepage for Polish releases (ą/ć/ę/ł/ń/
+    // ó/ś/ź/ż) — try it with fatal detection too, in case the bytes are
+    // actually some OTHER legacy encoding entirely.
+    try { return new TextDecoder('windows-1250', { fatal: true }).decode(buf); }
+    catch (e2) {
+      // latin-1 (ISO-8859-1) maps every byte 0x00–0xFF straight to the same
+      // Unicode code point, so decoding never throws — guaranteed fallback
+      // that always produces *something* readable-ish, even if it's not the
+      // exact right codepage for some less common encoding.
+      return new TextDecoder('latin-1').decode(buf);
+    }
   }
 }
 function convertSubtitleToVtt(name, text) {
@@ -941,7 +966,6 @@ export class TorrentLibrary extends Emitter {
         this.state.upsert({ infoHash: torrent.infoHash, magnetURI: torrent.magnetURI, name: torrent.name, length: torrent.length, addedAt: Date.now() });
         this.state.cacheTorrentMeta(torrent);
         this.quota.touch(torrent.infoHash, torrent.name);
-        this._fixStreamURLs(torrent);
         this._wireTorrentEvents(torrent);
         this.emit('torrents-changed', this.getTorrents());
         resolve(this._snapshot(torrent));
@@ -964,18 +988,6 @@ export class TorrentLibrary extends Emitter {
     t.on('done', () => { persist(); this.emit('torrent-done', this._snapshot(t)); this.emit('torrents-changed', this.getTorrents()); });
     t.on('error', err => this.emit('torrent-error', { infoHash: t.infoHash, error: err }));
     t.on('noPeers', type => this.emit('no-peers', { infoHash: t.infoHash, type }));
-  }
-
-  _fixStreamURLs(t) {
-    const base = location.pathname.substring(0, location.pathname.lastIndexOf('/'));
-    if (base && base !== '/') {
-      t.files.forEach(file => {
-        if (file.streamURL && file.streamURL.startsWith('/webtorrent/') && !file.streamURL.startsWith(base)) {
-          console.log(`[Library] Patching streamURL for GH Pages: ${file.streamURL} -> ${base}${file.streamURL}`);
-          file.streamURL = base + file.streamURL;
-        }
-      });
-    }
   }
 
   removeTorrent(infoHash) {
@@ -1006,7 +1018,6 @@ export class TorrentLibrary extends Emitter {
       this.client.add(torrentId, opts, torrent => {
         this.state.upsert({ ...info, name: torrent.name, length: torrent.length });
         this.state.cacheTorrentMeta(torrent);
-        this._fixStreamURLs(torrent);
         this._wireTorrentEvents(torrent);
         this.emit('torrents-changed', this.getTorrents());
       });
@@ -1018,7 +1029,6 @@ export class TorrentLibrary extends Emitter {
     this.detachPlayback();
     const t = this._findTorrent(infoHash);
     if (!t) throw new Error(`Torrent ${infoHash} is not loaded in the client`);
-    this._fixStreamURLs(t);
     const file = t.files[fileIndex];
     if (!file) throw new Error(`File [${fileIndex}] does not exist in the torrent`);
 
@@ -1081,7 +1091,13 @@ export class TorrentLibrary extends Emitter {
 
     const state = {
       mode: opts.mode === 'dub' ? 'dub' : 'lektor',
-      duckLevel: opts.duckLevel != null ? Math.max(0, Math.min(1, opts.duckLevel)) : 0.15,
+      // Independent original-track / extra-track volumes (always both
+      // adjustable, in either mode) instead of a single "duck level" that
+      // only applied while in lektor mode — "dub" is really just a default
+      // origVolume of 0, not a structurally different thing.
+      origVolume: opts.origVolume != null ? Math.max(0, Math.min(1, opts.origVolume))
+        : (opts.mode === 'dub' ? 0 : 0.15),
+      trackVolume: opts.trackVolume != null ? Math.max(0, Math.min(1, opts.trackVolume)) : 1,
       offsetSec: (opts.offsetMs || 0) / 1000,
       prevVideoVolume: mainVideo.volume,
       prevVideoMuted: mainVideo.muted,
@@ -1089,10 +1105,23 @@ export class TorrentLibrary extends Emitter {
 
     const applyVolumes = () => {
       mainVideo.muted = false;
-      mainVideo.volume = state.mode === 'dub' ? 0 : state.duckLevel;
-      audioEl.volume = 1;
+      mainVideo.volume = state.origVolume;
+      audioEl.volume = state.trackVolume;
     };
     applyVolumes();
+
+    // Real bug this closes: an alternate audio track (a lektor/dub file is
+    // typically a few MB — nothing like the video) used to get its own
+    // separate windowed PlaybackBuffer, ticking independently from the main
+    // video's, every second recalculating and reprioritizing its own
+    // lookahead/behind window. Two independent windowed buffers competing
+    // for the same client's bandwidth/piece-picker attention is needless
+    // complexity for a file this small, and exactly the shape of bug
+    // already found and fixed elsewhere in this codebase (windowed
+    // buffering fighting a full-file download). Simplest and most robust:
+    // select the whole file once, let it download fully in the background
+    // like any other small file, no windowing needed.
+    try { file.select(); } catch (e) {}
 
     if (this.serverReady) {
       audioEl.src = file.streamURL;
@@ -1123,42 +1152,29 @@ export class TorrentLibrary extends Emitter {
     onRateChange();
     if (!mainVideo.paused) onPlay();
 
-    const driver = {
-      get currentTime() { return mainVideo.currentTime + state.offsetSec; },
-      get duration() { return mainVideo.duration; },
-      addEventListener: (...a) => mainVideo.addEventListener(...a),
-      removeEventListener: (...a) => mainVideo.removeEventListener(...a),
-    };
-
-    const buffer = new PlaybackBuffer(t, file, driver, {
-      lookaheadSec: opts.lookaheadSec ?? 60,
-      behindSec: opts.behindSec ?? 8,
-      onWindowChange: win => this.emit('buffer-window', { infoHash, fileIndex, extra: true, ...win }),
-      notifySW: makeSWNotifier(file),
-    });
-
     this._extraAudio = {
-      el: audioEl, buffer, state, mainVideo, file,
+      el: audioEl, state, mainVideo, file,
       listeners: { onPlay, onPause, onSeeked, onRateChange, onTimeUpdate },
     };
 
     return {
       file, torrent: t,
-      setMode: mode => { state.mode = mode === 'dub' ? 'dub' : 'lektor'; applyVolumes(); },
-      setDuckLevel: pct => { state.duckLevel = Math.max(0, Math.min(1, pct)); applyVolumes(); },
+      setMode: mode => { state.mode = mode === 'dub' ? 'dub' : 'lektor'; },
+      setOrigVolume: pct => { state.origVolume = Math.max(0, Math.min(1, pct)); applyVolumes(); },
+      setTrackVolume: pct => { state.trackVolume = Math.max(0, Math.min(1, pct)); applyVolumes(); },
       setOffsetMs: ms => { state.offsetSec = (ms || 0) / 1000; resync(); },
       getOffsetMs: () => Math.round(state.offsetSec * 1000),
-      setLookahead: sec => buffer.setLookahead(sec),
-      setBehind: sec => buffer.setBehind(sec),
       detach: () => this.detachExtraAudio(),
     };
   }
 
   detachExtraAudio() {
     if (!this._extraAudio) return;
-    const { el, buffer, listeners, mainVideo, state, file } = this._extraAudio;
-    if (file) this._unregisterStreamURL(file);
-    buffer.destroy();
+    const { el, listeners, mainVideo, state, file } = this._extraAudio;
+    if (file) {
+      this._unregisterStreamURL(file);
+      try { file.deselect(); } catch (e) {}
+    }
     mainVideo.removeEventListener('play', listeners.onPlay);
     mainVideo.removeEventListener('pause', listeners.onPause);
     mainVideo.removeEventListener('seeked', listeners.onSeeked);

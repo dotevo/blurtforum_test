@@ -325,5 +325,18 @@
   "pieceMapDownloaded": "Downloaded",
   "pieceMapMissing": "Missing",
   "pieceMapWindow": "Window",
-  "pieceMapOverrange": "Out of range"
+  "pieceMapOverrange": "Out of range",
+  "audioTrack": "Audio track",
+  "audioTrackMode": "Audio track mode",
+  "audioTrackModeDub": "Dubbing",
+  "audioTrackModeLektor": "Voice-over (Lektor)",
+  "audioTrackOffset": "Audio offset",
+  "audioTrackOrigVolume": "Original audio volume",
+  "audioTrackOriginal": "Original audio",
+  "audioTrackSettings": "Audio track settings",
+  "audioTrackVolume": "Audio track volume",
+  "done": "Done",
+  "downloadWholeTorrent": "Download whole torrent",
+  "moreOptions": "More options",
+  "noNativePlayback": "Native playback not supported"
 }

@@ -361,5 +361,18 @@
   "pieceMapDownloaded": "Pobrano",
   "pieceMapMissing": "Brakuje",
   "pieceMapWindow": "Okno",
-  "pieceMapOverrange": "Poza zakresem"
+  "pieceMapOverrange": "Poza zakresem",
+  "audioTrack": "Ścieżka dźwiękowa",
+  "audioTrackMode": "Tryb ścieżki dźwiękowej",
+  "audioTrackModeDub": "Dubbing",
+  "audioTrackModeLektor": "Lektor",
+  "audioTrackOffset": "Przesunięcie dźwięku",
+  "audioTrackOrigVolume": "Głośność oryginalnego dźwięku",
+  "audioTrackOriginal": "Oryginalny dźwięk",
+  "audioTrackSettings": "Ustawienia ścieżki dźwiękowej",
+  "audioTrackVolume": "Głośność ścieżki dźwiękowej",
+  "done": "Gotowe",
+  "downloadWholeTorrent": "Pobierz cały torrent",
+  "moreOptions": "Więcej opcji",
+  "noNativePlayback": "Odtwarzanie natywne nie jest obsługiwane"
 }

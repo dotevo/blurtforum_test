@@ -25,10 +25,13 @@
  * bundling for this to actually work here the same way it does in the
  * standalone PoC.
  */
-import { TorrentLibrary } from './torrent-lib.js';
+import { TorrentLibrary, isLectorTrack } from './torrent-lib.js';
 import type {
   TorrentLibSnapshot, TorrentLibPieceMap, TorrentLibPlaybackHandle, TorrentLibSubtitleTrack,
+  TorrentLibExtraAudioHandle,
 } from './torrent-lib.js';
+
+export { isLectorTrack };
 
 const WT_DEBUG = true;
 const wlog = (...args: unknown[]): void => { if (WT_DEBUG) console.log('[WT]', ...args); };
@@ -473,6 +476,23 @@ export const attachPlayback = (
 };
 
 export const detachPlayback = (): void => lib?.detachPlayback();
+
+/**
+ * Alternate audio track (lektor/dub file) playing alongside the main video.
+ * Thin pass-through to torrent-lib.js's own attachExtraAudio — the sync
+ * (offset, play/pause/seek mirroring) and the two independent volume
+ * knobs all live there; see its own comment for why this selects the whole
+ * file once instead of using a windowed buffer like the main video does.
+ */
+export const attachExtraAudio = (
+  infoHash: string, fileIndex: number,
+  opts: { mode?: 'lektor' | 'dub'; origVolume?: number; trackVolume?: number; offsetMs?: number } = {},
+): TorrentLibExtraAudioHandle => {
+  if (!lib) throw new Error('[webtorrent-pool] attachExtraAudio called before initWebtorrent() resolved');
+  return lib.attachExtraAudio(infoHash, fileIndex, opts);
+};
+
+export const detachExtraAudio = (): void => lib?.detachExtraAudio();
 
 /**
  * "Download whole torrent" — selects every file's pieces, not just the

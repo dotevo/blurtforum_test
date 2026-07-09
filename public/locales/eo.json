@@ -355,5 +355,18 @@
   "pieceMapDownloaded": "Elŝutita",
   "pieceMapMissing": "Mankanta",
   "pieceMapWindow": "Fenestro",
-  "pieceMapOverrange": "Ekster gamo"
+  "pieceMapOverrange": "Ekster gamo",
+  "audioTrack": "Auda trako",
+  "audioTrackMode": "Reĝimo de auda trako",
+  "audioTrackModeDub": "Dublado",
+  "audioTrackModeLektor": "Voĉlegado (Lektoro)",
+  "audioTrackOffset": "Auda delokiĝo",
+  "audioTrackOrigVolume": "Volumeno de originala aŭdo",
+  "audioTrackOriginal": "Originala aŭdo",
+  "audioTrackSettings": "Agordoj de auda trako",
+  "audioTrackVolume": "Volumeno de auda trako",
+  "done": "Farite",
+  "downloadWholeTorrent": "Elŝuti tutan torrenton",
+  "moreOptions": "Pliaj opcioj",
+  "noNativePlayback": "Indiĝena reproduktado ne estas subtenata"
 }

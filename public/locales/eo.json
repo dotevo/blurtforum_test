@@ -368,5 +368,9 @@
   "done": "Farite",
   "downloadWholeTorrent": "Elŝuti tutan torrenton",
   "moreOptions": "Pliaj opcioj",
-  "noNativePlayback": "Indiĝena reproduktado ne estas subtenata"
+  "noNativePlayback": "Indiĝena reproduktado ne estas subtenata",
+  "copied": "Kopiita!",
+  "copyMagnet": "Kopii Magneton",
+  "playTorrent": "Ludi Torrenton",
+  "hash": "Hasaĵo"
 }

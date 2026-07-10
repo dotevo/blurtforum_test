@@ -55,8 +55,83 @@ if (typeof document !== 'undefined') {
 </script>
 
 <script setup lang="ts">
+import { getTorrent, parseInfoHash } from '../../player/webtorrent-pool';
+
 // Global cache for this session to persist resolutions across component unmounts
 const sunoCache = reactive<Record<string, { id: string, src: string, cover: string }>>({});
+const t = (k: string): string => props.t ? props.t(k) : k;
+
+// WebTorrent card live status
+const torrentStatus = ref<{ progress: string; downloadSpeed: number; numPeers: number } | null>(null);
+const copied = ref(false);
+let statusInterval: ReturnType<typeof setInterval> | null = null;
+
+const getMagnetName = (uri: string) => {
+  try {
+    const params = new URLSearchParams(uri.replace('magnet:', ''));
+    return params.get('dn') || '';
+  } catch {
+    return '';
+  }
+};
+
+const getMagnetHash = (uri: string) => {
+  const hash = parseInfoHash(uri);
+  return hash ? hash.slice(0, 10) + '...' : '';
+};
+
+const copyMagnetLink = async (uri: string) => {
+  try {
+    await navigator.clipboard.writeText(uri);
+    copied.value = true;
+    setTimeout(() => { copied.value = false; }, 2000);
+  } catch (err) {
+    console.error('Failed to copy magnet link:', err);
+  }
+};
+
+const formatSpeed = (bytesPerSec: number): string => {
+  if (bytesPerSec === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytesPerSec) / Math.log(k));
+  return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+const updateTorrentStatus = () => {
+  const primary = trackData.value.sources[0];
+  if (primary?.type === 'webtorrent') {
+    const infoHash = parseInfoHash(primary.id);
+    if (infoHash) {
+      const snap = getTorrent(infoHash);
+      if (snap) {
+        torrentStatus.value = {
+          progress: (snap.progress * 100).toFixed(1),
+          downloadSpeed: snap.downloadSpeed,
+          numPeers: snap.numPeers
+        };
+        return;
+      }
+    }
+  }
+  torrentStatus.value = null;
+};
+
+const startStatusPolling = () => {
+  stopStatusPolling();
+  const primary = trackData.value.sources[0];
+  if (primary?.type === 'webtorrent') {
+    updateTorrentStatus();
+    statusInterval = setInterval(updateTorrentStatus, 1500);
+  }
+};
+
+const stopStatusPolling = () => {
+  if (statusInterval) {
+    clearInterval(statusInterval);
+    statusInterval = null;
+  }
+};
 
 const props = withDefaults(defineProps<{
   media?: MediaTrack | string; // Can be a track object or raw URL
@@ -296,6 +371,7 @@ onMounted(() => {
     if (isUnmounted.value) return;
     console.log(`[ForumMedia] Resolution finished for ${props.author}/${props.permlink}/${trackData.value.subId}. Final ID: ${trackData.value.sources[0]?.id}`);
     syncTrack();
+    startStatusPolling();
   });
 });
 
@@ -303,10 +379,12 @@ watch(() => [trackData.value.pending, trackData.value.sources[0]?.id, trackData.
   if (isUnmounted.value) return;
   console.log(`[ForumMedia] Watch triggered: ${props.author}/${props.permlink}/${trackData.value.subId}. Old: ${oldVal}, New: ${newVal}`);
   syncTrack();
+  startStatusPolling();
 });
 
 onUnmounted(() => {
   isUnmounted.value = true;
+  stopStatusPolling();
   if (registeredId && registeredType) {
     unregisterTrack(registeredId, registeredType, trackData.value.author, trackData.value.permlink, registeredSubId);
   }
@@ -353,6 +431,13 @@ const displayHost = computed(() => {
   return primary?.host || (primary?.type === 'audio' ? 'suno' : primary?.type);
 });
 
+const selectInputText = (event: Event) => {
+  const target = event.target as HTMLInputElement | null;
+  if (target) {
+    target.select();
+  }
+};
+
 </script>
 
 <template>
@@ -384,7 +469,63 @@ const displayHost = computed(() => {
 
     <!-- CARD MODE (Explicit cards) -->
     <template v-else-if="mode === 'card'">
+      <!-- WebTorrent Custom Card -->
       <div 
+        v-if="trackData.sources[0]?.type === 'webtorrent'"
+        class="webtorrent-card" 
+        :class="{ 'is-active': isActive, 'is-playing': isPlaying }"
+      >
+        <div class="wt-header">
+          <span class="wt-icon"><i class="fa-solid fa-magnet"></i></span>
+          <div class="wt-info">
+            <div class="wt-title">
+              {{ trackData.title && trackData.title !== 'Media Content' ? trackData.title : (getMagnetName(trackData.sources[0].id) || 'WebTorrent') }}
+            </div>
+            <div class="wt-hash gs">{{ t('hash') }}: {{ getMagnetHash(trackData.sources[0].id) }}</div>
+          </div>
+        </div>
+        
+        <!-- Live Download Status -->
+        <div v-if="torrentStatus" class="wt-download-stats">
+          <div class="wt-progress-bar">
+            <div class="wt-progress-fill" :style="{ width: torrentStatus.progress + '%' }"></div>
+          </div>
+          <div class="wt-stats-row gs">
+            <span>{{ torrentStatus.progress }}%</span>
+            <span>{{ t('downloadSpeed') }}: {{ formatSpeed(torrentStatus.downloadSpeed) }}</span>
+            <span>{{ t('peers') }}: {{ torrentStatus.numPeers }}</span>
+          </div>
+        </div>
+
+        <div class="wt-actions">
+          <button class="btn btn-primary btn-sm" @click.stop="handlePlay" :disabled="trackData.pending">
+            <i :class="isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
+            <span>{{ isPlaying ? 'Pause' : t('playTorrent') }}</span>
+          </button>
+          <button class="btn btn-ghost btn-sm" @click.stop="handleQueue" :disabled="trackData.pending">
+            <i class="fa-solid fa-plus"></i> <span>Queue</span>
+          </button>
+          <button class="btn btn-ghost btn-sm" @click.stop="copyMagnetLink(trackData.sources[0].id)">
+            <i class="fa-solid" :class="copied ? 'fa-circle-check' : 'fa-copy'"></i> 
+            <span>{{ copied ? t('copied') : t('copyMagnet') }}</span>
+          </button>
+        </div>
+
+        <!-- Magnet Link box -->
+        <div class="wt-link-box">
+          <input 
+            type="text" 
+            readonly 
+            :value="trackData.sources[0].id" 
+            class="wt-magnet-input" 
+            @click.stop="selectInputText($event)" 
+          />
+        </div>
+      </div>
+
+      <!-- General Media Card -->
+      <div 
+        v-else
         class="media-placeholder" 
         :class="{ 'is-resolving': trackData.pending, 'no-thumb': !thumbUrl }"
         :style="thumbUrl ? `background-image: url(${thumbUrl})` : ''"
@@ -542,6 +683,91 @@ const displayHost = computed(() => {
     max-width: 160px;
   }
   .btn-text { display: inline; }
+}
+
+.webtorrent-card {
+  background: var(--nav-bg, rgba(20, 30, 40, 0.05));
+  border: 1px solid var(--border-main, #98AAB1);
+  border-radius: 8px;
+  padding: 14px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+.webtorrent-card.is-active {
+  border-color: var(--accent, #e74c3c);
+  box-shadow: 0 0 8px rgba(231, 76, 60, 0.15);
+}
+.wt-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wt-icon {
+  font-size: 24px;
+  color: var(--accent, #e74c3c);
+  opacity: 0.9;
+}
+.wt-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.wt-title {
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--text, #333);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.wt-hash {
+  font-size: 10px;
+  opacity: 0.6;
+}
+.wt-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.wt-link-box {
+  width: 100%;
+}
+.wt-magnet-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border-main, #ccc);
+  background: var(--bg-page, #f9f9f9);
+  color: var(--text, #666);
+  border-radius: 4px;
+  box-sizing: border-box;
+  text-overflow: ellipsis;
+}
+.wt-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(0,0,0,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.wt-progress-fill {
+  height: 100%;
+  background: var(--primary, #006699);
+  transition: width 0.3s;
+}
+.wt-stats-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-top: 4px;
 }
 
 @media (max-width: 480px) {

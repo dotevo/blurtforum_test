@@ -374,5 +374,9 @@
   "done": "Gotowe",
   "downloadWholeTorrent": "Pobierz cały torrent",
   "moreOptions": "Więcej opcji",
-  "noNativePlayback": "Odtwarzanie natywne nie jest obsługiwane"
+  "noNativePlayback": "Odtwarzanie natywne nie jest obsługiwane",
+  "copied": "Skopiowano!",
+  "copyMagnet": "Kopiuj link magnet",
+  "playTorrent": "Odtwórz Torrent",
+  "hash": "Hash"
 }

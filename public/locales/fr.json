@@ -371,5 +371,9 @@
   "done": "Terminé",
   "downloadWholeTorrent": "Télécharger le torrent complet",
   "moreOptions": "Plus d'options",
-  "noNativePlayback": "Lecture native non supportée"
+  "noNativePlayback": "Lecture native non supportée",
+  "copied": "Copié !",
+  "copyMagnet": "Copier le Magnet",
+  "playTorrent": "Lire le Torrent",
+  "hash": "Hash"
 }

@@ -371,5 +371,9 @@
   "done": "Hecho",
   "downloadWholeTorrent": "Descargar torrent completo",
   "moreOptions": "Más opciones",
-  "noNativePlayback": "Reproducción nativa no soportada"
+  "noNativePlayback": "Reproducción nativa no soportada",
+  "copied": "¡Copiado!",
+  "copyMagnet": "Copiar Magnet",
+  "playTorrent": "Reproducir Torrent",
+  "hash": "Hash"
 }

@@ -371,5 +371,9 @@
   "done": "Fertig",
   "downloadWholeTorrent": "Ganzen Torrent herunterladen",
   "moreOptions": "Mehr Optionen",
-  "noNativePlayback": "Natives Abspielen nicht unterstützt"
+  "noNativePlayback": "Natives Abspielen nicht unterstützt",
+  "copied": "Kopiert!",
+  "copyMagnet": "Magnet kopieren",
+  "playTorrent": "Torrent abspielen",
+  "hash": "Hash"
 }

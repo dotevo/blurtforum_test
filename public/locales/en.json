@@ -338,5 +338,9 @@
   "done": "Done",
   "downloadWholeTorrent": "Download whole torrent",
   "moreOptions": "More options",
-  "noNativePlayback": "Native playback not supported"
+  "noNativePlayback": "Native playback not supported",
+  "copied": "Copied!",
+  "copyMagnet": "Copy Magnet",
+  "playTorrent": "Play Torrent",
+  "hash": "Hash"
 }

@@ -15,16 +15,12 @@
  * reference would go stale and playback would silently break.
  */
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
-import {
-  currentSource, playWebtorrentFile, wtActiveFileIndex,
-  wtAudioTrackIndex, wtAudioMode, wtAudioOffsetMs, wtAudioOrigVolume, wtAudioTrackVolume,
-  selectWebtorrentAudioTrack, setWebtorrentAudioMode, setWebtorrentAudioOffsetMs,
-  setWebtorrentAudioOrigVolume, setWebtorrentAudioTrackVolume,
-} from '../player';
+import { currentSource, playWebtorrentFile, wtActiveFileIndex } from '../player';
 import * as WTPool from '../webtorrent-pool';
 import type { TorrentSnapshot } from '../webtorrent-pool';
 import WebtorrentInfoModal from './WebtorrentInfoModal.vue';
 import WebtorrentPieceMap from './WebtorrentPieceMap.vue';
+import WebtorrentAudioSubtitleMenu from './WebtorrentAudioSubtitleMenu.vue';
 
 const props = defineProps<{
   t: (k: string) => string;
@@ -116,112 +112,6 @@ onUnmounted(stopPolling);
 // successful attachPlayback), so we just read that instead of re-deriving it.
 const activeFileIndex = computed<number | null>(() => wtActiveFileIndex.value);
 
-// ── Subtitles (delegates entirely to torrent-lib.js's format conversion) ──
-// IMPORTANT: we never remove <track> elements once added. Removing and
-// recreating a single <track> on every language switch (the previous
-// approach) meant the browser's native CC menu only ever saw ONE subtitle
-// option at a time (whichever was last selected) instead of the full list,
-// and in Firefox specifically the native CC button could disappear
-// altogether after the first switch and never come back — its captions UI
-// doesn't reliably rebuild after a <track> is yanked out from under it
-// mid-playback. Keeping every fetched track mounted (just toggling `.mode`
-// between 'showing'/'disabled') sidesteps all of that and needs no
-// browser-sniffing: every browser's native CC menu now lists every
-// subtitle we've fetched, same as our own <select>, and stays in sync with it.
-const subFiles = computed(() => stableFiles.value.filter(f => f.isSub));
-const activeSubIdx = ref<string>('');
-const subLoading = ref(false);
-const subTrackEls = new Map<number, HTMLTrackElement>(); // file index -> mounted <track>
-const subUrls = new Map<number, string>(); // file index -> blob URL, so we don't refetch/reconvert on re-selection
-
-function setActiveSubtitleTrack(fileIdx: number | null): void {
-  subTrackEls.forEach((el, idx) => {
-    el.track.mode = idx === fileIdx ? 'showing' : 'disabled';
-  });
-}
-
-function clearSubtitleTracks(): void {
-  subTrackEls.forEach(el => el.remove());
-  subTrackEls.clear();
-  subUrls.forEach(url => URL.revokeObjectURL(url));
-  subUrls.clear();
-  activeSubIdx.value = '';
-}
-
-async function selectSubtitle(): Promise<void> {
-  if (!activeSubIdx.value) {
-    setActiveSubtitleTrack(null);
-    return;
-  }
-  const fileIdx = Number(activeSubIdx.value);
-  if (!infoHash.value) return;
-
-  if (subTrackEls.has(fileIdx)) {
-    setActiveSubtitleTrack(fileIdx);
-    return;
-  }
-
-  const video = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
-  if (!video) return;
-
-  subLoading.value = true;
-  try {
-    const track = await WTPool.getSubtitleTrack(infoHash.value, fileIdx);
-    subUrls.set(fileIdx, track.url);
-    const el = document.createElement('track');
-    el.kind = 'subtitles';
-    el.label = track.name;
-    el.srclang = track.srclang;
-    el.src = track.url;
-    video.appendChild(el);
-    subTrackEls.set(fileIdx, el);
-    // Chrome (and, unreliably, Firefox) need the mode set explicitly after
-    // the track's cues actually load to show it immediately.
-    el.addEventListener('load', () => setActiveSubtitleTrack(fileIdx), { once: true });
-  } catch (err) {
-    console.warn('[WebtorrentVideo] subtitle not ready yet:', err);
-  } finally {
-    subLoading.value = false;
-  }
-}
-
-// A new torrent/track means the previous subtitle files no longer apply —
-// drop all mounted <track> elements and cached blob URLs.
-watch(infoHash, clearSubtitleTracks);
-
-onUnmounted(clearSubtitleTracks);
-
-// ── Alternate audio track (lektor/dub) ─────────────────────────────────────
-// Candidate files: audio-typed, and not whatever the main video/audio file
-// currently is (so a torrent whose "video" file is itself audio-only, e.g. a
-// pure-audio torrent, doesn't offer itself as its own alternate track).
-const audioFiles = computed(() => stableFiles.value.filter(f => f.isAudio && f.index !== activeFileIndex.value));
-const activeAudioIdx = computed<string>(() => wtAudioTrackIndex.value == null ? '' : String(wtAudioTrackIndex.value));
-
-function selectAudioTrack(e: Event): void {
-  const val = (e.target as HTMLSelectElement).value;
-  selectWebtorrentAudioTrack(val === '' ? null : Number(val));
-}
-
-// Advanced audio panel (offset + the two independent volume sliders) — only
-// meaningful once a track is actually selected, so the gear only shows then.
-const showAudioAdvanced = ref(false);
-watch(activeAudioIdx, (idx) => { if (!idx) showAudioAdvanced.value = false; });
-
-const offsetSecDisplay = computed(() => (wtAudioOffsetMs.value / 1000).toFixed(1));
-function onOffsetInput(e: Event): void {
-  setWebtorrentAudioOffsetMs(Number((e.target as HTMLInputElement).value));
-}
-function onOrigVolumeInput(e: Event): void {
-  setWebtorrentAudioOrigVolume(Number((e.target as HTMLInputElement).value));
-}
-function onTrackVolumeInput(e: Event): void {
-  setWebtorrentAudioTrackVolume(Number((e.target as HTMLInputElement).value));
-}
-function onAudioModeChange(e: Event): void {
-  setWebtorrentAudioMode((e.target as HTMLSelectElement).value as 'lektor' | 'dub');
-}
-
 // ── "Download whole torrent" (offline playback later) ─────────────────────
 // Streaming only ever fetches a lookahead window around the current
 // position — this lets the user explicitly ask us to keep pulling every
@@ -260,15 +150,6 @@ function onPlayFile(fileIndex: number): void {
 // ── Info modal ───────────────────────────────────────────────────────────
 const showInfo = ref(false);
 
-// ── Mobile "more" overflow menu ─────────────────────────────────────────────
-// On a narrow screen there isn't room to show the subtitle picker, audio
-// picker, audio-settings gear, download button and peers/speed readout all
-// inline at once (see .wtv-controls-collapsible media query below) — they
-// collapse into a single "⋮" button, same idea as YouTube's mobile overflow
-// menu. Desktop is unaffected (CSS keeps everything inline there and hides
-// the "⋮" button entirely).
-const showMoreMenu = ref(false);
-
 // ── Auto-hide overlay controls ─────────────────────────────────────────────
 // The browser's own <video controls> chrome fades out after a few idle
 // seconds and reappears on hover/tap — our overlay (info button, subtitle
@@ -288,7 +169,9 @@ function isVideoPlaying(): boolean {
 function scheduleHide(): void {
   if (hideTimer) clearTimeout(hideTimer);
   if (!isVideoPlaying()) return; // stay visible while paused/ended
-  hideTimer = setTimeout(() => { controlsVisible.value = false; showMoreMenu.value = false; showAudioAdvanced.value = false; }, HIDE_DELAY_MS);
+  // WebtorrentAudioSubtitleMenu closes its own dropdown/panel on its own —
+  // it watches the `visible` prop we pass it below, so nothing else to do here.
+  hideTimer = setTimeout(() => { controlsVisible.value = false; }, HIDE_DELAY_MS);
 }
 
 function showControls(): void {
@@ -307,6 +190,47 @@ onUnmounted(() => {
   video?.removeEventListener('play', scheduleHide);
   video?.removeEventListener('pause', showControls);
 });
+
+// ── Fullscreen ───────────────────────────────────────────────────────────
+// Real bug this fixes: the native fullscreen button (part of <video
+// controls>) calls requestFullscreen() on the <video> element ITSELF. Our
+// overlay controls are a SIBLING of <video> (both children of
+// .wtv-video-area), not a descendant of it — so native fullscreen doesn't
+// just hide our overlay, it's not even part of the fullscreened subtree at
+// all. Fullscreening .wtv-video-area instead (video + overlay together)
+// fixes that: same element, same mousemove/touchstart/click listeners
+// already wired up above, so show/hide-on-tap keeps working completely
+// unchanged once inside fullscreen.
+//
+// Platform limits, being upfront about them:
+// - `nofullscreen` in controls-list (added on the <video> tag below) hides
+//   Chromium's native fullscreen button, so ours is the only one there.
+//   Firefox does not support hiding it via controlsList — its own native
+//   button remains and still does the old (overlay-less) per-<video>
+//   fullscreen; ours is simply an extra button alongside it.
+// - iOS Safari's video fullscreen is a completely separate native player
+//   (AVPlayerViewController-style UI, not part of the page's DOM at all) —
+//   there is no way to inject any custom overlay into it. Hard platform
+//   limit, not something any web-side fix can work around.
+const videoAreaEl = ref<HTMLElement | null>(null);
+const isFullscreen = ref(false);
+
+function toggleFullscreen(): void {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else {
+    videoAreaEl.value?.requestFullscreen?.().catch((err: unknown) => {
+      console.warn('[WebtorrentVideo] fullscreen request failed:', err);
+    });
+  }
+}
+
+function onFullscreenChange(): void {
+  isFullscreen.value = document.fullscreenElement === videoAreaEl.value;
+}
+
+onMounted(() => { document.addEventListener('fullscreenchange', onFullscreenChange); });
+onUnmounted(() => { document.removeEventListener('fullscreenchange', onFullscreenChange); });
 
 // Re-show whenever a fresh webtorrent track starts playing.
 watch(isWebtorrent, (active) => { if (active) showControls(); });
@@ -327,74 +251,53 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
       not 100% of the whole tab — leaving room for the fixed-height piece
       map + legend below it, all still fitting inside the tab's 100%.
     -->
-    <div class="wtv-video-area" @mousemove="showControls" @mouseenter="showControls" @touchstart="showControls" @click="showControls">
+    <div class="wtv-video-area" ref="videoAreaEl" @mousemove="showControls" @mouseenter="showControls" @touchstart="showControls" @click="showControls">
       <!--
         WTPool.attachPlayback() (see loadWebtorrentSource in player.ts) assigns
         this element's src directly — a single persistent element, not
         recreated per track, since torrent-lib.js attaches/detaches its own
         stream to whatever element you hand it.
       -->
-      <video id="bf-wt-player-video" class="bfp-video-iframe" controls playsinline controls-list="nodownload"></video>
+      <video id="bf-wt-player-video" class="bfp-video-iframe" controls playsinline controls-list="nodownload nofullscreen"></video>
 
       <div class="wtv-controls" v-if="isWebtorrent" :class="{ 'wtv-controls--hidden': !controlsVisible }">
         <button class="wtv-btn" @click="showInfo = true" :title="t('torrentInfo') || 'Torrent info'">
           <i class="fa-solid fa-circle-info"></i>
         </button>
-        <button class="wtv-btn wtv-more-btn" :class="{ 'wtv-btn--active': showMoreMenu }"
-                @click="showMoreMenu = !showMoreMenu" :title="t('moreOptions') || 'More options'">
-          <i class="fa-solid fa-ellipsis-vertical"></i>
+        <button class="wtv-btn" :class="{ 'wtv-btn--active': fullDownload }" @click="toggleFullDownload"
+                :title="t('downloadWholeTorrent') || 'Download entire torrent for offline playback later'">
+          <i v-if="fullDownload && torrent?.done" class="fa-solid fa-check"></i>
+          <i v-else class="fa-solid fa-download"></i>
+          <span v-if="fullDownload && torrent && !torrent.done" class="wtv-dl-pct">{{ Math.round((torrent.progress || 0) * 100) }}%</span>
         </button>
-        <div class="wtv-controls-collapsible" :class="{ 'wtv-controls-collapsible--open': showMoreMenu }">
-          <select v-if="subFiles.length" v-model="activeSubIdx" @change="selectSubtitle" class="wtv-sub-select"
-                  :disabled="subLoading" :title="t('subtitles') || 'Subtitles'">
-            <option value="">{{ t('subtitlesOff') || 'No subtitles' }}</option>
-            <option v-for="f in subFiles" :key="f.index" :value="f.index">{{ f.name }}</option>
-          </select>
-          <select v-if="audioFiles.length" :value="activeAudioIdx" @change="selectAudioTrack" class="wtv-sub-select"
-                  :title="t('audioTrack') || 'Audio track'">
-            <option value="">{{ t('audioTrackOriginal') || 'Original audio' }}</option>
-            <option v-for="f in audioFiles" :key="f.index" :value="f.index">{{ f.name }}</option>
-          </select>
-          <button v-if="activeAudioIdx" class="wtv-btn" :class="{ 'wtv-btn--active': showAudioAdvanced }"
-                  @click="showAudioAdvanced = !showAudioAdvanced"
-                  :title="t('audioTrackSettings') || 'Audio track settings (sync, volume)'">
-            <i class="fa-solid fa-sliders"></i>
-          </button>
-          <button class="wtv-btn" :class="{ 'wtv-btn--active': fullDownload }" @click="toggleFullDownload"
-                  :title="t('downloadWholeTorrent') || 'Download entire torrent for offline playback later'">
-            <i v-if="fullDownload && torrent?.done" class="fa-solid fa-check"></i>
-            <i v-else class="fa-solid fa-download"></i>
-            <span v-if="fullDownload && torrent && !torrent.done" class="wtv-dl-pct">{{ Math.round((torrent.progress || 0) * 100) }}%</span>
-          </button>
-          <span v-if="torrent" class="wtv-peers" :title="t('peers') || 'Peers'">
-            <i class="fa-solid fa-users"></i> {{ torrent.numPeers }}
-          </span>
-          <span v-if="torrent" class="wtv-speed" :title="t('downloadSpeed') || 'Download speed'">
-            <i class="fa-solid fa-arrow-down"></i> {{ (torrent.downloadSpeed / 1024).toFixed(0) }} KB/s
-          </span>
-        </div>
-      </div>
-
-      <div v-if="isWebtorrent && showAudioAdvanced && activeAudioIdx" class="wtv-audio-panel" @click.stop @mousemove.stop>
-        <div class="wtv-audio-panel-row">
-          <label>{{ t('audioTrackMode') || 'Mode' }}</label>
-          <select :value="wtAudioMode" @change="onAudioModeChange">
-            <option value="dub">{{ t('audioTrackModeDub') || 'Replace original (dubbing)' }}</option>
-            <option value="lektor">{{ t('audioTrackModeLektor') || 'Alongside original (lektor)' }}</option>
-          </select>
-        </div>
-        <div class="wtv-audio-panel-row">
-          <label>{{ t('audioTrackOffset') || 'Sync offset' }} ({{ offsetSecDisplay }}s)</label>
-          <input type="range" min="-10000" max="10000" step="100" :value="wtAudioOffsetMs" @input="onOffsetInput" />
-        </div>
-        <div class="wtv-audio-panel-row">
-          <label>{{ t('audioTrackOrigVolume') || 'Original volume' }}</label>
-          <input type="range" min="0" max="1" step="0.05" :value="wtAudioOrigVolume" @input="onOrigVolumeInput" />
-        </div>
-        <div class="wtv-audio-panel-row">
-          <label>{{ t('audioTrackVolume') || 'Track volume' }}</label>
-          <input type="range" min="0" max="1" step="0.05" :value="wtAudioTrackVolume" @input="onTrackVolumeInput" />
-        </div>
+        <span v-if="torrent" class="wtv-peers" :title="t('peers') || 'Peers'">
+          <i class="fa-solid fa-users"></i> {{ torrent.numPeers }}
+        </span>
+        <span v-if="torrent" class="wtv-speed" :title="t('downloadSpeed') || 'Download speed'">
+          <i class="fa-solid fa-arrow-down"></i> {{ (torrent.downloadSpeed / 1024).toFixed(0) }} KB/s
+        </span>
+        <button class="wtv-btn" @click="toggleFullscreen"
+                :title="t('fullscreen') || 'Fullscreen'">
+          <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand'"></i>
+        </button>
+        <!--
+          Subtitles + alternate audio track, entirely self-contained — see
+          WebtorrentAudioSubtitleMenu.vue's own top-of-file comment for why
+          this had to be its own component rather than inline markup here:
+          it must have ZERO reactive dependency on `torrent` (updated every
+          second above) so a stats poll tick can never touch it, even
+          indirectly through a shared render pass. `files`/`activeFileIndex`
+          only actually change when the file list or the attached file index
+          change — not every second — so this only re-renders when something
+          real changes.
+        -->
+        <WebtorrentAudioSubtitleMenu
+          :t="t"
+          :info-hash="infoHash"
+          :files="stableFiles"
+          :active-file-index="activeFileIndex"
+          :visible="controlsVisible"
+        />
       </div>
     </div>
 
@@ -431,8 +334,11 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
   position: absolute;
   top: 8px;
   right: 8px;
+  left: 8px;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
   z-index: 5;
   opacity: 1;
@@ -493,85 +399,5 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
   align-items: center;
   gap: 5px;
 }
-.wtv-more-btn {
-  display: none; /* only shown on narrow screens, see media query below */
-}
-.wtv-controls-collapsible {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 .wtv-speed { color: #7ee8c9; }
-.wtv-audio-panel {
-  position: absolute;
-  top: 44px;
-  right: 8px;
-  z-index: 7;
-  background: rgba(0,0,0,.85);
-  border: 1px solid rgba(255,255,255,.15);
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 220px;
-}
-.wtv-audio-panel-row {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.wtv-audio-panel-row label {
-  color: #fff;
-  font-size: 10px;
-  opacity: .85;
-}
-.wtv-audio-panel-row select {
-  background: rgba(255,255,255,.08);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,.15);
-  border-radius: 5px;
-  padding: 4px 6px;
-  font-size: 11px;
-}
-.wtv-audio-panel-row input[type="range"] {
-  width: 100%;
-}
-
-/* Mobile: too many controls to show inline at once (this is what was
-   crowding out the language/subtitle pickers) — collapse everything except
-   the info button behind a single "⋮" overflow button, same pattern as
-   YouTube's mobile settings menu. */
-@media (max-width: 640px) {
-  .wtv-more-btn { display: flex; }
-  .wtv-controls-collapsible {
-    display: none;
-  }
-  .wtv-controls-collapsible--open {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    position: absolute;
-    top: 44px;
-    right: 8px;
-    z-index: 6;
-    background: rgba(0,0,0,.85);
-    border: 1px solid rgba(255,255,255,.15);
-    border-radius: 8px;
-    padding: 8px;
-    gap: 8px;
-    max-width: 220px;
-  }
-  .wtv-controls-collapsible--open .wtv-sub-select { max-width: none; }
-  .wtv-controls-collapsible--open .wtv-peers,
-  .wtv-controls-collapsible--open .wtv-speed { justify-content: center; }
-  .wtv-audio-panel {
-    position: fixed;
-    top: auto;
-    bottom: 12px;
-    left: 12px;
-    right: 12px;
-    min-width: 0;
-  }
-}
 </style>

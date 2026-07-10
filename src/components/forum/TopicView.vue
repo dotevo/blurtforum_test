@@ -153,14 +153,14 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                   {{ followingSet.has(activeTopic.author) ? t('followed') : t('follow') }}
                 </button>
               </div>
-              <div class="gs" style="margin-top:8px; font-weight: bold;"><a :href="'?community=' + config.communityAccount + '&view=profile&user=' + activeTopic.author" @click.prevent="emit('openProfile', activeTopic.author)">@{{ activeTopic.author }}</a><br>{{ t('blurtUser') }}</div>
+              <div class="gs" style="margin-top:8px; font-weight: bold;"><a :href="'?view=profile&user=' + activeTopic.author" @click.prevent="emit('openProfile', activeTopic.author)">@{{ activeTopic.author }}</a><br>{{ t('blurtUser') }}</div>
             </td>
             <td class="row1 post-body-cell">
               <!-- Mobile Header (OP) -->
               <div class="comment-mobile-header show-mobile">
                 <UserAvatar :username="activeTopic.author" size="xs" @click="emit('openProfile', activeTopic.author)" />
                 <div style="flex:1">
-                  <div style="font-weight:bold; font-size:14px;"><a :href="'?community=' + config.communityAccount + '&view=profile&user=' + activeTopic.author" @click.prevent="emit('openProfile', activeTopic.author)">@{{ activeTopic.author }}</a></div>
+                  <div style="font-weight:bold; font-size:14px;"><a :href="'?view=profile&user=' + activeTopic.author" @click.prevent="emit('openProfile', activeTopic.author)">@{{ activeTopic.author }}</a></div>
                   <div class="gs" style="font-size:10px;">{{ fmtDate(activeTopic.created) }}</div>
                 </div>
                 <button v-if="auth.user && auth.user.username !== activeTopic.author" 
@@ -267,7 +267,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                  :style="{ opacity: r.isMuted ? 0.5 : 1 }">
             <thead>
               <tr class="hide-mobile">
-                <td class="row3 post-profile"><b><a :href="'?community=' + config.communityAccount + '&view=profile&user=' + r.author" @click.prevent="emit('openProfile', r.author)">@{{ r.author }}</a></b></td>
+                <td class="row3 post-profile"><b><a :href="'?view=profile&user=' + r.author" @click.prevent="emit('openProfile', r.author)">@{{ r.author }}</a></b></td>
                 <td class="row3">
                   <div class="post-header">
                     <span class="gs">
@@ -304,7 +304,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                   <div class="comment-mobile-header show-mobile">
                     <UserAvatar :username="r.author" size="xs" @click="emit('openProfile', r.author)" />
                     <div style="flex:1">
-                      <div style="font-weight:bold; font-size:13px;"><a :href="'?community=' + config.communityAccount + '&view=profile&user=' + r.author" @click.prevent="emit('openProfile', r.author)">@{{ r.author }}</a></div>
+                      <div style="font-weight:bold; font-size:13px;"><a :href="'?view=profile&user=' + r.author" @click.prevent="emit('openProfile', r.author)">@{{ r.author }}</a></div>
                       <div class="gs" style="font-size:10px;">#{{ i+1 }} · {{ fmtDate(r.created) }}</div>
                     </div>
                     
@@ -334,7 +334,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                   <!-- Quote of parent comment (only when it's a nested reply, not a direct reply to OP) -->
 
                   <div v-if="isNestedReply(r)" class="quote-box">
-                    <span style="font-weight: bold;">{{ t('replyTo') }}: <a :href="'?community=' + config.communityAccount + '&view=profile&user=' + r.parent_author" @click.prevent="emit('openProfile', r.parent_author)">@{{ r.parent_author }}</a></span>
+                    <span style="font-weight: bold;">{{ t('replyTo') }}: <a :href="'?view=profile&user=' + r.parent_author" @click.prevent="emit('openProfile', r.parent_author)">@{{ r.parent_author }}</a></span>
                     <span class="quote-toggle" @click="r._qOpen=!r._qOpen">
                       [{{ r._qOpen ? t('hide') : t('show') }}]
                     </span>

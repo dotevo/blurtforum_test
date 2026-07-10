@@ -501,7 +501,19 @@ export function useApp() {
 
   const syncUrl = (): void => {
     const params = new URLSearchParams();
-    params.set('community', config.communityAccount);
+    
+    const isVirtualForum = activeForum.value && VIRTUAL_FORUMS.some(vf => vf.id === activeForum.value?.id);
+    let shouldIncludeCommunity = false;
+    if (view.value === 'index' || view.value === 'forum') {
+      shouldIncludeCommunity = !isVirtualForum;
+    } else if (view.value === 'topic' && activeTopic.value) {
+      shouldIncludeCommunity = !isVirtualForum && isPostInCommunity(activeTopic.value);
+    }
+
+    if (shouldIncludeCommunity) {
+      params.set('community', config.communityAccount);
+    }
+
     if (view.value !== 'index') params.set('view', view.value);
     if (currentTagFilter.value) params.set('tag', currentTagFilter.value);
     if (view.value === 'forum' && activeForum.value) {
@@ -1222,8 +1234,18 @@ export function useApp() {
       const mention = target.closest('.mention');
       if (mention) { e.preventDefault(); openProfile((mention as HTMLElement).getAttribute('data-user')!); return; }
     });
-    // Expose openProfile for DOMPurify-sanitized content
-    (window as Record<string, unknown>).app = { openProfile };
+    // Expose app controls for DOMPurify-sanitized content and E2E testing
+    (window as Record<string, unknown>).app = {
+      openProfile,
+      openTopic,
+      openForum,
+      goHome,
+      config,
+      view,
+      activeForum,
+      activeTopic,
+      explorationForm
+    };
 
     // Restore sessions
     const savedAll = localStorage.getItem('blurtforum_sessions');

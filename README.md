@@ -61,9 +61,10 @@ npm run preview    # serve dist/ locally
 ## Routing & SEO
 
 The application is a Single Page Application (SPA) designed to be hosted on GitHub Pages without a backend.
-To optimize search engine indexing (specifically for Googlebot, which runs client-side JavaScript):
+To optimize search engine indexing (specifically for Googlebot, which runs client-side JavaScript) and prevent duplicate content penalties:
 - **Crawlable Navigation**: All major transitions (changing communities, categories, forums, topics, and profiles) use standard HTML anchor tags (`<a>`) with valid `href` query parameters (e.g., `?community=...&view=...`).
 - **SPA Interception**: When users click these links, Vue event handlers intercept the clicks (`@click.prevent`) to transition instantly without a page reload, while crawlers can discover and extract the `href` paths to index the entire forum graph.
+- **URL Cleanups & Canonical Scope**: To prevent indexing a single topic/post under 500 different community parameters (duplicate content), the `community` parameter is dropped from URLs during exploration/virtual forum browsing, profile views, and when a topic does not belong to the active community. Similarly, generated template links `<a>` to profiles and non-community-matching posts do not include the `community` parameter.
 
 ## GitHub Pages deployment
 

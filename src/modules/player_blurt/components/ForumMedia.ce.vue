@@ -56,10 +56,14 @@ if (typeof document !== 'undefined') {
 
 <script setup lang="ts">
 import { getTorrent, parseInfoHash } from '../../player/webtorrent-pool';
+import { TR } from '../../translations';
 
 // Global cache for this session to persist resolutions across component unmounts
 const sunoCache = reactive<Record<string, { id: string, src: string, cover: string }>>({});
-const t = (k: string): string => props.t ? props.t(k) : k;
+const t = (k: string): string => {
+  if (props.t) return props.t(k);
+  return TR[k] || k;
+};
 
 // WebTorrent card live status
 const torrentStatus = ref<{ progress: string; downloadSpeed: number; numPeers: number } | null>(null);

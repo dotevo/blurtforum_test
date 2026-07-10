@@ -372,5 +372,18 @@
   "copied": "Kopiita!",
   "copyMagnet": "Kopii Magneton",
   "playTorrent": "Ludi Torrenton",
-  "hash": "Hasaĵo"
+  "hash": "Hasaĵo",
+  "oldContentExistingDesc": "Subtena komento jam ekzistas por ĉi tiu afiŝo. Voĉdonu por ĝi por montri vian subtenon.",
+  "voteOnSupport": "Voĉdoni por subteno",
+  "audioSubtitleSettings": "Aŭdo kaj subtitoloj",
+  "subtitlesNone": "Neniuj subtitolaj dosieroj en ĉi tiu torento",
+  "audioTrackNone": "Neniuj alternativaj aŭdaj dosieroj en ĉi tiu torento",
+  "noPeersYet": "Neniuj kolegoj konektitaj ankoraŭ…",
+  "loadingTorrentMetadata": "Atendante torentajn metadatenojn…",
+  "confirmClearWebtorrentData": "Ĉu forigi ĉiujn elŝutitajn torentajn datumojn de ĉi tiu aparato? Tio estas nefarebla.",
+  "off": "Malŝaltita",
+  "noStoredTorrents": "Nenio stokita ankoraŭ.",
+  "playStoredTorrent": "Ludi",
+  "clearing": "Forigante…",
+  "fullscreen": "Plenekrano"
 }

@@ -342,5 +342,18 @@
   "copied": "Copied!",
   "copyMagnet": "Copy Magnet",
   "playTorrent": "Play Torrent",
-  "hash": "Hash"
+  "hash": "Hash",
+  "oldContentExistingDesc": "A support comment already exists for this post. Vote on it to show your support.",
+  "voteOnSupport": "Vote on support",
+  "audioSubtitleSettings": "Audio & subtitles",
+  "subtitlesNone": "No subtitle files in this torrent",
+  "audioTrackNone": "No alternate audio files in this torrent",
+  "noPeersYet": "No peers connected yet…",
+  "loadingTorrentMetadata": "Waiting for torrent metadata…",
+  "confirmClearWebtorrentData": "Delete all downloaded torrent data from this device? This cannot be undone.",
+  "off": "Off",
+  "noStoredTorrents": "Nothing stored yet.",
+  "playStoredTorrent": "Play",
+  "clearing": "Clearing…",
+  "fullscreen": "Fullscreen"
 }

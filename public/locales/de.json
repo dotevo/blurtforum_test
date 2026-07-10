@@ -375,5 +375,18 @@
   "copied": "Kopiert!",
   "copyMagnet": "Magnet kopieren",
   "playTorrent": "Torrent abspielen",
-  "hash": "Hash"
+  "hash": "Hash",
+  "oldContentExistingDesc": "Für diesen Beitrag existiert bereits ein Unterstützungs-Kommentar. Stimmen Sie dafür ab, um Ihre Unterstützung zu zeigen.",
+  "voteOnSupport": "Unterstützung abstimmen",
+  "audioSubtitleSettings": "Audio & Untertitel",
+  "subtitlesNone": "Keine Untertiteldateien in diesem Torrent vorhanden",
+  "audioTrackNone": "Keine alternativen Audiodateien in diesem Torrent vorhanden",
+  "noPeersYet": "Noch keine Peers verbunden…",
+  "loadingTorrentMetadata": "Warten auf Torrent-Metadaten…",
+  "confirmClearWebtorrentData": "Alle heruntergeladenen Torrent-Daten von diesem Gerät löschen? Dies kann nicht rückgängig gemacht werden.",
+  "off": "Aus",
+  "noStoredTorrents": "Noch nichts gespeichert.",
+  "playStoredTorrent": "Abspielen",
+  "clearing": "Löschen…",
+  "fullscreen": "Vollbild"
 }

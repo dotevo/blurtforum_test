@@ -27,6 +27,7 @@ import { Parser } from '../modules/parser';
 import { PostProcessor } from '../modules/post-processor';
 
 import { TR, loadLanguage, type Lang, LANGS as langs } from '../modules/translations';
+import { isSeedingEnabled, initWebtorrent } from '../modules/player/webtorrent-pool';
 import '../modules/whalevault';
 import type {
   Post, Forum, ForumCategory, RawPost, AuthUser, ActivityItem,
@@ -1227,6 +1228,12 @@ export function useApp() {
       }
     });
     startNotifPolling();
+    
+    // Auto-initialize WebTorrent on startup if seeding is enabled to resume seeding immediately
+    if (isSeedingEnabled()) {
+      console.log('[WT] Seeding is enabled, auto-initializing WebTorrent pool at startup.');
+      initWebtorrent().catch(err => console.error('[WT] Startup WebTorrent auto-init failed:', err));
+    }
 
     document.addEventListener('click', (e: MouseEvent) => {
       const target = e.target as HTMLElement;

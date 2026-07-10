@@ -378,5 +378,18 @@
   "copied": "Skopiowano!",
   "copyMagnet": "Kopiuj link magnet",
   "playTorrent": "Odtwórz Torrent",
-  "hash": "Hash"
+  "hash": "Hash",
+  "oldContentExistingDesc": "Komentarz wsparcia już istnieje dla tego posta. Zagłosuj na niego, aby okazać swoje wsparcie.",
+  "voteOnSupport": "Zagłosuj na wsparcie",
+  "audioSubtitleSettings": "Dźwięk i napisy",
+  "subtitlesNone": "Brak plików napisów w tym torrencie",
+  "audioTrackNone": "Brak alternatywnych plików dźwiękowych w tym torrencie",
+  "noPeersYet": "Brak połączonych peerów…",
+  "loadingTorrentMetadata": "Oczekiwanie na metadane torrenta…",
+  "confirmClearWebtorrentData": "Usunąć wszystkie pobrane dane torrent z tego urządzenia? Tego kroku nie można cofnąć.",
+  "off": "Wył.",
+  "noStoredTorrents": "Brak zapisanych torrentów.",
+  "playStoredTorrent": "Odtwórz",
+  "clearing": "Czyszczenie…",
+  "fullscreen": "Pełny ekran"
 }

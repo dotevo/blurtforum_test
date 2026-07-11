@@ -8,7 +8,8 @@ import ScrollableTabs from '../layout/ScrollableTabs.vue';
 import PayoutBadge from '../layout/PayoutBadge.vue';
 import UserAvatar from '../layout/UserAvatar.vue';
 import VoteButton from '../layout/VoteButton.vue';
-import VueApexCharts from "vue3-apexcharts";
+import MiniDonutChart from '../../modules/charts/MiniDonutChart.vue';
+import MiniBarChart from '../../modules/charts/MiniBarChart.vue';
 
 const props = defineProps<{
   profileUser: {
@@ -91,53 +92,22 @@ const colors = {
   claimed: '#9b59b6'
 };
 
-// --- ApexCharts Options ---
+// --- Chart data (consumed by MiniDonutChart / MiniBarChart, see ../../modules/charts) ---
 
-const donutOptions = computed(() => ({
-  chart: { type: 'donut' as const },
-  labels: [props.t('authorRewards'), props.t('curationRewards'), props.t('benefactorRewards')],
-  colors: [colors.author, colors.curation, colors.benefactor],
-  legend: { position: 'bottom' as const, labels: { colors: 'var(--text-muted)' } },
-  dataLabels: { enabled: false },
-  stroke: { show: false },
-  plotOptions: { pie: { donut: { size: '65%', background: 'transparent' } } },
-  tooltip: { theme: 'dark' as const }
-}));
-
+const donutLabels = computed(() => [props.t('authorRewards'), props.t('curationRewards'), props.t('benefactorRewards')]);
+const donutColorsArr = computed(() => [colors.author, colors.curation, colors.benefactor]);
 const donutSeries = computed(() => {
   const d = props.profileUser.earnings.chartData.distribution;
   return [d.author, d.curation, d.benefactor];
 });
 
-const barOptions = computed(() => ({
-  chart: { 
-    type: 'bar' as const, 
-    stacked: true, 
-    toolbar: { show: true, tools: { download: false } },
-    background: 'transparent'
-  },
-  colors: [colors.author, colors.curation, colors.benefactor],
-  plotOptions: { bar: { horizontal: false, columnWidth: '70%' } },
-  dataLabels: { enabled: false },
-  xaxis: {
-    categories: props.profileUser.earnings.chartData.daily.map(d => d.date),
-    labels: { style: { colors: 'var(--text-muted)', fontSize: '10px' } },
-    axisBorder: { show: false },
-    axisTicks: { show: false }
-  },
-  yaxis: { labels: { style: { colors: 'var(--text-muted)' } } },
-  grid: { borderColor: 'var(--border-main)', strokeDashArray: 4 },
-  legend: { show: false },
-  tooltip: { theme: 'dark' as const, shared: true, intersect: false },
-  theme: { mode: 'dark' as const }
-}));
-
+const barCategories = computed(() => props.profileUser.earnings.chartData.daily.map(d => d.date));
 const barSeries = computed(() => {
   const data = props.profileUser.earnings.chartData.daily;
   return [
-    { name: props.t('authorRewards'), data: data.map(d => parseFloat(d.author.toFixed(2))) },
-    { name: props.t('curationRewards'), data: data.map(d => parseFloat(d.curation.toFixed(2))) },
-    { name: props.t('benefactorRewards'), data: data.map(d => parseFloat(d.benefactor.toFixed(2))) }
+    { name: props.t('authorRewards'), color: colors.author, data: data.map(d => parseFloat(d.author.toFixed(2))) },
+    { name: props.t('curationRewards'), color: colors.curation, data: data.map(d => parseFloat(d.curation.toFixed(2))) },
+    { name: props.t('benefactorRewards'), color: colors.benefactor, data: data.map(d => parseFloat(d.benefactor.toFixed(2))) },
   ];
 });
 
@@ -403,14 +373,14 @@ const barSeries = computed(() => {
                         <div class="tx-details">
                           <template v-if="tx.op[0] === 'transfer'">
                             <span class="tx-label">{{ tx.op[1].from === profileUser.username ? t('sentTo') : t('receivedFrom') }}</span>
-                               <a :href="'?view=profile&user=' + (tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)" class="interactive-username" @click.prevent="$emit('openProfile', tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)">@{{ tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from }}</a>
+                            <a :href="'?community=' + config.communityAccount + '&view=profile&user=' + (tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)" class="interactive-username" @click.prevent="$emit('openProfile', tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)">@{{ tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from }}</a>
                             <div v-if="tx.op[1].memo" class="tx-memo-v2">"{{ tx.op[1].memo }}"</div>
                           </template>
                           <template v-else-if="tx.op[0] === 'transfer_to_vesting'">
                             <span class="tx-label">{{ t('powerUp') }}</span>
                             <span v-if="tx.op[1].to !== tx.op[1].from">
                               {{ tx.op[1].from === profileUser.username ? 'to' : 'from' }}
-                              <a :href="'?view=profile&user=' + (tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)" class="interactive-username" @click.prevent="$emit('openProfile', tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)">@{{ tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from }}</a>
+                              <a :href="'?community=' + config.communityAccount + '&view=profile&user=' + (tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)" class="interactive-username" @click.prevent="$emit('openProfile', tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from)">@{{ tx.op[1].from === profileUser.username ? tx.op[1].to : tx.op[1].from }}</a>
                             </span>
                           </template>
                           <template v-else-if="tx.op[0] === 'withdraw_vesting'">
@@ -418,7 +388,7 @@ const barSeries = computed(() => {
                           </template>
                           <template v-else-if="tx.op[0] === 'delegate_vesting_shares'">
                              <span class="tx-label">{{ tx.op[1].delegator === profileUser.username ? t('delegateTo') : t('receivedDelegationFrom') || 'Received delegation from' }}</span>
-                              <a :href="'?view=profile&user=' + (tx.op[1].delegator === profileUser.username ? tx.op[1].delegatee : tx.op[1].delegator)" class="interactive-username" @click.prevent="$emit('openProfile', tx.op[1].delegator === profileUser.username ? tx.op[1].delegatee : tx.op[1].delegator)">@{{ tx.op[1].delegator === profileUser.username ? tx.op[1].delegatee : tx.op[1].delegator }}</a>
+                             <a :href="'?community=' + config.communityAccount + '&view=profile&user=' + (tx.op[1].delegator === profileUser.username ? tx.op[1].delegatee : tx.op[1].delegator)" class="interactive-username" @click.prevent="$emit('openProfile', tx.op[1].delegator === profileUser.username ? tx.op[1].delegatee : tx.op[1].delegator)">@{{ tx.op[1].delegator === profileUser.username ? tx.op[1].delegatee : tx.op[1].delegator }}</a>
                           </template>
                         </div>
                       </div>
@@ -468,7 +438,7 @@ const barSeries = computed(() => {
             <div class="chart-container forumline donut-section">
               <h4>{{ t('distribution') }}</h4>
               <div v-if="profileUser.earnings.stats.total !== 0" style="min-height: 200px;">
-                <VueApexCharts width="100%" height="220" :options="donutOptions" :series="donutSeries" />
+                <MiniDonutChart :series="donutSeries" :labels="donutLabels" :colors="donutColorsArr" :total-label="t('total') || 'RAZEM'" />
               </div>
               <div v-else class="empty-chart">{{ t('noData') }}</div>
             </div>
@@ -477,7 +447,7 @@ const barSeries = computed(() => {
             <div class="chart-container forumline trend-section">
               <h4>{{ t('dailyTrend') }}</h4>
               <div v-if="profileUser.earnings.chartData.daily.length" style="min-height: 200px;">
-                <VueApexCharts width="100%" height="200" :options="barOptions" :series="barSeries" />
+                <MiniBarChart :categories="barCategories" :series="barSeries" :stacked="true" :zoomable="true" :height="200" />
               </div>
               <div v-else class="empty-chart">{{ t('noData') }}</div>
             </div>
@@ -556,8 +526,8 @@ const barSeries = computed(() => {
                     :permlink="post.permlink"
                     :t="t"
                   />
-                   <a :href="(post.category === config.communityAccount) ? '?community=' + config.communityAccount + '&view=topic&author=' + post.author + '&permlink=' + post.permlink : '?view=topic&author=' + post.author + '&permlink=' + post.permlink" @click.stop.prevent="$emit('openTopic', post)" 
-                      style="font-size: 12px; font-weight: normal;">{{ post.title }}</a>
+                  <a :href="'?community=' + config.communityAccount + '&view=topic&author=' + post.author + '&permlink=' + post.permlink" @click.stop.prevent="$emit('openTopic', post)" 
+                     style="font-size: 12px; font-weight: normal;">{{ post.title }}</a>
                 </div>
               </td>
               <td class="row2" align="center">
@@ -593,7 +563,7 @@ const barSeries = computed(() => {
                 <VoteButton :voted="hasVoted(c)" :count="c.vote_count" @vote="$emit('submitVote', c)" />
               </td>
               <td class="row1 row-hover" @click="$emit('openTopic', c)">
-                 <a :href="(c.category === config.communityAccount) ? '?community=' + config.communityAccount + '&view=topic&author=' + c.author + '&permlink=' + c.permlink : '?view=topic&author=' + c.author + '&permlink=' + c.permlink" @click.stop.prevent="$emit('openTopic', c)" style="display:block; text-decoration:none; color:inherit;">
+                <a :href="'?community=' + config.communityAccount + '&view=topic&author=' + c.author + '&permlink=' + c.permlink" @click.stop.prevent="$emit('openTopic', c)" style="display:block; text-decoration:none; color:inherit;">
                   <span class="gs">RE: @{{ c.parent_author }}</span><br>
                   {{ c.body.substring(0, 100) }}...
                 </a>
@@ -634,10 +604,10 @@ const barSeries = computed(() => {
               </td>
               <td class="row1" align="center">
                 <UserAvatar :username="r.author" size="xs" @click="$emit('openProfile', r.author)" />
-                 <a :href="'?view=profile&user=' + r.author" @click.stop.prevent="$emit('openProfile', r.author)" style="font-size:11px;">@{{ r.author }}</a>
+                <a :href="'?community=' + config.communityAccount + '&view=profile&user=' + r.author" @click.stop.prevent="$emit('openProfile', r.author)" style="font-size:11px;">@{{ r.author }}</a>
               </td>
               <td class="row1 row-hover" @click="$emit('openTopic', r)">
-                 <a :href="(r.category === config.communityAccount) ? '?community=' + config.communityAccount + '&view=topic&author=' + r.author + '&permlink=' + r.permlink : '?view=topic&author=' + r.author + '&permlink=' + r.permlink" @click.stop.prevent="$emit('openTopic', r)" style="display:block; text-decoration:none; color:inherit;">
+                <a :href="'?community=' + config.communityAccount + '&view=topic&author=' + r.author + '&permlink=' + r.permlink" @click.stop.prevent="$emit('openTopic', r)" style="display:block; text-decoration:none; color:inherit;">
                   <div class="gs" style="font-size:10px; margin-bottom:4px;">RE: {{ r.title || r.parent_permlink }}</div>
                   {{ r.body.substring(0, 100) }}...
                 </a>

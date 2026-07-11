@@ -10,6 +10,7 @@
  */
 import { computed } from 'vue';
 import type { TorrentSnapshot } from '../webtorrent-pool';
+import { getPeerActions } from '../player';
 
 const props = defineProps<{
   show: boolean;
@@ -18,6 +19,12 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ close: []; playFile: [fileIndex: number] }>();
+
+// Plugin contributions to each peer row (e.g. a Blurt-identity badge) — see
+// player.ts's registerPeerAction()/PeerActionContribution. This component
+// has no idea what any of these render, or whether they render anything at
+// all for a given peer; it just mounts whatever's registered, once per row.
+const peerActions = getPeerActions();
 
 function fmtBytes(b: number): string {
   if (!b || b <= 0) return '0 B';
@@ -61,8 +68,8 @@ const wires = computed(() => {
         <template v-else> · {{ t('done') || 'complete' }}</template>
       </div>
 
-      <div style="height:6px; background:var(--bfp-bg3,#22222e); border-radius:4px; overflow:hidden; margin-bottom:16px;">
-        <div :style="{ width: progressPct + '%', height: '100%', background: 'var(--bfp-accent,#00e5cc)' }"></div>
+      <div style="height:6px; background:var(--bg-r2); border-radius:4px; overflow:hidden; margin-bottom:16px;">
+        <div :style="{ width: progressPct + '%', height: '100%', background: 'var(--accent)' }"></div>
       </div>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
@@ -82,14 +89,14 @@ const wires = computed(() => {
            see torrent-lib.js's PersistentState — as opposed to the session
            counters above, which reset whenever the Torrent object is
            recreated). New vs. the previous info modal. -->
-      <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-bottom:16px; padding-top:6px; border-top:1px solid var(--bfp-border,#2a2a38);">
+      <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-bottom:16px; padding-top:6px; border-top:1px solid var(--border-main);">
         <span>{{ t('lifetimeDownloaded') || 'Lifetime downloaded' }}: <b style="color:var(--text,inherit);">{{ fmtBytes(torrent.allTime?.downloaded || 0) }}</b></span>
         <span>{{ t('lifetimeUploaded') || 'Lifetime uploaded' }}: <b style="color:var(--text,inherit);">{{ fmtBytes(torrent.allTime?.uploaded || 0) }}</b></span>
       </div>
 
       <div style="font-size:11px; font-weight:600; margin-bottom:6px;">{{ t('files') || 'Files' }} ({{ torrent.files?.length || 0 }})</div>
       <div style="max-height:160px; overflow-y:auto; margin-bottom:16px;">
-        <div v-for="f in torrent.files" :key="f.index" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; padding:4px 0; border-bottom:1px solid var(--bfp-border,#2a2a38);">
+        <div v-for="f in torrent.files" :key="f.index" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; padding:4px 0; border-bottom:1px solid var(--border-main);">
           <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" :title="f.name">{{ f.name }}</span>
           <span style="color:var(--text-muted); flex-shrink:0;">
             {{ fmtBytes(f.length) }}
@@ -108,8 +115,18 @@ const wires = computed(() => {
       <div style="font-size:11px; font-weight:600; margin-bottom:6px;">{{ t('peers') || 'Peers' }} ({{ wires.length }})</div>
       <div style="max-height:140px; overflow-y:auto;">
         <div v-if="!wires.length" style="font-size:11px; color:var(--text-muted);">{{ t('noPeersYet') || 'No peers connected yet…' }}</div>
-        <div v-for="w in wires" :key="w.addr + (w.peerId || '')" style="display:flex; justify-content:space-between; gap:8px; font-size:11px; padding:4px 0; border-bottom:1px solid var(--bfp-border,#2a2a38); font-family:monospace;">
+        <div v-for="w in wires" :key="w.addr + (w.peerId || '')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; padding:4px 0; border-bottom:1px solid var(--border-main); font-family:monospace;">
           <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ w.addr }}</span>
+          <component
+            v-for="a in peerActions"
+            :key="a.id"
+            :is="a.component"
+            :peer-id="w.peerId"
+            :info-hash="torrent?.infoHash ?? null"
+            :addr="w.addr"
+            :t="t"
+            v-bind="a.props"
+          />
           <span style="color:var(--text-muted); flex-shrink:0;" :title="t('peerHasPct') || 'Has this % of the swarm'">{{ w.bitfieldPct }}%</span>
           <span style="color:#22c55e;">↓{{ fmtSpeed(w.downloadSpeed) }}</span>
           <span style="color:#f59e0b;">↑{{ fmtSpeed(w.uploadSpeed) }}</span>
@@ -129,7 +146,7 @@ const wires = computed(() => {
 .wtim-play-btn {
   flex-shrink: 0;
   background: rgba(0,229,204,.15);
-  color: var(--bfp-accent, #00e5cc);
+  color: var(--accent);
   border: 1px solid rgba(0,229,204,.3);
   border-radius: 5px;
   width: 24px;

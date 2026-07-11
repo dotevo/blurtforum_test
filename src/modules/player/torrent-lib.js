@@ -595,6 +595,13 @@ export class TorrentLibrary extends Emitter {
     this._activeVideoEl = null;
     this._extraAudio = null;
 
+    // Generic BEP-10 (bittorrent-protocol) wire-extension registry — see
+    // registerWireExtension() below. The library has zero opinion on what
+    // any registered extension does; it just calls wire.use(factory) for
+    // every wire, current and future. This is the ONLY hook plugins get
+    // into the raw peer-wire protocol.
+    this._wireExtensions = [];
+
     // url -> { infoHash, fileIndex, file, torrent } — lets us translate the
     // SW's "actually requested" byte ranges (keyed by streamURL) back into
     // torrent/file/piece coordinates for the UI.
@@ -984,10 +991,52 @@ export class TorrentLibrary extends Emitter {
     };
     t.on('download', () => { persist(); emitStats(); });
     t.on('upload', () => { persist(); emitStats(); });
-    t.on('wire', () => emitStats());
+    t.on('wire', wire => { this._applyWireExtensions(wire); emitStats(); });
     t.on('done', () => { persist(); this.emit('torrent-done', this._snapshot(t)); this.emit('torrents-changed', this.getTorrents()); });
     t.on('error', err => this.emit('torrent-error', { infoHash: t.infoHash, error: err }));
     t.on('noPeers', type => this.emit('no-peers', { infoHash: t.infoHash, type }));
+  }
+
+  // ── WIRE EXTENSIONS (generic plugin hook into the raw peer protocol) ────
+  // A "factory" here is exactly a bittorrent-protocol extension constructor
+  // — the same thing you'd pass to `wire.use(...)` directly:
+  //
+  //   function MyExtension(wire) { this.wire = wire; }
+  //   MyExtension.prototype.name = 'my_ext';
+  //   MyExtension.prototype.onHandshake = (infoHash, peerId, extensions) => {...};
+  //   MyExtension.prototype.onExtendedHandshake = (handshake) => {...};
+  //   MyExtension.prototype.onMessage = (buf) => {...};
+  //
+  // This library has NO idea what any given extension does — it only makes
+  // sure every wire (existing ones right now, and every new one from here
+  // on, for every torrent) gets `wire.use(factory)` called on it exactly
+  // once. Whatever the extension does with the connection (custom
+  // handshake payloads, periodic messages, etc.) is entirely up to whoever
+  // registered it.
+  registerWireExtension(factory) {
+    if (typeof factory !== 'function') { console.warn('[WT] registerWireExtension: factory must be a function'); return; }
+    this._wireExtensions.push(factory);
+    // Retroactive: apply immediately to every wire already connected on
+    // every torrent already in the client, in case this is registered
+    // after playback/seeding already started for something.
+    let retroCount = 0;
+    this.client?.torrents.forEach(t => (t.wires || []).forEach(wire => { this._applyOneExtension(wire, factory); retroCount++; }));
+    console.log('[WT] registerWireExtension:', factory.prototype?.name || factory.name || '(anonymous)', '— applied retroactively to', retroCount, 'already-connected wire(s); will also apply to every new one from now on');
+  }
+
+  _applyWireExtensions(wire) {
+    if (this._wireExtensions.length) {
+      console.log('[WT] new wire connected — applying', this._wireExtensions.length, 'registered extension(s)');
+    }
+    this._wireExtensions.forEach(factory => this._applyOneExtension(wire, factory));
+  }
+
+  _applyOneExtension(wire, factory) {
+    try {
+      wire.use(factory);
+    } catch (e) {
+      console.warn('[WT] wire extension threw during use():', e);
+    }
   }
 
   removeTorrent(infoHash) {

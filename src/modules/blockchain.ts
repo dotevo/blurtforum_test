@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import CryptoJS from 'crypto-js';
 import * as dblurt from '@beblurt/dblurt';
 import type { AuthUser, ChainProperties } from '../types';
 
@@ -171,6 +172,40 @@ export const Blockchain = {
     } catch (e) {
       console.warn('getAccount error:', e);
       return null;
+    }
+  },
+
+  /**
+   * Verifies a signature against a public key — pure offline crypto, no
+   * private key or wallet/keychain involved (for checking a SIGNATURE
+   * SOMEONE ELSE PRODUCED, e.g. a webtorrent peer's identity-handshake
+   * signature in modules/player_blurt/blurt-peer-handshake.ts).
+   *
+   * Hashing convention MUST match whatever signed the message in the first
+   * place — this uses the same SHA-256-via-crypto-js approach as
+   * useImageUpload.ts's uploadImageFile() (a proven, already-shipping
+   * signing path), not something new/guessed.
+   *
+   * NOT FULLY CONFIRMED: PrivateKey/Signature are proven in use elsewhere
+   * (useImageUpload.ts), but I don't have direct confirmation that
+   * `dblurt.PublicKey.from()` / `.verify()` exist with exactly these names
+   * — it's the standard shape across the whole dsteem/dhive/dblurt family
+   * of libraries, so I'm confident, but please sanity-check this one
+   * specifically (e.g. by verifying a signature you know is valid) before
+   * relying on it.
+   */
+  verifySignature(message: string, signatureHex: string, publicKey: string): boolean {
+    try {
+      const bytes = new TextEncoder().encode(message);
+      const wordArray = CryptoJS.lib.WordArray.create(bytes as unknown as number[]);
+      const hashHex = CryptoJS.SHA256(wordArray).toString(CryptoJS.enc.Hex);
+      const hashBytes = new Uint8Array(hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+      const sig = (dblurt as any).Signature.fromString(signatureHex);
+      const pub = (dblurt as any).PublicKey.from(publicKey);
+      return !!pub.verify(hashBytes as any, sig);
+    } catch (e) {
+      console.warn('verifySignature error:', e);
+      return false;
     }
   },
 

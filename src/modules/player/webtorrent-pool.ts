@@ -127,7 +127,7 @@ export const initWebtorrent = (): Promise<TorrentLibrary> => {
       dbPrefix: 'bfp-wt',
       // sw.js is copied into /public by the app itself (see project README);
       // must be served from the origin root so its scope covers /webtorrent/*.
-      swPath: './sw.js',
+      swPath: '/sw.js',
       storageQuotaMB: quotaBytes / (1024 * 1024),
     });
 
@@ -183,6 +183,13 @@ export const initWebtorrent = (): Promise<TorrentLibrary> => {
     instance.client?.throttleUpload?.(isSeedingEnabled() ? -1 : SEEDING_OFF_UPLOAD_CAP);
 
     lib = instance;
+    // Flush anything registered before we existed — plugin.install() runs at
+    // app startup, well before initWebtorrent() is ever lazily triggered by
+    // an actual play attempt (see registerWireExtension below).
+    if (pendingWireExtensions.length) {
+      pendingWireExtensions.forEach(factory => instance.registerWireExtension(factory));
+      pendingWireExtensions.length = 0;
+    }
     wlog('initWebtorrent: ready. streaming server ready =', instance.serverReady, '— persisted torrents:', instance.state.getList().length);
     return instance;
   })();
@@ -493,6 +500,29 @@ export const attachExtraAudio = (
 };
 
 export const detachExtraAudio = (): void => lib?.detachExtraAudio();
+
+/**
+ * Generic plugin hook into the raw peer-wire protocol (BEP-10 / bittorrent-
+ * protocol extensions) — see torrent-lib.js's own registerWireExtension for
+ * the exact factory shape. This module has no idea what any given
+ * extension does; it just forwards the registration.
+ *
+ * Real gotcha this avoids: plugins call this from their install(player)
+ * hook, which runs at app startup — long before initWebtorrent() is ever
+ * lazily triggered by an actual play attempt (`lib` is null until then, see
+ * the rest of this file). Dropping the registration in that case would mean
+ * it silently never took effect. Queue it instead; initWebtorrent() flushes
+ * the queue once `lib` actually exists.
+ */
+const pendingWireExtensions: Array<(wire: any) => any> = [];
+
+export const registerWireExtension = (factory: (wire: any) => any): void => {
+  if (lib) {
+    lib.registerWireExtension(factory);
+  } else {
+    pendingWireExtensions.push(factory);
+  }
+};
 
 /**
  * "Download whole torrent" — selects every file's pieces, not just the

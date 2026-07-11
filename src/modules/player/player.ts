@@ -3,7 +3,7 @@
  * Handles audio/video playback, queuing, playlists, event emitter and plugin API.
  */
 import { reactive, watch, nextTick, ref, computed } from 'vue';
-import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution } from './types';
+import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution, PeerActionContribution } from './types';
 import { trackEvent } from '../analytics';
 import * as WTPool from './webtorrent-pool';
 import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
@@ -179,6 +179,18 @@ const registerTrackAction = (contribution: TrackActionContribution): void => {
 const getTrackActions = (zone: Exclude<TrackActionZone, 'both'>): TrackActionContribution[] =>
   _trackActions.filter(a => a.zone === zone || a.zone === 'both');
 
+// Same idea as track actions, but for a webtorrent peer-list row — no zone,
+// since peer rows only exist in one place (WebtorrentInfoModal.vue).
+const _peerActions: PeerActionContribution[] = [];
+
+export const registerPeerAction = (contribution: PeerActionContribution): void => {
+  if (!contribution?.id) { console.warn('BFPlayer.registerPeerAction: contribution must have an id'); return; }
+  if (_peerActions.find(a => a.id === contribution.id)) { console.warn(`BFPlayer: peer action "${contribution.id}" already registered`); return; }
+  _peerActions.push(contribution);
+};
+
+export const getPeerActions = (): PeerActionContribution[] => _peerActions;
+
 // ─── WebTorrent settings/introspection (delegates to webtorrent-pool.ts) ──
 
 const setSeedingEnabled = (enabled: boolean): void => {
@@ -191,6 +203,7 @@ const getWebtorrentStats = (): WebtorrentStats => WTPool.getStats();
 const getWebtorrentManifest = (): SeedManifestEntry[] => WTPool.getManifest();
 const getWebtorrentStorageEstimate = (): Promise<{ usage: number; quota: number } | null> => WTPool.getStorageEstimate();
 const clearWebtorrentData = (): Promise<void> => WTPool.clearAllSeedData();
+export const registerWireExtension = (factory: (wire: any) => any): void => WTPool.registerWireExtension(factory);
 
 // ─── Internals ─────────────────────────────────────────────────────────────
 
@@ -1408,4 +1421,16 @@ export const BFPlayer: BFPlayerAPI = {
   setSeedingEnabled, setMaxSeedStorageBytes, getMaxSeedStorageBytes,
   getWebtorrentStats, getWebtorrentManifest, getWebtorrentStorageEstimate, clearWebtorrentData,
   playWebtorrentFile,
+  // Namespaced surface, requested explicitly so protocol-specific plugin
+  // code reads as `player.webtorrent.foo(...)` instead of flat
+  // `player.foo(...)` — the player also supports YouTube/PeerTube/plain
+  // audio, which have nothing to do with any of this. Same functions as the
+  // flat properties just above — kept there too, unremoved, so nothing
+  // already calling the old flat names breaks.
+  webtorrent: {
+    setSeedingEnabled, setMaxSeedStorageBytes, getMaxSeedStorageBytes,
+    getWebtorrentStats, getWebtorrentManifest, getWebtorrentStorageEstimate, clearWebtorrentData,
+    playWebtorrentFile,
+    registerWireExtension, registerPeerAction, getPeerActions,
+  },
 };

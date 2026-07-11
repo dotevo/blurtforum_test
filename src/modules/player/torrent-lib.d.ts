@@ -158,6 +158,14 @@ export class TorrentLibrary {
   }): TorrentLibExtraAudioHandle;
   detachExtraAudio(): void;
 
+  /**
+   * Registers a bittorrent-protocol (BEP-10) extension factory — exactly
+   * what you'd pass to `wire.use(factory)` directly. Applied to every wire
+   * on every torrent, current (retroactively) and future. The library has
+   * no opinion on what the extension does.
+   */
+  registerWireExtension(factory: (wire: any) => any): void;
+
   downloadFileBlob(infoHash: string, fileIndex: number): Promise<{ blob: Blob; url: string; name: string }>;
   readFileArrayBuffer(infoHash: string, fileIndex: number, priority?: number): Promise<ArrayBuffer>;
   getSubtitleTrack(infoHash: string, fileIndex: number): Promise<TorrentLibSubtitleTrack>;

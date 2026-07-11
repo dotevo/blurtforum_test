@@ -172,8 +172,8 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
           <span>{{ t('diskUsage') || 'Disk usage' }}</span>
           <span style="color:var(--text-muted);">{{ fmtBytes(usageBytes) }} / {{ fmtBytes(quotaBytes) }}</span>
         </div>
-        <div style="height:6px; background:var(--bfp-bg3,#22222e); border-radius:4px; overflow:hidden;">
-          <div :style="{ width: usagePct + '%', height: '100%', background: usagePct > 90 ? '#ef4444' : 'var(--bfp-accent,#00e5cc)' }"></div>
+        <div style="height:6px; background:var(--bg-r2); border-radius:4px; overflow:hidden;">
+          <div :style="{ width: usagePct + '%', height: '100%', background: usagePct > 90 ? '#ef4444' : 'var(--accent)' }"></div>
         </div>
         <div v-if="browserEstimate" style="font-size:10px; color:var(--text-muted); margin-top:4px;">
           {{ t('browserQuotaAvailable') || 'Browser quota available' }}: {{ fmtBytes(browserEstimate.quota - browserEstimate.usage) }}
@@ -185,7 +185,7 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
       </div>
 
       <!-- Seeding toggle -->
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:10px 12px; background:var(--bfp-bg3,#22222e); border-radius:6px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:10px 12px; background:var(--bg-r2); border-radius:6px;">
         <div>
           <div style="font-size:12px; font-weight:600;">{{ t('seeding') || 'Seed downloaded torrents' }}</div>
           <div style="font-size:10px; color:var(--text-muted);">{{ t('seedingHint') || 'Help others download by uploading what you already have' }}</div>
@@ -201,7 +201,7 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
       </div>
       <div style="max-height:220px; overflow-y:auto; margin-bottom:18px;">
         <div v-if="!manifest.length" style="font-size:11px; color:var(--text-muted);">{{ t('noStoredTorrents') || 'Nothing stored yet.' }}</div>
-        <div v-for="e in manifest" :key="e.infoHash" style="padding:7px 0; border-bottom:1px solid var(--bfp-border,#2a2a38);">
+        <div v-for="e in manifest" :key="e.infoHash" style="padding:7px 0; border-bottom:1px solid var(--border-main);">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px;">
             <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;" :title="e.title">{{ e.title }}</span>
             <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
@@ -218,8 +218,8 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
               </button>
             </span>
           </div>
-          <div v-if="e.fullDownload && !e.done" style="height:4px; background:var(--bfp-bg3,#22222e); border-radius:3px; overflow:hidden; margin-top:5px;">
-            <div :style="{ width: Math.round(e.progress * 100) + '%', height: '100%', background: 'var(--bfp-accent,#00e5cc)' }"></div>
+          <div v-if="e.fullDownload && !e.done" style="height:4px; background:var(--bg-r2); border-radius:3px; overflow:hidden; margin-top:5px;">
+            <div :style="{ width: Math.round(e.progress * 100) + '%', height: '100%', background: 'var(--accent)' }"></div>
           </div>
         </div>
       </div>

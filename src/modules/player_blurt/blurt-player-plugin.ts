@@ -1,6 +1,8 @@
 import { PostProcessor } from '../post-processor';
 import { Blockchain } from '../blockchain';
 import BlurtTrackActions from './components/BlurtTrackActions.vue';
+import BlurtPeerBadge from './components/BlurtPeerBadge.vue';
+import { createBlurtWireExtension } from './blurt-peer-handshake';
 import type { BFPlayerAPI, MediaTrack } from '../player/types';
 
 /**
@@ -11,8 +13,29 @@ import type { BFPlayerAPI, MediaTrack } from '../player/types';
  * The payout badge / vote button UI is its own independent component
  * (BlurtTrackActions.vue), registered below via registerTrackAction —
  * it doesn't need to know about, or be bundled with, any other plugin's UI.
+ *
+ * Also registers the webtorrent peer-identity handshake (stage 1 of the
+ * "reward seeders" plan — see blurt-peer-handshake.ts for the protocol):
+ * peers announce their Blurt account directly over the BitTorrent wire,
+ * signed when possible, and peers get a badge in the existing peer list via
+ * registerPeerAction() — verified (green check) or merely claimed (grey
+ * question mark) depending on whether signing succeeded. Both use only the
+ * player core's generic, protocol-agnostic `player.webtorrent.*` hooks —
+ * the core has no idea any of this is Blurt-specific.
+ *
+ * `signMessage` — deliberately injected from outside, NOT implemented here.
+ * This plugin has no business knowing whether the current account is a
+ * local encrypted key (needing a PIN to unlock), a WhaleVault-backed
+ * account (needing an interactive confirmation popup), or anything else —
+ * exactly the same delegation as however image upload / voting already
+ * sign things elsewhere in the app. Wire in that existing helper when
+ * constructing this plugin; see blurt-peer-handshake.ts's top-of-file
+ * comment for the exact contract (`(message: string) => Promise<string |
+ * null>`, resolve `null` — don't throw — for "couldn't/declined to sign
+ * right now", which the handshake gracefully degrades to an unverified
+ * announcement instead of failing over).
  */
-export const BlurtPlayerPlugin = (client: any, auth: any) => ({
+export const BlurtPlayerPlugin = (client: any, auth: any, signMessage: (message: string) => Promise<string | null>) => ({
   name: 'BlurtMetadata',
 
   install(player: BFPlayerAPI) {
@@ -21,6 +44,17 @@ export const BlurtPlayerPlugin = (client: any, auth: any) => ({
       zone: 'both',
       component: BlurtTrackActions,
     });
+
+    // `() => auth.user` (not `auth.user` captured once) so every new peer
+    // connection picks up whoever is logged in right now, including
+    // logging in/switching accounts after some connections are already
+    // open.
+    player.webtorrent.registerWireExtension(createBlurtWireExtension(client, () => auth.user, signMessage));
+    player.webtorrent.registerPeerAction({
+      id: 'blurt-peer-badge',
+      component: BlurtPeerBadge,
+    });
+    console.log('[BlurtPlayerPlugin] peer-identity handshake + badge registered');
   },
 
   /**

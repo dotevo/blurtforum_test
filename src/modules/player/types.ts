@@ -102,6 +102,63 @@ export interface TrackActionContribution {
   props?: Record<string, unknown>;
 }
 
+/**
+ * A single plugin's contribution to a webtorrent peer-list row. `component`
+ * receives `peerId`, `infoHash`, `addr`, `t`, plus whatever static `props`
+ * were registered alongside it. The player core has no idea what any given
+ * contribution renders (or whether it renders anything at all for a given
+ * peer) — e.g. a Blurt-identity badge that only shows up for peers whose
+ * wire extension handshake it recognizes, and renders nothing for anyone
+ * else. Unlike track actions there's no `zone`: peer rows only exist in one
+ * place (the webtorrent peer list), so every registered contribution is
+ * simply mounted once per row.
+ */
+export interface PeerActionContribution {
+  id: string;
+  component: any;
+  props?: Record<string, unknown>;
+}
+
+/**
+ * Namespaced, protocol-specific surface for webtorrent-only capabilities —
+ * requested explicitly so plugin code reads as `player.webtorrent.foo(...)`
+ * rather than flat `player.foo(...)`, matching how the player also supports
+ * other protocols (YouTube, PeerTube, plain audio) that have nothing to do
+ * with any of this. The methods below are the SAME functions as their flat
+ * BFPlayerAPI counterparts (kept for now, unremoved, to avoid breaking
+ * anything already calling them the old way) — this is purely an additional,
+ * clearer entry point, not a different implementation.
+ */
+export interface WebtorrentAPI {
+  /** Turns global upload on/off (e.g. a mobile "don't seed" switch). Mirrored in state.seedingEnabled. */
+  setSeedingEnabled: (enabled: boolean) => void;
+  /** Max bytes the persistent seed cache is allowed to use; oldest-active torrents are evicted first once exceeded. */
+  setMaxSeedStorageBytes: (bytes: number) => void;
+  getMaxSeedStorageBytes: () => number;
+  /** Lifetime upload/download totals, per torrent and overall — survive reloads and individual torrents being evicted. */
+  getWebtorrentStats: () => WebtorrentStats;
+  /** Everything currently persisted (on disk), for a "what am I seeding" settings view. */
+  getWebtorrentManifest: () => SeedManifestEntry[];
+  getWebtorrentStorageEstimate: () => Promise<{ usage: number; quota: number } | null>;
+  /** Deletes all locally seeded data — a "clear my seed data" privacy control. */
+  clearWebtorrentData: () => Promise<void>;
+  /** Manually (re)attach playback to a specific file index in the currently-loaded torrent — lets the UI offer a per-file "Play" action instead of only the automatic best-file pick. */
+  playWebtorrentFile: (fileIndex: number) => void;
+
+  /**
+   * Registers a bittorrent-protocol (BEP-10) extension factory — exactly
+   * what you'd pass to `wire.use(factory)` yourself. Applied to every wire
+   * on every torrent, current (retroactively) and future. The player has no
+   * opinion on what the extension does — e.g. a plugin implementing its own
+   * peer-identity handshake protocol.
+   */
+  registerWireExtension: (factory: (wire: any) => any) => void;
+  /** Registers a plugin's own Vue component into every webtorrent peer-list row (see PeerActionContribution). Idempotent by id. */
+  registerPeerAction: (contribution: PeerActionContribution) => void;
+  /** Contributions currently registered. Used by the generic peer-list renderer in WebtorrentInfoModal.vue. */
+  getPeerActions: () => PeerActionContribution[];
+}
+
 export interface BFPlayerAPI {
   state: PlayerState;
   playlistState: PlaylistState;
@@ -155,4 +212,7 @@ export interface BFPlayerAPI {
   clearWebtorrentData: () => Promise<void>;
   /** Manually (re)attach playback to a specific file index in the currently-loaded torrent — lets the UI offer a per-file "Play" action instead of only the automatic best-file pick. */
   playWebtorrentFile: (fileIndex: number) => void;
+
+  /** Same webtorrent-only capabilities as the flat methods above (kept for now), namespaced — see WebtorrentAPI. Prefer this for new code. */
+  webtorrent: WebtorrentAPI;
 }

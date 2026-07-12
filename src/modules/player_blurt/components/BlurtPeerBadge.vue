@@ -15,6 +15,18 @@
  * question mark for a self-claimed-only identity (signing wasn't
  * possible/available for that peer right now — not necessarily anything
  * suspicious, just unproven).
+ *
+ * Profile link: this component lives inside the (protocol-agnostic) player
+ * module, which has no access to the app's router/composables — same
+ * situation as DOMPurify-sanitized HTML content elsewhere in the app,
+ * which is exactly why `window.app.openProfile(username)` exists (see
+ * useApp.ts, where it's set up expressly "for DOMPurify-sanitized content
+ * and E2E testing"). Using that instead of a plain <a href target="_blank">
+ * matches how PostBeneficiaries.vue and friends already link to profiles —
+ * a real `?view=profile&user=...` href (so right-click / middle-click /
+ * "open in new tab" keep working via normal browser behavior), with a
+ * left-click intercepted to navigate in-place through the SPA router
+ * instead of a full reload or a forced new tab.
  */
 import { computed } from 'vue';
 import { peerIdentities } from '../blurt-peer-handshake';
@@ -30,6 +42,19 @@ const identity = computed(() => {
   if (!props.peerId || !props.infoHash) return null;
   return peerIdentities.get(`${props.infoHash}:${props.peerId}`) || null;
 });
+
+function openProfile(): void {
+  const account = identity.value?.account;
+  if (!account) return;
+  const app = (window as any).app;
+  if (app?.openProfile) {
+    app.openProfile(account);
+  } else {
+    // Fallback if window.app isn't ready yet for some reason — still
+    // better than a dead link.
+    window.location.href = `?view=profile&user=${account}`;
+  }
+}
 </script>
 
 <template>
@@ -37,13 +62,11 @@ const identity = computed(() => {
     v-if="identity"
     class="blurt-peer-badge"
     :class="{ 'blurt-peer-badge--unverified': !identity.verified }"
-    :href="`/@${identity.account}`"
-    target="_blank"
-    rel="noopener"
+    :href="`?view=profile&user=${identity.account}`"
     :title="identity.verified
       ? (t ? t('blurtVerifiedPeer') : `Verified Blurt account: @${identity.account}`)
       : (t ? t('blurtUnverifiedPeer') : `Claims to be @${identity.account} — not cryptographically verified`)"
-    @click.stop
+    @click.prevent="openProfile"
   >
     <i class="fa-solid" :class="identity.verified ? 'fa-circle-check' : 'fa-circle-question'"></i>@{{ identity.account }}
   </a>

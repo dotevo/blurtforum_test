@@ -9,6 +9,7 @@
  * has no storage logic of its own.
  */
 import { ref, computed, watch, onUnmounted } from 'vue';
+import { Capacitor } from '@capacitor/core';
 import * as WTPool from '../webtorrent-pool';
 import { playTrack } from '../player';
 import type { MediaTrack } from '../types';
@@ -29,6 +30,8 @@ function fmtBytes(b: number): string {
 const stats = ref(WTPool.getStats());
 const manifest = ref(WTPool.getManifest());
 const seeding = ref(WTPool.isSeedingEnabled());
+const seedOnCellular = ref(WTPool.isCellularSeedingAllowed());
+const isNativeApp = Capacitor.isNativePlatform();
 const quotaBytes = ref(WTPool.getMaxStorageBytes());
 const usageBytes = ref(0);
 const browserEstimate = ref<{ usage: number; quota: number } | null>(null);
@@ -72,6 +75,11 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
 function toggleSeeding(): void {
   seeding.value = !seeding.value;
   WTPool.setSeedingEnabled(seeding.value);
+}
+
+function toggleSeedOnCellular(): void {
+  seedOnCellular.value = !seedOnCellular.value;
+  WTPool.setCellularSeedingAllowed(seedOnCellular.value);
 }
 
 const quotaGB = computed({
@@ -192,6 +200,19 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
         </div>
         <button class="btn" :class="seeding ? 'btn-primary' : 'btn-ghost'" style="padding:6px 14px;" @click="toggleSeeding">
           {{ seeding ? (t('on') || 'On') : (t('off') || 'Off') }}
+        </button>
+      </div>
+
+      <!-- Cellular seeding toggle — native app only; on web we have no
+           reliable way to tell wifi from cellular, so the setting would
+           mostly be a no-op there and just add confusion. -->
+      <div v-if="isNativeApp" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:10px 12px; background:var(--bg-r2); border-radius:6px;">
+        <div>
+          <div style="font-size:12px; font-weight:600;">{{ t('seedOnCellular') || 'Seed on mobile data' }}</div>
+          <div style="font-size:10px; color:var(--text-muted);">{{ t('seedOnCellularHint') || 'Off by default to protect your data plan — seeding still works normally on Wi-Fi' }}</div>
+        </div>
+        <button class="btn" :class="seedOnCellular ? 'btn-primary' : 'btn-ghost'" style="padding:6px 14px;" @click="toggleSeedOnCellular">
+          {{ seedOnCellular ? (t('on') || 'On') : (t('off') || 'Off') }}
         </button>
       </div>
 

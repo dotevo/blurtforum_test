@@ -30,6 +30,8 @@ import { PostProcessor } from '../modules/post-processor';
 import { TR, loadLanguage, type Lang, LANGS as langs } from '../modules/translations';
 import { isSeedingEnabled, initWebtorrent } from '../modules/player/webtorrent-pool';
 import '../modules/whalevault';
+import { Capacitor } from '@capacitor/core';
+import * as sessionStore from '../modules/native/session-store';
 import type {
   Post, Forum, ForumCategory, RawPost, AuthUser, ActivityItem,
   Beneficiary, BcQueueEntry, GlobalProps, Moderator, CommunityInfo,
@@ -1255,87 +1257,111 @@ export function useApp() {
       explorationForm
     };
 
-    // Restore sessions
-    const savedAll = localStorage.getItem('blurtforum_sessions');
-    const savedActive = localStorage.getItem('blurtforum_session');
-    
-    if (savedAll) {
-      try {
-        const sessions = JSON.parse(savedAll) as any[];
-        sessions.forEach(session => {
-          if (session.type === 'whalevault') {
-            auth.accounts.push({ username: session.username, type: 'whalevault', key: null, vp: '…', hasRewards: false });
-            Blockchain.getAccount(rpc.dataClient.value, session.username).then((acc: any) => {
-              if (acc) {
-                const lastVoteTime = new Date((acc.last_vote_time as string) + 'Z').getTime();
-                const delta = (Date.now() - lastVoteTime) / 1000;
-                let vp = (acc.voting_power as number) + (10000 * delta / 432000);
-                vp = Math.min(vp / 100, 100);
-                const hasRewards = BFUtils.parsePayout(acc.reward_blurt_balance as string) > 0 || BFUtils.parsePayout(acc.reward_vesting_balance as string) > 0;
-                const idx = auth.accounts.findIndex(a => a.username === session.username);
-                if (idx >= 0) {
-                   auth.accounts[idx].vp = vp.toFixed(2);
-                   auth.accounts[idx].hasRewards = hasRewards;
-                   auth.accounts[idx].rewardBlurt = acc.reward_blurt_balance as string;
-                   auth.accounts[idx].rewardVesting = acc.reward_vesting_balance as string;
+    // Restore sessions.
+    //
+    // Web path below is UNCHANGED from before (same localStorage reads,
+    // same synchronous timing) — it's just been pulled into
+    // applyRestoredSessions() so the exact same logic can also serve the
+    // native path, which has to be async (secure storage is a real native
+    // call, not a synchronous localStorage read) and stores/restores a RAW
+    // key with no PIN layer (see useAuth.ts's saveSessions/doKeyLogin —
+    // "native" here means "always locked:false", never a PIN-encrypted key).
+    const applyRestoredSessions = (savedAll: string | null, savedActive: string | null, native: boolean): void => {
+      if (savedAll) {
+        try {
+          const sessions = JSON.parse(savedAll) as any[];
+          sessions.forEach(session => {
+            if (session.type === 'whalevault') {
+              auth.accounts.push({ username: session.username, type: 'whalevault', key: null, vp: '…', hasRewards: false });
+              Blockchain.getAccount(rpc.dataClient.value, session.username).then((acc: any) => {
+                if (acc) {
+                  const lastVoteTime = new Date((acc.last_vote_time as string) + 'Z').getTime();
+                  const delta = (Date.now() - lastVoteTime) / 1000;
+                  let vp = (acc.voting_power as number) + (10000 * delta / 432000);
+                  vp = Math.min(vp / 100, 100);
+                  const hasRewards = BFUtils.parsePayout(acc.reward_blurt_balance as string) > 0 || BFUtils.parsePayout(acc.reward_vesting_balance as string) > 0;
+                  const idx = auth.accounts.findIndex(a => a.username === session.username);
+                  if (idx >= 0) {
+                     auth.accounts[idx].vp = vp.toFixed(2);
+                     auth.accounts[idx].hasRewards = hasRewards;
+                     auth.accounts[idx].rewardBlurt = acc.reward_blurt_balance as string;
+                     auth.accounts[idx].rewardVesting = acc.reward_vesting_balance as string;
+                  }
+                  if (auth.user?.username === session.username) {
+                    const u = auth.user!;
+                    u.vp = vp.toFixed(2);
+                    u.hasRewards = hasRewards;
+                    u.rewardBlurt = acc.reward_blurt_balance as string;
+                    u.rewardVesting = acc.reward_vesting_balance as string;
+                  }
                 }
-                if (auth.user?.username === session.username) {
-                  const u = auth.user!;
-                  u.vp = vp.toFixed(2);
-                  u.hasRewards = hasRewards;
-                  u.rewardBlurt = acc.reward_blurt_balance as string;
-                  u.rewardVesting = acc.reward_vesting_balance as string;
-                }
-              }
-            }).catch(() => {});
-          } else {
-            auth.accounts.push({ username: session.username, type: 'key', key: session.key, encryptedKey: session.key, vp: '…', locked: true, hasRewards: false });
-          }
-        });
-      } catch { /* ignore */ }
-    }
-
-    if (savedActive) {
-      try {
-        const session = JSON.parse(savedActive) as { username: string; type: string; key: string };
-        const found = auth.accounts.find(a => a.username === session.username);
-        if (found) {
-          auth.user = found;
-          if (session.type === 'whalevault') {
-            loadUserCommunities(session.username); loadFollowingList(session.username);
-          } else {
-            loadUserCommunities(session.username); loadFollowingList(session.username); refreshUser();
-          }
-        } else {
-          // Migration or single session
-          if (session.type === 'whalevault') {
-            auth.user = { username: session.username, type: 'whalevault', key: null, vp: '…' };
-            auth.accounts.push(auth.user);
-            Blockchain.getAccount(rpc.dataClient.value, session.username).then((acc: any) => {
-              if (acc) {
-                const lastVoteTime = new Date((acc.last_vote_time as string) + 'Z').getTime();
-                const delta = (Date.now() - lastVoteTime) / 1000;
-                let vp = (acc.voting_power as number) + (10000 * delta / 432000);
-                vp = Math.min(vp / 100, 100);
-                const hasRewards = BFUtils.parsePayout(acc.reward_blurt_balance as string) > 0 || BFUtils.parsePayout(acc.reward_vesting_balance as string) > 0;
-                auth.user = { username: session.username, type: 'whalevault', key: null, vp: vp.toFixed(2), hasRewards, rewardBlurt: acc.reward_blurt_balance as string, rewardVesting: acc.reward_vesting_balance as string };
-                const idx = auth.accounts.findIndex(a => a.username === session.username);
-                if (idx >= 0) auth.accounts[idx] = auth.user;
-              }
-            });
-            loadUserCommunities(session.username); loadFollowingList(session.username);
-          } else {
-            auth.user = { username: session.username, type: 'key', key: session.key, encryptedKey: session.key, vp: '…', locked: true };
-            auth.accounts.push(auth.user);
-            loadUserCommunities(session.username); loadFollowingList(session.username); refreshUser();
-          }
-        }
-      } catch { /* ignore */ }
-    } else {
-      const legacy = localStorage.getItem('bf-session');
-      if (legacy) {
-        try { const session = JSON.parse(legacy) as { username?: string; type?: string }; if (session.username && session.type === 'whalevault') { localStorage.setItem('blurtforum_session', legacy); location.reload(); } } catch { /* ignore */ }
+              }).catch(() => {});
+            } else {
+              auth.accounts.push({ username: session.username, type: 'key', key: session.key, encryptedKey: session.key, vp: '…', locked: !native, hasRewards: false });
+            }
+          });
+        } catch { /* ignore */ }
       }
+
+      if (savedActive) {
+        try {
+          const session = JSON.parse(savedActive) as { username: string; type: string; key: string };
+          const found = auth.accounts.find(a => a.username === session.username);
+          if (found) {
+            auth.user = found;
+            if (session.type === 'whalevault') {
+              loadUserCommunities(session.username); loadFollowingList(session.username);
+            } else {
+              loadUserCommunities(session.username); loadFollowingList(session.username); refreshUser();
+            }
+          } else {
+            // Migration or single session
+            if (session.type === 'whalevault') {
+              auth.user = { username: session.username, type: 'whalevault', key: null, vp: '…' };
+              auth.accounts.push(auth.user);
+              Blockchain.getAccount(rpc.dataClient.value, session.username).then((acc: any) => {
+                if (acc) {
+                  const lastVoteTime = new Date((acc.last_vote_time as string) + 'Z').getTime();
+                  const delta = (Date.now() - lastVoteTime) / 1000;
+                  let vp = (acc.voting_power as number) + (10000 * delta / 432000);
+                  vp = Math.min(vp / 100, 100);
+                  const hasRewards = BFUtils.parsePayout(acc.reward_blurt_balance as string) > 0 || BFUtils.parsePayout(acc.reward_vesting_balance as string) > 0;
+                  auth.user = { username: session.username, type: 'whalevault', key: null, vp: vp.toFixed(2), hasRewards, rewardBlurt: acc.reward_blurt_balance as string, rewardVesting: acc.reward_vesting_balance as string };
+                  const idx = auth.accounts.findIndex(a => a.username === session.username);
+                  if (idx >= 0) auth.accounts[idx] = auth.user;
+                }
+              });
+              loadUserCommunities(session.username); loadFollowingList(session.username);
+            } else {
+              auth.user = { username: session.username, type: 'key', key: session.key, encryptedKey: session.key, vp: '…', locked: !native };
+              auth.accounts.push(auth.user);
+              loadUserCommunities(session.username); loadFollowingList(session.username); refreshUser();
+            }
+          }
+        } catch { /* ignore */ }
+      } else if (!native) {
+        const legacy = localStorage.getItem('bf-session');
+        if (legacy) {
+          try { const session = JSON.parse(legacy) as { username?: string; type?: string }; if (session.username && session.type === 'whalevault') { localStorage.setItem('blurtforum_session', legacy); location.reload(); } } catch { /* ignore */ }
+        }
+      }
+    };
+
+    if (Capacitor.isNativePlatform()) {
+      // Secure storage is a real native call — genuinely async, unlike the
+      // synchronous localStorage read below. Fires whenever it resolves;
+      // doesn't block the rest of this onMounted (URL param handling etc.
+      // below doesn't depend on auth.user being restored first).
+      Promise.all([sessionStore.loadSessions(), sessionStore.loadActiveSession()])
+        .then(([savedAll, savedActive]) => applyRestoredSessions(savedAll, savedActive, true))
+        .catch(e => console.error('Native session restore failed:', e));
+    } else {
+      // Unchanged from before: synchronous localStorage reads, same timing.
+      applyRestoredSessions(
+        localStorage.getItem('blurtforum_sessions'),
+        localStorage.getItem('blurtforum_session'),
+        false
+      );
     }
 
     const params = new URLSearchParams(window.location.search);

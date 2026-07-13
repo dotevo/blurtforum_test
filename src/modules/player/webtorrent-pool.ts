@@ -30,6 +30,8 @@ import type {
   TorrentLibSnapshot, TorrentLibPieceMap, TorrentLibPlaybackHandle, TorrentLibSubtitleTrack,
   TorrentLibExtraAudioHandle,
 } from './torrent-lib.js';
+import { getConnectionType, onConnectionChange, type ConnectionType } from '../native/network';
+import { startBackgroundSeeding, stopBackgroundSeeding } from '../native/background-seed';
 
 export { isLectorTrack };
 
@@ -40,6 +42,7 @@ const wlog = (...args: unknown[]): void => { if (WT_DEBUG) console.log('[WT]', .
 // existing user's quota/seeding preference survives the swap) ─────────────
 const QUOTA_KEY = 'bf-player-wt-quota';
 const SEEDING_KEY = 'bf-player-wt-seeding';
+const SEED_CELLULAR_KEY = 'bf-player-wt-seed-cellular';
 const DEFAULT_QUOTA_BYTES = 500 * 1024 * 1024; // 500 MB
 
 // ─── Public types (unchanged shape from the old pool, so types.ts and
@@ -180,7 +183,6 @@ export const initWebtorrent = (): Promise<TorrentLibrary> => {
 
     wlog('initWebtorrent: calling instance.init() (SW registration + resume)…');
     await instance.init();
-    instance.client?.throttleUpload?.(isSeedingEnabled() ? -1 : SEEDING_OFF_UPLOAD_CAP);
 
     lib = instance;
     // Flush anything registered before we existed — plugin.install() runs at
@@ -190,6 +192,25 @@ export const initWebtorrent = (): Promise<TorrentLibrary> => {
       pendingWireExtensions.forEach(factory => instance.registerWireExtension(factory));
       pendingWireExtensions.length = 0;
     }
+
+    // Network-aware seeding sync — deliberately NOT awaited. A slow/hung
+    // native Network plugin call must never block torrent playback/metadata
+    // fetching from starting; `currentConnectionType` starts at 'unknown',
+    // which never restricts anything (see effectiveSeedingEnabled below), so
+    // worst case this feature is just late by a few hundred ms, never blocking.
+    getConnectionType()
+      .then(type => { currentConnectionType = type; syncSeedingState(); })
+      .catch(e => console.warn('[WT] getConnectionType failed — leaving seeding unrestricted by network:', e));
+    try {
+      onConnectionChange(type => { currentConnectionType = type; syncSeedingState(); });
+    } catch (e) {
+      console.warn('[WT] onConnectionChange subscription failed:', e);
+    }
+    // Also covers the native foreground service's file count staying correct
+    // as torrents are added/removed/finish, not just the throttle.
+    instance.on('torrents-changed', () => syncSeedingState());
+    syncSeedingState();
+
     wlog('initWebtorrent: ready. streaming server ready =', instance.serverReady, '— persisted torrents:', instance.state.getList().length);
     return instance;
   })();
@@ -251,7 +272,53 @@ const SEEDING_OFF_UPLOAD_CAP = 2 * 1024; // 2 KB/s — "no meaningful seeding", 
 
 export const setSeedingEnabled = (enabled: boolean): void => {
   localStorage.setItem(SEEDING_KEY, enabled ? 'on' : 'off');
+  syncSeedingState();
+};
+
+/**
+ * Per-user opt-in: seed even on cellular. Defaults to OFF everywhere (not
+ * just mobile) — cellular means cellular regardless of which device it's
+ * attached to (e.g. a laptop tethered to a phone hotspot), and burning
+ * someone's mobile data plan should always be something they explicitly
+ * asked for, never a default.
+ */
+export const isCellularSeedingAllowed = (): boolean => localStorage.getItem(SEED_CELLULAR_KEY) === 'on';
+export const setCellularSeedingAllowed = (enabled: boolean): void => {
+  localStorage.setItem(SEED_CELLULAR_KEY, enabled ? 'on' : 'off');
+  syncSeedingState();
+};
+
+// Updated by the onConnectionChange subscription set up in initWebtorrent().
+// 'unknown' (the safe default before that first callback fires, and always
+// the value on a browser without the Network Information API) never blocks
+// seeding — we only ever restrict on a *confirmed* 'cellular' reading.
+let currentConnectionType: ConnectionType = 'unknown';
+
+/** isSeedingEnabled() (the user's saved on/off choice) further gated by "and are we actually allowed to seed on this connection right now". */
+const effectiveSeedingEnabled = (): boolean => {
+  if (!isSeedingEnabled()) return false;
+  if (currentConnectionType === 'cellular' && !isCellularSeedingAllowed()) return false;
+  return true;
+};
+
+/**
+ * Single place that reacts to anything which can change whether we should
+ * currently be seeding: the user's own toggle, the cellular-allowed toggle,
+ * or the network itself changing underneath them (e.g. walking off wifi
+ * onto cellular mid-session). Applies the upload throttle AND starts/stops
+ * the native foreground service (a no-op on web) so the two can never end
+ * up disagreeing with each other.
+ */
+const syncSeedingState = (): void => {
+  const enabled = effectiveSeedingEnabled();
   lib?.client?.throttleUpload?.(enabled ? -1 : SEEDING_OFF_UPLOAD_CAP);
+
+  const torrentCount = lib?.getGlobalStats().totalTorrents ?? 0;
+  if (enabled && torrentCount > 0) {
+    startBackgroundSeeding(torrentCount).catch(e => console.warn('[WT] startBackgroundSeeding failed:', e));
+  } else {
+    stopBackgroundSeeding().catch(e => console.warn('[WT] stopBackgroundSeeding failed:', e));
+  }
 };
 
 // ─── Identity ───────────────────────────────────────────────────────────────

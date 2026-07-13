@@ -1,9 +1,11 @@
 import { ref, reactive } from 'vue';
+import { Capacitor } from '@capacitor/core';
 import * as dblurt from '@beblurt/dblurt';
 import type { AuthUser } from '../types';
 import { AuthService } from '../modules/auth';
 import { whalevault } from '../modules/whalevault';
 import { Blockchain } from '../modules/blockchain';
+import * as sessionStore from '../modules/native/session-store';
 
 /**
  * Composable for managing authentication, multi-account support, and PIN encryption.
@@ -44,29 +46,35 @@ export function useAuth(client: any, t: (k: string) => string) {
 
   const saveSessions = (): void => {
     if (auth.accounts.length === 0) {
-      localStorage.removeItem('blurtforum_sessions');
-      localStorage.removeItem('blurtforum_session');
+      sessionStore.saveSessions(null);
+      sessionStore.saveActiveSession(null);
       return;
     }
+    // Native: the OS sandbox + Android Keystore-backed secure storage
+    // already protect this data at rest, so we skip the PIN-encryption
+    // layer entirely and persist the raw key. Web: unchanged, still
+    // requires the PIN-encrypted key (see AuthService.encryptKey below).
+    const native = Capacitor.isNativePlatform();
     const sessions = auth.accounts.map(u => {
-      if (u.type === 'key' && !u.encryptedKey) return null;
+      const persistedKey = native ? u.key : u.encryptedKey;
+      if (u.type === 'key' && !persistedKey) return null;
       return {
         username: u.username,
         type: u.type,
-        key: u.encryptedKey || null,
+        key: persistedKey || null,
         expires: Date.now() + 30 * 24 * 60 * 60 * 1000
       };
     }).filter(s => s !== null);
-    localStorage.setItem('blurtforum_sessions', JSON.stringify(sessions));
-    if (auth.user && (auth.user.type === 'whalevault' || auth.user.encryptedKey)) {
-      localStorage.setItem('blurtforum_session', JSON.stringify({
+    sessionStore.saveSessions(JSON.stringify(sessions));
+    if (auth.user && (auth.user.type === 'whalevault' || (native ? auth.user.key : auth.user.encryptedKey))) {
+      sessionStore.saveActiveSession(JSON.stringify({
         username: auth.user.username,
         type: auth.user.type,
-        key: auth.user.encryptedKey || null,
+        key: (native ? auth.user.key : auth.user.encryptedKey) || null,
         expires: Date.now() + 30 * 24 * 60 * 60 * 1000
       }));
     } else {
-      localStorage.removeItem('blurtforum_session');
+      sessionStore.saveActiveSession(null);
     }
   };
 
@@ -137,7 +145,7 @@ export function useAuth(client: any, t: (k: string) => string) {
       const postingPubs = (acc.posting as { key_auths: [string, number][] }).key_auths.map(k => k[0]);
       if (!postingPubs.includes(pubKey)) throw new Error('Key mismatch');
       
-      if (loginForm.remember) {
+      if (loginForm.remember && !Capacitor.isNativePlatform()) {
         pinModal.tempUser = { username, key: keyStr, acc };
         pinModal.mode = 'setup';
         pinModal.value = '';

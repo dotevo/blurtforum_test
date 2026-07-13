@@ -33,9 +33,23 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Keeps the process alive (screen off) while the WebView's JS
+             webtorrent client seeds. See SeedForegroundService.java. -->
+        <service
+            android:name=".SeedForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Android 13+: needed for the foreground service's own notification
+         to be visible; requested at runtime in BackgroundSeedPlugin. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

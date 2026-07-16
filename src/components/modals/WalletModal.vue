@@ -72,7 +72,7 @@ const title = computed(() => {
       </div>
       <div class="modal-body">
         
-        <div class="gs" style="margin-bottom: 15px; background: var(--bg-r3); padding: 10px; border-radius: 4px;">
+        <div class="gs" style="margin-bottom: 15px; background: var(--surface-4); padding: 10px; border-radius: 4px;">
            {{ t('balance') }}: <b>{{ balance }}</b>
         </div>
 
@@ -85,7 +85,7 @@ const title = computed(() => {
           <label class="form-label">{{ t('amount') }}</label>
           <div style="position: relative;">
             <input type="number" v-model="form.amount" step="0.001" placeholder="0.000" />
-            <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-weight: bold; color: var(--text-muted);">
+            <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-weight: bold; color: var(--text-soft);">
               {{ mode === 'power_down' ? 'BP' : 'BLURT' }}
             </span>
           </div>
@@ -120,7 +120,7 @@ input {
   padding: 10px;
   background: var(--input-bg);
   border: 1px solid var(--input-border);
-  color: var(--text);
+  color: var(--text-strong);
   border-radius: 4px;
 }
 .form-label {
@@ -128,6 +128,6 @@ input {
   font-weight: bold;
   font-size: 12px;
   margin-bottom: 5px;
-  color: var(--text);
+  color: var(--text-strong);
 }
 </style>

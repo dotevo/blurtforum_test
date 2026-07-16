@@ -3,7 +3,7 @@
  * Handles audio/video playback, queuing, playlists, event emitter and plugin API.
  */
 import { reactive, watch, nextTick, ref, computed } from 'vue';
-import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution, PeerActionContribution } from './types';
+import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution, PeerActionContribution, PlayerTabContribution } from './types';
 import { trackEvent } from '../analytics';
 import * as WTPool from './webtorrent-pool';
 import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
@@ -56,7 +56,9 @@ export const state = reactive<PlayerState>({
   minimized: true,
   expanded: false,
   expandedHeight: 400,
+  tabsWidth: 340,
   expandedTab: 'video',
+  cinema: false,
   currentTrack: null,
   queue: [],
   autoQueue: [],
@@ -179,6 +181,21 @@ const registerTrackAction = (contribution: TrackActionContribution): void => {
 const getTrackActions = (zone: Exclude<TrackActionZone, 'both'>): TrackActionContribution[] =>
   _trackActions.filter(a => a.zone === zone || a.zone === 'both');
 
+// Same idea, but for the expanded panel's tab bar: a plugin registers a tab
+// (id/label/icon/component) and the core renders it generically alongside
+// the built-in video/queue/playlists/settings tabs, with zero knowledge of
+// what it shows. Order = registration order.
+
+const _expandedTabs: PlayerTabContribution[] = [];
+
+const registerExpandedTab = (contribution: PlayerTabContribution): void => {
+  if (!contribution?.id) { console.warn('BFPlayer.registerExpandedTab: contribution must have an id'); return; }
+  if (_expandedTabs.find(t => t.id === contribution.id)) { console.warn(`BFPlayer: expanded tab "${contribution.id}" already registered`); return; }
+  _expandedTabs.push(contribution);
+};
+
+const getExpandedTabs = (): PlayerTabContribution[] => _expandedTabs;
+
 // Same idea as track actions, but for a webtorrent peer-list row — no zone,
 // since peer rows only exist in one place (WebtorrentInfoModal.vue).
 const _peerActions: PeerActionContribution[] = [];
@@ -297,6 +314,30 @@ const handleError = (msg: string): void => {
     if (state.currentTrack === trackWithError) playNext(true);
     errorTimer = null;
   }, 5000);
+};
+
+const initTabsResize = (e: MouseEvent | TouchEvent): void => {
+  let isResizing = true;
+  const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+  const startW = state.tabsWidth;
+  const onMove = (ee: MouseEvent | TouchEvent) => {
+    if (!isResizing) return;
+    const currentX = 'touches' in ee ? ee.touches[0].clientX : ee.clientX;
+    // Tabs sidebar sits to the right of the video, so dragging left grows it.
+    const delta = startX - currentX;
+    state.tabsWidth = Math.max(260, Math.min(window.innerWidth * 0.65, startW + delta));
+  };
+  const onUp = () => {
+    isResizing = false;
+    document.removeEventListener('mousemove', onMove as EventListener);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove as EventListener);
+    document.removeEventListener('touchend', onUp);
+  };
+  document.addEventListener('mousemove', onMove as EventListener);
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchmove', onMove as EventListener);
+  document.addEventListener('touchend', onUp);
 };
 
 const initResize = (e: MouseEvent | TouchEvent): void => {
@@ -1411,11 +1452,12 @@ export const BFPlayer: BFPlayerAPI = {
   addToQueue, setAutoQueue, scanView,
   registerTrack, unregisterTrack, clearTracks,
   setClient,
-  initResize, scrollToCurrent, toggleExperimental,
+  initResize, initTabsResize, scrollToCurrent, toggleExperimental,
   lockSkip, unlockSkip,
   togglePlayMode,
   on, off, registerPlugin,
   registerTrackAction, getTrackActions,
+  registerExpandedTab, getExpandedTabs,
   createPlaylist, deletePlaylist, renamePlaylist,
   addTrackToPlaylist, removeTrackFromPlaylist, playPlaylist,
   setSeedingEnabled, setMaxSeedStorageBytes, getMaxSeedStorageBytes,

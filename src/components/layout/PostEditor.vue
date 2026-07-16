@@ -129,26 +129,26 @@ const finalTags = computed(() => {
     </div>
 
     <!-- TAG SELECTOR (POST only) -->
-    <div v-if="mode === 'post'" style="margin-bottom:10px; padding:10px; border:1px dashed var(--border-main); border-radius:4px;">
+    <div v-if="mode === 'post'" style="margin-bottom:10px; padding:10px; border:1px dashed var(--surface-border); border-radius:4px;">
       <div class="gs" style="font-weight:bold; margin-bottom:8px;">🏷️ {{ t('tags') }}</div>
       <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:6px;">
         <div v-if="targetTags.length > 0">
           <label class="gs" style="display:block; font-size:11px; margin-bottom:3px;">{{ t('category') }}</label>
           <select v-model="form.selectedTag" @change="handleInput"
-                  style="padding:5px 8px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text); font-size:12px; border-radius:3px;">
+                  style="padding:5px 8px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text-strong); font-size:12px; border-radius:3px;">
             <option v-for="tag in targetTags" :key="tag" :value="tag">#{{ tag }}</option>
           </select>
         </div>
         <div style="flex:1; min-width:150px;">
           <label class="gs" style="display:block; font-size:11px; margin-bottom:3px;">{{ t('customTags') }}</label>
           <input type="text" v-model="form.customTags" placeholder="np. fotografia, plener" @input="handleInput"
-                 style="width:100%; padding:5px 8px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text); font-size:12px; border-radius:3px; box-sizing:border-box;">
+                 style="width:100%; padding:5px 8px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text-strong); font-size:12px; border-radius:3px; box-sizing:border-box;">
         </div>
       </div>
       <div class="gs" style="font-size:11px;">
         {{ t('sentTags') }}:
         <template v-for="tag in finalTags" :key="tag">
-          <span style="display:inline-block; background:var(--primary); color:#fff; border-radius:3px; padding:1px 6px; margin:2px 2px 0 0; font-size:10px;">#{{ tag }}</span>
+          <span style="display:inline-block; background:var(--brand); color:#fff; border-radius:3px; padding:1px 6px; margin:2px 2px 0 0; font-size:10px;">#{{ tag }}</span>
         </template>
         <span style="opacity:0.5">{{ t('max5') }}</span>
       </div>
@@ -160,7 +160,7 @@ const finalTags = computed(() => {
         <input type="checkbox" v-model="form.devTip"> {{ t('devTip') }}
       </label>
       
-      <div style="padding: 12px; border: 1px dashed var(--border-main); border-radius: 4px; background: var(--bg-r1);">
+      <div style="padding: 12px; border: 1px dashed var(--surface-border); border-radius: 4px; background: var(--surface-2);">
         <div class="gs" style="font-weight:bold; margin-bottom:10px; font-size: 12px;">👥 {{ t('addBeneficiary') }}</div>
         <div class="ben-form-row">
           <input type="text" v-model="form.beneficiary.account" :placeholder="t('beneficiaryAccount')" class="ben-input-account">
@@ -179,7 +179,7 @@ const finalTags = computed(() => {
       </button>
       <button v-if="!hideCancel" class="btn btn-ghost" @click="handleCancel"><i class="fa-solid fa-xmark"></i> {{ t('cancel') }}</button>
       
-      <span v-if="feeEstimate && mode !== 'edit'" style="font-size:11px; color:var(--text-muted); margin-left:4px;">
+      <span v-if="feeEstimate && mode !== 'edit'" style="font-size:11px; color:var(--text-soft); margin-left:4px;">
         💸 ~{{ feeEstimate }} BLURT
       </span>
     </div>
@@ -189,15 +189,15 @@ const finalTags = computed(() => {
 <style scoped>
 .editor-header {
   font-weight:bold;
-  color:var(--primary);
+  color:var(--brand);
   margin-bottom:10px;
-  border-bottom:1px solid var(--border-main);
+  border-bottom:1px solid var(--surface-border);
   padding-bottom:10px;
   font-size:14px;
 }
 .editor-header-reply {
   font-weight:bold;
-  color:var(--primary);
+  color:var(--brand);
   margin-bottom:10px;
   font-size:12px;
   text-transform: uppercase;

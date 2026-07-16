@@ -35,17 +35,17 @@ const emit = defineEmits<{
 
 <style scoped>
 .lang-bar {
-  background: var(--bg-r2);
+  background: var(--surface-3);
   display: flex;
   align-items: center;
   padding: 6px 15px;
-  border-bottom: 1px solid var(--border-main);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 @media (max-width: 900px) {
   .lang-bar {
     padding: 8px 10px;
-    background: var(--bg-r1);
+    background: var(--surface-2);
   }
   /* LangBar on mobile uses the internal SettingsSelectors mobile styles via prop if needed, 
      but here we just ensure the bar itself is consistent */

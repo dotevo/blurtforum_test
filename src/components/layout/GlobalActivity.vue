@@ -49,7 +49,7 @@ const emit = defineEmits<{
 .activity-title {
   padding: 6px 12px;
   border-radius: 6px 6px 0 0;
-  border: 1px solid var(--primary);
+  border: 1px solid var(--brand);
   border-bottom: none;
 }
 </style>

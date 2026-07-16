@@ -121,7 +121,7 @@ const barSeries = computed(() => {
           <div style="flex: 1; min-width: 250px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
               <div>
-                <h2 style="color: var(--primary); margin: 0 0 5px;">{{ profileUser.data ? (profileUser.data as any).displayName : '@' + profileUser.username }}</h2>
+                <h2 style="color: var(--brand); margin: 0 0 5px;">{{ profileUser.data ? (profileUser.data as any).displayName : '@' + profileUser.username }}</h2>
                 <div class="gs" style="margin-bottom: 10px; font-weight: bold;">@{{ profileUser.username }}</div>
               </div>
               <button v-if="auth.user && auth.user.username !== profileUser.username"
@@ -132,7 +132,7 @@ const barSeries = computed(() => {
               </button>            </div>
             
             <div v-if="profileUser.data" style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px;">
-              <div v-if="(profileUser.data as any).about" style="font-size: 12px; margin-bottom: 10px; padding: 10px; background: var(--bg-r2); border-left: 3px solid var(--primary);">
+              <div v-if="(profileUser.data as any).about" style="font-size: 12px; margin-bottom: 10px; padding: 10px; background: var(--surface-3); border-left: 3px solid var(--brand);">
                 {{ (profileUser.data as any).about }}
               </div>
               <div style="display: flex; gap: 15px; flex-wrap: wrap;" class="gs">
@@ -184,7 +184,7 @@ const barSeries = computed(() => {
       <div v-if="profileTab==='wallet'" class="wallet-tab">
         <div class="forumline" style="padding: 20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-             <h3 style="margin: 0; color: var(--primary);">💳 {{ t('walletBalances') }}</h3>
+             <h3 style="margin: 0; color: var(--brand);">💳 {{ t('walletBalances') }}</h3>
              <div v-if="profileUser.wallet.loading" class="gs"><i class="fa-solid fa-sync fa-spin"></i> {{ t('loading') }}</div>
           </div>
           
@@ -232,10 +232,10 @@ const barSeries = computed(() => {
                 <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
                    <span>{{ t('own') }}:</span> <b>{{ (profileUser.data as any)?.bp }} {{ t('bp') || 'BP' }}</b>
                 </div>
-                <div style="display:flex; justify-content:space-between; color: var(--success-text);">
+                <div style="display:flex; justify-content:space-between; color: var(--alert-success-text);">
                    <span>{{ t('received') }}:</span> <b>+ {{ (profileUser.data as any)?.delegatedIn }} {{ t('bp') || 'BP' }}</b>
                 </div>
-                <div style="display:flex; justify-content:space-between; color: var(--error-text);">
+                <div style="display:flex; justify-content:space-between; color: var(--alert-error-text);">
                    <span>{{ t('delegated') }}:</span> <b>- {{ (profileUser.data as any)?.delegatedOut }} {{ t('bp') || 'BP' }}</b>
                 </div>
               </div>
@@ -264,7 +264,7 @@ const barSeries = computed(() => {
 
           <!-- Power Down Monitor -->
           <div v-if="profileUser.wallet.powerDown.rate !== '0.000'" class="forumline pd-monitor">
-            <div style="font-weight: bold; color: var(--primary); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
+            <div style="font-weight: bold; color: var(--brand); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
               <i class="fa-solid fa-clock-rotate-left"></i> {{ t('powerDownActive') }}
             </div>
             <div class="pd-grid">
@@ -286,7 +286,7 @@ const barSeries = computed(() => {
           <!-- Delegations Section -->
           <div class="delegations-row">
             <div class="delegation-half">
-              <h4 style="color: var(--primary); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
+              <h4 style="color: var(--brand); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
                 <i class="fa-solid fa-arrow-up-right-from-square"></i> {{ t('outgoingDelegations') }}
               </h4>
               <table class="forumline profile-list-table tight">
@@ -317,7 +317,7 @@ const barSeries = computed(() => {
             </div>
 
             <div class="delegation-half">
-              <h4 style="color: var(--primary); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
+              <h4 style="color: var(--brand); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
                 <i class="fa-solid fa-arrow-down-left-and-arrow-up-right-to-center"></i> {{ t('incomingDelegations') }}
               </h4>
               <table class="forumline profile-list-table tight">
@@ -345,7 +345,7 @@ const barSeries = computed(() => {
             <!-- Wallet History -->
             <div style="margin-top: 30px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-              <h4 style="color: var(--primary); margin:0; display:flex; align-items:center; gap:8px;">
+              <h4 style="color: var(--brand); margin:0; display:flex; align-items:center; gap:8px;">
                 <i class="fa-solid fa-clock-rotate-left"></i> {{ t('recentWalletTransactions') }}
               </h4>
               <div class="gs" style="font-size:10px;">{{ t('last') }} 500</div>
@@ -353,7 +353,7 @@ const barSeries = computed(() => {
             <div class="forumline" style="overflow: hidden; border-radius: 4px;">
               <table class="profile-list-table tight-history">
                 <thead>
-                  <tr style="background: var(--bg-r3);">
+                  <tr style="background: var(--surface-4);">
                     <td class="thHead" style="text-align:left;padding-left:10px; width:130px">{{ t('date') }}</td>
                     <td class="thHead">{{ t('description') }}</td>
                     <td class="thHead" align="right" style="padding-right:15px">{{ t('amount') }}</td>
@@ -420,7 +420,7 @@ const barSeries = computed(() => {
       <div v-if="profileTab==='earnings'" class="earnings-tab">
         
         <div class="earnings-header-row">
-          <h3 style="margin:0; color: var(--primary);">📊 {{ t('earningsSummary') }}</h3>
+          <h3 style="margin:0; color: var(--brand);">📊 {{ t('earningsSummary') }}</h3>
           <div style="display:flex; gap:10px; align-items:center;">
              <button class="btn btn-sm btn-accent" :disabled="profileUser.earnings.loading" @click="$emit('fetchEarnings')">
                <i class="fa-solid fa-sync" :class="{ 'fa-spin': profileUser.earnings.loading }"></i> {{ t('loadMoreHistory') }}
@@ -634,28 +634,28 @@ const barSeries = computed(() => {
 <style scoped>
 .profile-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .stat-box {
-  background: var(--bg-r1); padding: 12px; border-radius: 6px;
-  border: 1px solid var(--border-main); flex: 1; min-width: 140px;
+  background: var(--surface-2); padding: 12px; border-radius: 6px;
+  border: 1px solid var(--surface-border); flex: 1; min-width: 140px;
 }
-.stat-box.accent { border-left: 4px solid var(--primary); }
-.stat-box.success { border-left: 4px solid var(--accent-active, #2ecc71); }
+.stat-box.accent { border-left: 4px solid var(--brand); }
+.stat-box.success { border-left: 4px solid var(--state-active, #2ecc71); }
 .stat-box.info { border-left: 4px solid var(--accent); }
 
-.stat-label { font-size: 10px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; }
-.stat-val { font-size: 18px; font-weight: bold; color: var(--text); }
+.stat-label { font-size: 10px; font-weight: 800; color: var(--text-soft); text-transform: uppercase; margin-bottom: 5px; }
+.stat-val { font-size: 18px; font-weight: bold; color: var(--text-strong); }
 .unit { font-size: 10px; opacity: 0.6; margin-left: 2px; }
 
 .profile-list-table { width: 100%; margin-top: 10px; border-collapse: collapse; }
-.row-hover:hover { background: var(--bg-r2); cursor: pointer; }
+.row-hover:hover { background: var(--surface-3); cursor: pointer; }
 
 .earnings-header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
 
 .earnings-visuals { margin-top: 10px; }
 .chart-row { display: flex; gap: 15px; margin-bottom: 20px; }
-.chart-container { flex: 1; background: var(--bg-r1); padding: 15px; border-radius: 8px; min-width: 280px; }
-.chart-container h4 { margin: 0 0 15px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+.chart-container { flex: 1; background: var(--surface-2); padding: 15px; border-radius: 8px; min-width: 280px; }
+.chart-container h4 { margin: 0 0 15px 0; font-size: 11px; color: var(--text-soft); text-transform: uppercase; letter-spacing: 1px; }
 
-.empty-chart { height: 100px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px; }
+.empty-chart { height: 100px; display: flex; align-items: center; justify-content: center; color: var(--text-soft); font-size: 12px; }
 
 .badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; color: #fff; font-weight: bold; }
 
@@ -667,7 +667,7 @@ const barSeries = computed(() => {
 }
 .wallet-card {
   padding: 15px;
-  background: var(--bg-r1);
+  background: var(--surface-2);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -676,7 +676,7 @@ const barSeries = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border-main);
+  border-bottom: 1px solid var(--surface-border);
   padding-bottom: 8px;
 }
 .wallet-card-desc {
@@ -684,15 +684,15 @@ const barSeries = computed(() => {
   line-height: 1.5;
   flex: 1;
 }
-.highlight-card { border-top: 3px solid var(--primary); }
+.highlight-card { border-top: 3px solid var(--brand); }
 .highlight-card-bp { border-top: 3px solid var(--accent); }
-.total-card { border-top: 3px solid var(--success-border); background: var(--bg-r3); }
-.main-amt { color: var(--primary); font-size: 22px; }
-.main-amt.highlight { color: var(--success-text); }
+.total-card { border-top: 3px solid var(--alert-success-border); background: var(--surface-4); }
+.main-amt { color: var(--brand); font-size: 22px; }
+.main-amt.highlight { color: var(--alert-success-text); }
 
 .reward-claim-box {
   margin-top: 20px;
-  background: linear-gradient(135deg, var(--primary), var(--accent));
+  background: linear-gradient(135deg, var(--brand), var(--accent));
   padding: 15px 20px;
   border-radius: 8px;
   display: flex;
@@ -703,9 +703,9 @@ const barSeries = computed(() => {
   box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
 .reward-icon { font-size: 24px; }
-.btn-light { background: #fff; color: var(--primary); border: none; font-weight: bold; }
+.btn-light { background: #fff; color: var(--brand); border: none; font-weight: bold; }
 
-.pd-monitor { margin-top: 20px; padding: 15px; background: var(--bg-r2); border-left: 4px solid var(--accent); }
+.pd-monitor { margin-top: 20px; padding: 15px; background: var(--surface-3); border-left: 4px solid var(--accent); }
 .pd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .pd-stat .stat-val.small { font-size: 14px; }
 
@@ -725,13 +725,13 @@ const barSeries = computed(() => {
 
 .amt-in { color: #2ecc71; }
 .amt-out { color: #e74c3c; }
-.tx-memo { font-style: italic; opacity: 0.8; margin-top: 2px; border-left: 2px solid var(--border-main); padding-left: 6px; }
+.tx-memo { font-style: italic; opacity: 0.8; margin-top: 2px; border-left: 2px solid var(--surface-border); padding-left: 6px; }
 
-.btn-icon-only { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 5px; transition: color 0.2s; }
-.btn-icon-only:hover { color: var(--error-text, #e74c3c); }
+.btn-icon-only { background: none; border: none; color: var(--text-soft); cursor: pointer; padding: 5px; transition: color 0.2s; }
+.btn-icon-only:hover { color: var(--alert-error-text, #e74c3c); }
 
 .tx-icon-v2 { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
-.tx-transfer { background: var(--bg-r3); color: var(--primary); }
+.tx-transfer { background: var(--surface-4); color: var(--brand); }
 .tx-transfer_to_vesting { background: rgba(52, 152, 219, 0.2); color: #3498db; }
 .tx-withdraw_vesting { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
 .tx-delegate_vesting_shares { background: rgba(155, 89, 182, 0.2); color: #9b59b6; }
@@ -746,7 +746,7 @@ const barSeries = computed(() => {
 .amt-val.minus { color: #e74c3c; }
 .amt-unit { font-size: 9px; opacity: 0.5; font-weight: bold; }
 
-.tight-history td { padding: 10px !important; border-bottom: 1px solid var(--bg-r2) !important; }
+.tight-history td { padding: 10px !important; border-bottom: 1px solid var(--surface-3) !important; }
 .history-row:last-child td { border-bottom: none !important; }
 
 @media (max-width: 900px) {
@@ -767,7 +767,7 @@ const barSeries = computed(() => {
   .profile-list-table thead { display: none; }
   .profile-list-table tr {
     padding: 12px 10px;
-    border-bottom: 1px solid var(--border-main);
+    border-bottom: 1px solid var(--surface-border);
   }
   .profile-list-table td {
     padding: 2px 0 !important;

@@ -22,6 +22,7 @@ import { useGlobalActivity } from './useGlobalActivity';
 import { BlurtPlayerPlugin } from '../modules/player_blurt/blurt-player-plugin';
 import { signBlurtMessage } from '../modules/blurt-sign-message';
 import { SponsoredPlayerPlugin } from '../modules/player_blurt/sponsored-plugin';
+import { BlurtCommentsPlugin } from '../modules/player_blurt/comments-plugin';
 import { BFCommunity, VIRTUAL_FORUMS, DEFAULT_COMMUNITIES } from '../modules/community';
 import { BFPlayer } from '../modules/player/player';
 import { Parser } from '../modules/parser';
@@ -61,6 +62,7 @@ export function useApp() {
     { id: 'ocean',     label: '🌊 Ocean' },
     { id: 'forest',    label: '🌿 Forest' },
     { id: 'midnight',  label: '🌙 Midnight' },
+    { id: 'amber',     label: '🟠 Amber' },
   ];
   const theme = ref<string>(localStorage.getItem('bf-theme') || 'subsilver');
   const setTheme = (id: string) => {
@@ -107,6 +109,7 @@ export function useApp() {
   const structureForm = reactive({ text: '', loading: false, error: '' });
 
   const bodyCache: Record<string, string> = {};
+  const cachePostBody = (author: string, permlink: string, body: string): void => { bodyCache[`${author}/${permlink}`] = body; };
   const selectedCommunity = ref('blurt-140455');
   const currentTagFilter = ref(urlParams.get('tag') || '');
   const customTag = ref('');
@@ -1223,6 +1226,14 @@ export function useApp() {
     BFPlayer.setClient(rpc.dataClient.value);
     BFPlayer.registerPlugin(BlurtPlayerPlugin(rpc.dataClient.value, auth, (message: string) => signBlurtMessage(auth, message)));
     BFPlayer.registerPlugin(SponsoredPlayerPlugin(rpc.dataClient.value));
+    BFPlayer.registerPlugin(BlurtCommentsPlugin({
+      client: rpc.dataClient.value,
+      auth, t, fmtDate, renderMD, hasVoted, isNestedReply, getParentBody, isPostInCommunity,
+      getFollowingSet: () => followingSet.value,
+      getCanMute: () => canMute.value,
+      config, navigateToPath, cachePostBody,
+      submitVote, mutePost, toggleFollow, openPayoutModal, openProfile,
+    }));
     setTheme(theme.value);
     window.addEventListener('popstate', handleUrlChange);
     window.addEventListener('focusin', (e) => {

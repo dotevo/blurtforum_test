@@ -36,7 +36,7 @@ const pixelSize = {
 .avatar {
   background-size: cover;
   background-position: center;
-  background-color: var(--bg-r2);
+  background-color: var(--surface-3);
   border-radius: 4px;
   flex-shrink: 0;
 }

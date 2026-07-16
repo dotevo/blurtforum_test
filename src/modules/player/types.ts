@@ -43,7 +43,15 @@ export interface PlayerState {
   minimized: boolean;
   expanded: boolean;
   expandedHeight: number;
-  expandedTab: 'video' | 'queue' | 'playlists' | 'settings';
+  /** Width in px of the tabs sidebar within the expanded panel (video takes the rest). User-draggable, session-only like expandedHeight. */
+  tabsWidth: number;
+  /** Built-in ids are 'video' | 'queue' | 'playlists' | 'settings'; a plugin
+   *  registering a tab via registerExpandedTab() can set this to its own id. */
+  expandedTab: string;
+  /** Fullscreen presentation of the same expanded panel/video — no separate
+   *  player instance, purely a display-mode flag the UI reacts to. Not
+   *  persisted: like `expanded`/`minimized`, it's session-only. */
+  cinema: boolean;
   currentTrack: MediaTrack | null;
   queue: MediaTrack[];
   autoQueue: MediaTrack[];
@@ -99,6 +107,24 @@ export interface TrackActionContribution {
   zone: TrackActionZone;
   component: any;
   /** Extra static props merged in alongside `track`/`player` (e.g. a plugin's own `client`). */
+  props?: Record<string, unknown>;
+}
+
+/**
+ * A single plugin's contribution to the expanded panel's tab bar (alongside
+ * the built-in video/queue/playlists/settings tabs). `component` receives
+ * `track` (the current MediaTrack, may be null) and `player`, plus whatever
+ * static `props` were registered. The player core has no idea what a given
+ * tab renders — e.g. a Blurt plugin contributing a "Comments" tab that reads
+ * `track.author`/`track.permlink` to fetch replies is entirely its own
+ * business; the core only knows there's an id/label/icon and a component to
+ * mount when that tab is selected.
+ */
+export interface PlayerTabContribution {
+  id: string;
+  label: string;
+  icon: string;
+  component: any;
   props?: Record<string, unknown>;
 }
 
@@ -176,6 +202,8 @@ export interface BFPlayerAPI {
   clearTracks: () => void;
   setAutoQueue: (tracks: MediaTrack[]) => void;
   initResize: (e: MouseEvent | TouchEvent) => void;
+  /** Drag handle between the video and the tabs sidebar in the expanded panel. */
+  initTabsResize: (e: MouseEvent | TouchEvent) => void;
   scrollToCurrent: () => void;
   toggleExperimental: (val: boolean) => void;
   togglePlayMode: () => void;
@@ -186,6 +214,10 @@ export interface BFPlayerAPI {
   registerTrackAction: (contribution: TrackActionContribution) => void;
   /** Contributions currently registered for a given zone (includes 'both'-zone ones). Used by the generic TrackActions.vue host. */
   getTrackActions: (zone: Exclude<TrackActionZone, 'both'>) => TrackActionContribution[];
+  /** Registers a plugin's own tab (+ component) into the expanded panel's tab bar. Idempotent by id. */
+  registerExpandedTab: (contribution: PlayerTabContribution) => void;
+  /** Tabs currently registered, in registration order. Used by MediaPlayer.vue to render extra tab buttons/bodies generically. */
+  getExpandedTabs: () => PlayerTabContribution[];
   /** Temporarily blocks manual skip (e.g. while a sponsored track must play). Plugins are responsible for calling unlockSkip(). */
   lockSkip: () => void;
   unlockSkip: () => void;

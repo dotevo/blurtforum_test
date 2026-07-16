@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import ScrollableTabs from './ScrollableTabs.vue';
 import PlaylistModal from './PlaylistModal.vue';
 import WebtorrentVideo from './WebtorrentVideo.vue';
@@ -13,6 +13,15 @@ const props = defineProps<{
 }>();
 
 const vw = ref(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+// Mobile: expanded mode always opens on the video, regardless of whichever
+// tab was last selected — a settings/comments tab replaces the video
+// entirely on narrow screens (see .bfp-media-hidden), so defaulting to
+// anything else would open on a blank video area.
+watch(() => props.player.state.expanded, (isExpanded) => {
+  if (isExpanded && vw.value <= 900) props.player.state.expandedTab = 'video';
+});
+
 const handleResize = () => { vw.value = window.innerWidth; };
 
 const emit = defineEmits<{
@@ -400,7 +409,7 @@ onUnmounted(() => {
     </template>
   </div></div><div
   class="bfp-panel"
-  :class="{ 'bfp-panel--hidden': !player.state.expanded || player.state.minimized }"
+  :class="{ 'bfp-panel--hidden': !player.state.expanded || player.state.minimized, 'bfp-panel--cinema': player.state.cinema }"
   :style="{ height: player.state.expandedHeight + 'px' }"
 >
 
@@ -411,7 +420,8 @@ onUnmounted(() => {
 
   <div class="bfp-panel-content" :class="'bfp-panel-content--' + player.state.expandedTab">
     
-    <div class="bfp-panel-video" :class="{ 'bfp-media-hidden': vw <= 900 && player.state.expandedTab !== 'video' }">
+    <div class="bfp-panel-video" :class="{ 'bfp-media-hidden': vw <= 900 && player.state.expandedTab !== 'video' }"
+         :style="vw > 900 ? { flex: '1 1 0' } : {}">
       
       <div class="bfp-video-header">
         <div class="bfp-video-header-info">
@@ -442,6 +452,15 @@ onUnmounted(() => {
 
         <WebtorrentVideo :t="t" />
 
+        <div v-if="player.state.cinema && player.getExpandedTabs().length" class="bfp-cinema-overlay-actions">
+          <button v-for="tab in player.getExpandedTabs()" :key="'ov-' + tab.id" class="bfp-cinema-overlay-btn"
+                  :class="{ active: player.state.expandedTab === tab.id }"
+                  @click="player.state.expandedTab = player.state.expandedTab === tab.id ? 'video' : tab.id"
+                  :title="tab.label">
+            <i :class="tab.icon"></i>
+          </button>
+        </div>
+
         <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'audio' }" class="bfp-video-audio-placeholder">
           <img v-if="effectiveCover" :src="effectiveCover" class="bfp-placeholder-cover" alt="" @error="handleImgError(effectiveCover)" />
           <div v-else class="bfp-placeholder-icon"><i class="fa-solid fa-music" style="font-size:48px; opacity:0.3;"></i></div>
@@ -456,7 +475,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="bfp-panel-tabs">
+    <div v-if="vw > 900" class="bfp-tabs-resize" @mousedown="player.initTabsResize($event)" @touchstart.prevent="player.initTabsResize($event)" title="Drag to resize"></div>
+
+    <div class="bfp-panel-tabs" :style="vw > 900 ? { flex: '0 0 ' + player.state.tabsWidth + 'px' } : {}">
       <div class="bfp-panel-header">
         <ScrollableTabs>
           <button v-if="vw <= 900" class="bfp-tab" :class="{ active: player.state.expandedTab === 'video' }" @click="player.state.expandedTab = 'video'">
@@ -476,8 +497,12 @@ onUnmounted(() => {
           <button class="bfp-tab" :class="{ active: player.state.expandedTab === 'settings' }" @click="player.state.expandedTab = 'settings'">
             <i class="fa-solid fa-gear"></i> <span>{{ t('settings') }}</span>
           </button>
+          <button v-for="tab in player.getExpandedTabs()" :key="tab.id" class="bfp-tab"
+                  :class="{ active: player.state.expandedTab === tab.id }" @click="player.state.expandedTab = tab.id">
+            <i :class="tab.icon"></i> <span>{{ tab.label }}</span>
+          </button>
         </ScrollableTabs>
-        <button class="bfp-btn bfp-panel-close" @click="player.state.expanded = false" aria-label="Close panel">
+        <button class="bfp-btn bfp-panel-close" @click="player.state.expanded = false; player.state.cinema = false" aria-label="Close panel">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -714,7 +739,12 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-    </div></div></div></div></div><div class="pl-dropdown" v-if="dropdownVisible"
+    </div></div>
+        <div v-for="tab in player.getExpandedTabs()" :key="'body-' + tab.id" class="bfp-panel-body" v-show="player.state.expandedTab === tab.id">
+      <component :is="tab.component" :track="player.state.currentTrack" :player="player" :t="t" v-bind="tab.props || {}" />
+    </div>
+    </div>
+    </div></div><div class="pl-dropdown" v-if="dropdownVisible"
      :style="{ top: dropdownY + 'px', left: dropdownX + 'px' }"
      @click.stop>
   <div class="pl-dropdown-title">Add to playlist</div>
@@ -722,7 +752,7 @@ onUnmounted(() => {
        class="pl-dropdown-item" @click="addToPlaylistFromDropdown(pl.id)">
     <div class="pl-dropdown-dot" :style="{ background: pl.color }"></div>
     <span>{{ pl.name }}</span>
-    <i class="fa-solid fa-check" style="margin-left:auto; color:var(--primary);"
+    <i class="fa-solid fa-check" style="margin-left:auto; color:var(--brand);"
        v-if="pl.tracks.some(t => t.author === dropdownTrack?.author && t.permlink === dropdownTrack?.permlink)"></i>
   </div>
   <div class="pl-dropdown-sep"></div>
@@ -753,11 +783,11 @@ onUnmounted(() => {
 
 /* ── Variables (inherit from theme) ─────────────────────────────────────── */
 .bfp-bar, .bfp-panel {
-  --bfp-bg:      var(--nav-bg, #1a1a2e);
-  --bfp-border:  var(--border-main, rgba(255,255,255,0.08));
-  --bfp-text:    var(--text, #e0e0e0);
-  --bfp-muted:   var(--text-muted, rgba(255,255,255,0.45));
-  --bfp-accent:  var(--primary, #1a9b78);
+  --bfp-bg:      var(--surface-nav, #1a1a2e);
+  --bfp-border:  var(--surface-border, rgba(255,255,255,0.08));
+  --bfp-text:    var(--text-strong, #e0e0e0);
+  --bfp-muted:   var(--text-soft, rgba(255,255,255,0.45));
+  --bfp-accent:  var(--brand, #1a9b78);
   --bfp-hover:   rgba(255,255,255,0.06);
   --bfp-radius:  6px;
   --bfp-h:       72px;
@@ -972,7 +1002,7 @@ onUnmounted(() => {
 }
 
 .bfp-mirror-row:hover { background: var(--bfp-hover); }
-.bfp-mirror-row.active { background: rgba(var(--bfp-accent-rgb, 26, 155, 120), 0.1); color: var(--bfp-accent); font-weight: 600; }
+.bfp-mirror-row.active { background: color-mix(in srgb, var(--bfp-accent) 12%, transparent); color: var(--bfp-accent); font-weight: 600; }
 .bfp-mirror-row i { width: 16px; text-align: center; }
 .ms-auto { margin-left: auto; }
 
@@ -1066,6 +1096,39 @@ onUnmounted(() => {
   pointer-events: none !important;
 }
 
+/* Fullscreen presentation of the same panel/video (no remount) — bottom
+   playback bar (.bfp-bar, z-index 1000) stays above this (z-index 999) so
+   play/pause/seek/volume remain reachable without any new controls. */
+.bfp-panel--cinema {
+  top: 0 !important;
+  height: 100vh !important;
+  padding-bottom: calc(var(--bfp-h) + var(--bfp-prog-h)) !important;
+  box-shadow: none;
+}
+.bfp-panel--cinema .bfp-panel-resize { display: none; }
+.bfp-panel--cinema .bfp-panel-video { flex: 5; }
+
+.bfp-cinema-overlay-actions {
+  position: absolute;
+  right: 16px; bottom: 16px;
+  z-index: 5;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.bfp-cinema-overlay-btn {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.2s, color 0.2s;
+}
+.bfp-cinema-overlay-btn:hover { background: rgba(0,0,0,0.75); }
+.bfp-cinema-overlay-btn.active { background: var(--bfp-accent); color: #1a1206; }
+
 /* Hide inactive media containers without display:none to keep them alive */
 .bfp-media-hidden {
   position: absolute !important;
@@ -1098,6 +1161,22 @@ onUnmounted(() => {
   background: var(--bfp-bg);
   min-width: 320px;
 }
+
+.bfp-tabs-resize {
+  width: 6px; flex-shrink: 0;
+  cursor: ew-resize;
+  background: transparent;
+  position: relative;
+}
+.bfp-tabs-resize::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 2px; height: 32px;
+  background: var(--bfp-border);
+  border-radius: 1px;
+}
+.bfp-tabs-resize:hover::after { background: var(--bfp-accent); }
 
 @media (max-width: 900px) {
   .bfp-panel-content { flex-direction: column; }
@@ -1516,7 +1595,7 @@ onUnmounted(() => {
 /* Dropdown */
 .pl-dropdown {
   position: fixed; z-index: 9999;
-  background: var(--nav-bg, #1e1e2e);
+  background: var(--surface-nav, #1e1e2e);
   border: 1px solid var(--bfp-border);
   border-radius: 6px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);

@@ -23,7 +23,7 @@ const emit = defineEmits<{
 <style scoped>
 .vote-btn { 
   cursor: pointer; 
-  color: var(--text-muted); 
+  color: var(--text-soft); 
   font-size: 14px; 
   user-select: none; 
   transition: all 0.2s ease; 
@@ -35,8 +35,8 @@ const emit = defineEmits<{
   padding: 2px 6px;
   border-radius: 4px;
 }
-.vote-btn:hover { color: var(--primary); transform: scale(1.1); background: var(--bg-r3); }
-.vote-btn.active { color: var(--accent-active); filter: drop-shadow(0 0 3px var(--accent-active)); transform: scale(1.1); font-weight: bold; }
+.vote-btn:hover { color: var(--brand); transform: scale(1.1); background: var(--surface-4); }
+.vote-btn.active { color: var(--state-active); filter: drop-shadow(0 0 3px var(--state-active)); transform: scale(1.1); font-weight: bold; }
 .vote-btn i { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2)); }
 
 .vote-count {

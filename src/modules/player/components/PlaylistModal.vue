@@ -42,7 +42,7 @@ onMounted(() => {
       <button class="modal-close" @click="emit('close')">×</button>
     </div>
     <div class="modal-body">
-      <div v-if="track" style="font-size:11px; color:var(--text-muted); margin-bottom:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+      <div v-if="track" style="font-size:11px; color:var(--text-soft); margin-bottom:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
         🎵 {{ t('adding') || 'Adding' }}: {{ track.title }}
       </div>
 

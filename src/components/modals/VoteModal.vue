@@ -29,7 +29,7 @@ const emit = defineEmits<{
     </div>
     <div class="modal-body">
       <!-- Post being voted -->
-      <div v-if="voteModal.post" style="font-size:11px; color:var(--text-muted); margin-bottom:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+      <div v-if="voteModal.post" style="font-size:11px; color:var(--text-soft); margin-bottom:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
         ✍ {{ voteModal.post.title || ('@' + voteModal.post.author) }}
       </div>
 
@@ -37,13 +37,13 @@ const emit = defineEmits<{
       <div style="margin-bottom:16px;">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
           <label class="form-label" style="margin:0;">{{ t('strength') }}</label>
-          <span style="font-size:20px; font-weight:bold; color:var(--primary);">{{ voteModal.weight }}%</span>
+          <span style="font-size:20px; font-weight:bold; color:var(--brand);">{{ voteModal.weight }}%</span>
         </div>
         <input type="range" min="1" max="100" v-model.number="voteModal.weight"
                @input="emit('estimateVote', voteModal.weight)"
                class="vote-slider"
-               :style="`background: linear-gradient(to right, var(--primary) ${voteModal.weight}%, var(--bg-r3) ${voteModal.weight}%)`">
-        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:2px;">
+               :style="`background: linear-gradient(to right, var(--brand) ${voteModal.weight}%, var(--surface-4) ${voteModal.weight}%)`">
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-soft); margin-top:2px;">
           <span>1%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
         </div>
       </div>
@@ -62,9 +62,9 @@ const emit = defineEmits<{
             <span>🔋 {{ t('vpAfter') }}</span>
             <strong>{{ voteModal.estimatedValue.vpAfter }}%</strong>
           </div>
-          <div v-if="voteModal.estimatedValue.voteValue !== null" class="vote-est-row" style="border-top:1px solid var(--border-main); margin-top:6px; padding-top:6px;">
+          <div v-if="voteModal.estimatedValue.voteValue !== null" class="vote-est-row" style="border-top:1px solid var(--surface-border); margin-top:6px; padding-top:6px;">
             <span>💰 {{ t('estValue') }}</span>
-            <strong style="color:var(--primary);">~{{ voteModal.estimatedValue.voteValue }} BLURT</strong>
+            <strong style="color:var(--brand);">~{{ voteModal.estimatedValue.voteValue }} BLURT</strong>
           </div>
           <div class="vote-est-row" style="opacity: 0.8; font-size: 11px;">
             <span>💸 {{ t('voteFee') }}</span>
@@ -102,8 +102,8 @@ const emit = defineEmits<{
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--primary);
-  border: 2px solid var(--bg-white);
+  background: var(--brand);
+  border: 2px solid var(--surface-1);
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
   cursor: pointer;
 }
@@ -111,13 +111,13 @@ const emit = defineEmits<{
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--primary);
-  border: 2px solid var(--bg-white);
+  background: var(--brand);
+  border: 2px solid var(--surface-1);
   cursor: pointer;
 }
 .vote-estimate-box {
-  background: var(--bg-r2);
-  border: 1px solid var(--border-main);
+  background: var(--surface-3);
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
   padding: 12px 14px;
   font-size: 13px;
@@ -127,7 +127,7 @@ const emit = defineEmits<{
   justify-content: space-between;
   align-items: center;
   padding: 4px 0;
-  color: var(--text);
+  color: var(--text-strong);
 }
-.vote-est-row span { color: var(--text-muted); }
+.vote-est-row span { color: var(--text-soft); }
 </style>

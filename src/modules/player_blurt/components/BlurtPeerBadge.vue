@@ -80,9 +80,9 @@ function openProfile(): void {
   /* Verified = the app's existing "success" palette — already tuned per
      theme (light/dark/sepia/etc, see style.css) rather than a hardcoded
      color that only happened to work on a dark background. */
-  background: var(--success-bg);
-  color: var(--success-text);
-  border: 1px solid var(--success-border);
+  background: var(--alert-success-bg);
+  color: var(--alert-success-text);
+  border: 1px solid var(--alert-success-border);
   border-radius: 5px;
   padding: 2px 6px;
   font-size: 10px;
@@ -98,8 +98,8 @@ function openProfile(): void {
   /* Unverified = neutral/muted, same idea: theme-aware surface + muted
      text instead of a fixed rgba(255,255,255,...) that vanished on light
      backgrounds. */
-  background: var(--bg-r2);
-  color: var(--text-muted);
-  border-color: var(--border-main);
+  background: var(--surface-3);
+  color: var(--text-soft);
+  border-color: var(--surface-border);
 }
 </style>

@@ -22,7 +22,7 @@ const emit = defineEmits<{
     <div class="modal-body">
       <div style="margin-bottom: 15px;">
         <label class="form-label">{{ t('structureDocs') }} (Community Description)</label>
-        <textarea v-model="structureForm.text" style="width: 100%; height: 300px; font-family: var(--mono); padding: 10px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text);"></textarea>
+        <textarea v-model="structureForm.text" style="width: 100%; height: 300px; font-family: var(--mono); padding: 10px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text-strong);"></textarea>
       </div>
       <div v-if="structureForm.error" class="alert alert-error">{{ structureForm.error }}</div>
       <div style="display: flex; gap: 10px;">

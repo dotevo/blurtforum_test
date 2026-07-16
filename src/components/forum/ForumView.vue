@@ -62,7 +62,7 @@ onUpdated(triggerScan);
  
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
         <div>
-          <b style="font-size:15px;color:var(--primary)">{{ activeForum.name }}</b>
+          <b style="font-size:15px;color:var(--brand)">{{ activeForum.name }}</b>
           <span v-if="activeForum.desc" class="gs"> — {{ activeForum.desc }}</span>
         </div>
         <button v-if="auth.user" class="btn btn-accent" @click="$emit('openNewPostForm')">+ {{ t('newPost') }}</button>
@@ -72,7 +72,7 @@ onUpdated(triggerScan);
       <!-- NEW POST FORM (Unified) -->
       <div v-if="showNewPostForm && auth.user" style="margin-bottom: 20px;">
         <!-- Draft notice (outside editor as it affects editor state) -->
-        <div v-if="postForm.hasDraft" style="background:var(--bg2); border:1px solid var(--accent); border-radius:4px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+        <div v-if="postForm.hasDraft" style="background:var(--surface-3); border:1px solid var(--accent); border-radius:4px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
           <span>📝 {{ t('draftRestored') }}</span>
           <button class="btn btn-sm btn-ghost" @click="postForm.title=''; postForm.body=''; $emit('clearDraft')">🗑 {{ t('clearDraft') }}</button>
         </div>
@@ -117,7 +117,7 @@ onUpdated(triggerScan);
           </tr>
           <tr v-for="(post,i) in activeForum.posts.slice(0, forumPagination.visibleCount)" :key="post.permlink"
               class="row-hover" @click="$emit('openTopic', post)"
-              :style="{ opacity: post.isMuted ? 0.4 : 1, backgroundColor: post.isMuted ? 'var(--bg-r3)' : 'inherit' }">
+              :style="{ opacity: post.isMuted ? 0.4 : 1, backgroundColor: post.isMuted ? 'var(--surface-4)' : 'inherit' }">
             <td :class="i%2===0?'row1':'row2'" align="center" width="40">
               <VoteButton 
                 :voted="hasVoted(post)" 
@@ -126,9 +126,9 @@ onUpdated(triggerScan);
               />
             </td>
             <td :class="i%2===0?'row1':'row2'" class="col-topic">
-              <span v-if="post.isMuted" style="margin-right:5px; color:var(--error-text); font-weight:bold;">[{{ t('muted') }}]</span>
+              <span v-if="post.isMuted" style="margin-right:5px; color:var(--alert-error-text); font-weight:bold;">[{{ t('muted') }}]</span>
               <span v-if="post.isUnread" style="display:inline-block; width:8px; height:8px; background:var(--accent); border-radius:50%; margin-right:8px; box-shadow:0 0 4px var(--accent);" title="Unread"></span>
-              <span v-else style="display:inline-block; width:8px; height:8px; background:var(--border-main); border-radius:50%; margin-right:8px;" title="Read"></span>
+              <span v-else style="display:inline-block; width:8px; height:8px; background:var(--surface-border); border-radius:50%; margin-right:8px;" title="Read"></span>
               
               <!-- Media Container (Unified controls for all mirrors) -->
               <ForumMediaContainer 

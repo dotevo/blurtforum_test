@@ -282,7 +282,7 @@ watch(() => [props.infoHash, props.fileIndex], startSubscriptions);
   align-items: center;
   gap: 6px;
   font-size: .68em;
-  color: var(--text-muted, #8888aa);
+  color: var(--text-soft, #8888aa);
   margin-top: 5px;
   flex-wrap: wrap;
 }
@@ -294,7 +294,7 @@ watch(() => [props.infoHash, props.fileIndex], startSubscriptions);
 }
 .wtpm-debug {
   font-size: .66em;
-  color: var(--text-muted, #8888aa);
+  color: var(--text-soft, #8888aa);
   font-family: monospace;
   opacity: .75;
   margin-top: 3px;

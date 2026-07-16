@@ -81,13 +81,13 @@ const displayList = computed(() => {
 .activity-feed {
   display: flex;
   flex-direction: column;
-  background: var(--bg-white);
+  background: var(--surface-1);
 }
 
 .af-tabs {
   display: flex;
   gap: 5px;
-  background: var(--bg-r1);
+  background: var(--surface-2);
   padding: 4px;
   border-radius: 6px;
   align-items: center;
@@ -95,12 +95,12 @@ const displayList = computed(() => {
 
 .af-tab-btn {
   flex: 1;
-  background: var(--bg-r3) !important;
-  border: 1px solid var(--border-main) !important;
+  background: var(--surface-4) !important;
+  border: 1px solid var(--surface-border) !important;
   padding: 8px !important;
   font-size: 12px !important;
   font-weight: 600 !important;
-  color: var(--text-muted) !important;
+  color: var(--text-soft) !important;
   border-radius: 4px !important;
   cursor: pointer !important;
   transition: all 0.2s;
@@ -112,14 +112,14 @@ const displayList = computed(() => {
 }
 
 .af-tab-btn:hover {
-  border-color: var(--primary) !important;
-  color: var(--text) !important;
-  background: var(--bg-r2) !important;
+  border-color: var(--brand) !important;
+  color: var(--text-strong) !important;
+  background: var(--surface-3) !important;
 }
 
 .af-tab-btn.active {
-  background: var(--primary) !important;
-  border-color: var(--primary) !important;
+  background: var(--brand) !important;
+  border-color: var(--brand) !important;
   color: #fff !important;
 }
 
@@ -137,14 +137,14 @@ const displayList = computed(() => {
   padding: 4px 10px;
   font-size: 10px;
   border-radius: 4px;
-  background: var(--bg-white);
-  border: 1px solid var(--border-main);
-  color: var(--primary);
+  background: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  color: var(--brand);
   cursor: pointer;
 }
 
 .af-content {
-  border-top: 1px solid var(--border-main);
+  border-top: 1px solid var(--surface-border);
   max-height: 400px;
   overflow-y: auto;
 }
@@ -152,35 +152,35 @@ const displayList = computed(() => {
 .af-footer {
   padding: 10px;
   text-align: center;
-  background: var(--bg-r2);
+  background: var(--surface-3);
 }
 
 .af-more-link {
   font-size: 11px;
   font-weight: bold;
-  color: var(--primary);
+  color: var(--brand);
   text-decoration: underline;
 }
 
 .af-empty {
   padding: 20px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--text-soft);
   font-size: 12px;
 }
 
 /* Desktop specific adjustments */
 .activity-feed:not(.is-mobile) {
-  border: 1px solid var(--primary);
+  border: 1px solid var(--brand);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .activity-feed:not(.is-mobile) .af-tabs {
   border-radius: 0;
-  background: var(--bg-r3);
+  background: var(--surface-4);
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border-main);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .activity-feed:not(.is-mobile) .af-tab-btn {
@@ -189,7 +189,7 @@ const displayList = computed(() => {
 }
 
 .activity-feed:not(.is-mobile) .af-tab-btn.active {
-  background: var(--primary);
+  background: var(--brand);
 }
 
 /* Mobile specific */

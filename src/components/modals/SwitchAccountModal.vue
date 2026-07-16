@@ -64,13 +64,13 @@ const emit = defineEmits<{
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--border-main);
+  border: 1px solid var(--surface-border);
   border-radius: 4px;
-  background: var(--bg-r1);
+  background: var(--surface-2);
 }
 .account-item.active {
-  border-color: var(--primary);
-  background: var(--bg-white);
+  border-color: var(--brand);
+  background: var(--surface-1);
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 .acc-info {
@@ -85,7 +85,7 @@ const emit = defineEmits<{
 }
 .acc-name {
   font-weight: bold;
-  color: var(--text);
+  color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -93,7 +93,7 @@ const emit = defineEmits<{
 }
 .acc-method {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-soft);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -109,7 +109,7 @@ const emit = defineEmits<{
 .btn-hdr {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
-  color: var(--text);
+  color: var(--text-strong);
   width: 32px;
   height: 32px;
   display: flex;
@@ -120,8 +120,8 @@ const emit = defineEmits<{
   padding: 0;
 }
 .btn-hdr:hover {
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: var(--brand);
+  color: var(--brand);
 }
 .btn-danger {
   background: #fff5f5;

@@ -47,8 +47,8 @@ const emit = defineEmits<{
              @click="emit('openNotification', n)"
              :style="{ 
                 padding: '10px 15px', 
-                borderBottom: '1px solid var(--border-main)',
-                background: (typeof n.id === 'number' && n.id > (notifModal.lastReadIds[n.account!] || 0)) ? 'var(--bg-r3)' : (notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 'transparent' : 'var(--bg-r2)'),
+                borderBottom: '1px solid var(--surface-border)',
+                background: (typeof n.id === 'number' && n.id > (notifModal.lastReadIds[n.account!] || 0)) ? 'var(--surface-4)' : (notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 'transparent' : 'var(--surface-3)'),
                 fontWeight: notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 'normal' : 'bold',
                 opacity: notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 0.7 : 1
              }">
@@ -65,7 +65,7 @@ const emit = defineEmits<{
                    <span v-else> {{ n.type }}</span>
                  </template>
                  <span v-if="n.account && auth.user?.username !== n.account" 
-                       style="font-size:10px; background:var(--bg-r1); padding:1px 4px; border-radius:3px; color:var(--text-muted); border:1px solid var(--border-main);">
+                       style="font-size:10px; background:var(--surface-2); padding:1px 4px; border-radius:3px; color:var(--text-soft); border:1px solid var(--surface-border);">
                    → @{{ n.account }}
                  </span>
                </div>
@@ -74,7 +74,7 @@ const emit = defineEmits<{
              <span v-if="typeof n.id === 'number' && n.id > (notifModal.lastReadIds[n.account!] || 0)" style="width:8px; height:8px; background:#ff4400; border-radius:50%; flex-shrink:0;"></span>
           </div>
         </div>
-        <div v-if="notifModal.list.length===0" style="padding: 20px; text-align: center; color:var(--text-muted);">{{ t('noNotifications') }}</div>
+        <div v-if="notifModal.list.length===0" style="padding: 20px; text-align: center; color:var(--text-soft);">{{ t('noNotifications') }}</div>
       </div>
     </div>
   </div>
@@ -87,8 +87,8 @@ const emit = defineEmits<{
   justify-content: space-between;
   align-items: center;
   padding: 10px 15px;
-  border-bottom: 1px solid var(--border-main);
-  background: var(--bg-r1);
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-2);
   font-size: 13px;
 }
 
@@ -111,10 +111,10 @@ const emit = defineEmits<{
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--bg-r3);
+  background-color: var(--surface-4);
   transition: .4s;
   border-radius: 20px;
-  border: 1px solid var(--border-main);
+  border: 1px solid var(--surface-border);
 }
 .slider-toggle:before {
   position: absolute;
@@ -123,13 +123,13 @@ const emit = defineEmits<{
   width: 14px;
   left: 2px;
   bottom: 2px;
-  background-color: var(--text-muted);
+  background-color: var(--text-soft);
   transition: .4s;
   border-radius: 50%;
 }
 input:checked + .slider-toggle {
-  background-color: var(--primary);
-  border-color: var(--primary);
+  background-color: var(--brand);
+  border-color: var(--brand);
 }
 input:checked + .slider-toggle:before {
   transform: translateX(14px);

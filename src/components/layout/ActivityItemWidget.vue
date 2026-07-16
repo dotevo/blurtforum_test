@@ -32,7 +32,7 @@ const emit = defineEmits<{
 <style scoped>
 .activity-item {
   padding: 10px 15px;
-  border-bottom: 1px solid var(--bg-r1);
+  border-bottom: 1px solid var(--surface-2);
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -41,11 +41,11 @@ const emit = defineEmits<{
 }
 
 .activity-item:hover {
-  background: var(--bg-r1);
+  background: var(--surface-2);
 }
 
 .activity-item.is-unread {
-  background: var(--bg-r3);
+  background: var(--surface-4);
 }
 
 .ai-dot {
@@ -72,7 +72,7 @@ const emit = defineEmits<{
 }
 
 .ai-author {
-  color: var(--primary);
+  color: var(--brand);
 }
 
 .is-unread .ai-author {
@@ -80,7 +80,7 @@ const emit = defineEmits<{
 }
 
 .ai-comm {
-  background: var(--primary);
+  background: var(--brand);
   color: #fff;
   font-size: 9px;
   padding: 1px 6px;
@@ -99,7 +99,7 @@ const emit = defineEmits<{
 .ai-title {
   font-size: 11px;
   font-style: italic;
-  color: var(--text-muted);
+  color: var(--text-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -107,13 +107,13 @@ const emit = defineEmits<{
 }
 
 .is-unread .ai-title {
-  color: var(--text);
+  color: var(--text-strong);
   font-weight: 500;
 }
 
 .ai-time {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-soft);
   white-space: nowrap;
 }
 </style>

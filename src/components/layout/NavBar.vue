@@ -44,8 +44,8 @@ const emit = defineEmits<{
 
 <style scoped>
 .nav-bar {
-  background: var(--nav-bg);
-  border-bottom: 1px solid var(--border-main);
+  background: var(--surface-nav);
+  border-bottom: 1px solid var(--surface-border);
   padding: 0 10px;
   display: flex;
   justify-content: space-between;
@@ -55,21 +55,21 @@ const emit = defineEmits<{
   padding: 10px 15px;
   font-size: 13px;
   font-weight: bold;
-  color: var(--primary);
+  color: var(--brand);
   cursor: pointer;
   text-decoration: none;
 }
-.nav-link:hover { color: var(--accent); background: var(--bg-page); }
+.nav-link:hover { color: var(--accent); background: var(--page-bg); }
 
 .breadcrumb {
-  background: var(--bg-page);
+  background: var(--page-bg);
   padding: 8px 14px;
   font-size: 13px;
-  border-bottom: 1px solid var(--border-main);
-  color: var(--text);
+  border-bottom: 1px solid var(--surface-border);
+  color: var(--text-strong);
 }
 .breadcrumb a {
-  color: var(--primary);
+  color: var(--brand);
   text-decoration: none;
 }
 .breadcrumb a:hover {

@@ -36,13 +36,13 @@ const emit = defineEmits<{
 
 .mc-title-box {
   padding: 8px 10px;
-  background: var(--bg-r1);
-  border-left: 2px solid var(--primary);
+  background: var(--surface-2);
+  border-left: 2px solid var(--brand);
 }
 
 .mc-breadcrumb {
   font-size: 11px;
-  color: var(--text);
+  color: var(--text-strong);
   line-height: 1.4;
 }
 

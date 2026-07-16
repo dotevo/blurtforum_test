@@ -52,13 +52,13 @@ const emit = defineEmits<{
 
 .selector-item i {
   font-size: 12px;
-  color: var(--primary);
+  color: var(--brand);
 }
 
 .lang-btn {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
-  color: var(--text);
+  color: var(--text-strong);
   padding: 2px 6px;
   font-size: 11px;
   cursor: pointer;
@@ -69,8 +69,8 @@ const emit = defineEmits<{
 }
 
 .lang-btn:hover {
-  border-color: var(--primary);
-  background: var(--bg-r1);
+  border-color: var(--brand);
+  background: var(--surface-2);
 }
 
 .rpc-btn {
@@ -88,10 +88,10 @@ const emit = defineEmits<{
 
 .is-mobile .selector-item {
   flex: 1;
-  background: var(--nav-bg);
+  background: var(--surface-nav);
   padding: 4px 8px;
   border-radius: 4px;
-  border: 1px solid var(--border-main);
+  border: 1px solid var(--surface-border);
 }
 
 .is-mobile .selector-item select {
@@ -105,8 +105,8 @@ const emit = defineEmits<{
 .is-mobile .rpc-btn {
   flex: 0 0 auto;
   padding: 6px 10px;
-  background: var(--nav-bg);
-  border: 1px solid var(--border-main);
+  background: var(--surface-nav);
+  border: 1px solid var(--surface-border);
 }
 
 .hide-on-mobile {

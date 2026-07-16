@@ -247,16 +247,16 @@ const {
 
     <!-- Reward notification -->
     <div v-if="auth.user && auth.user.hasRewards"
-         style="background:var(--accent); color:var(--bg-page); padding:10px 15px; margin-bottom:15px; border-radius:4px; display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+         style="background:var(--accent); color:var(--page-bg); padding:10px 15px; margin-bottom:15px; border-radius:4px; display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
       <div style="flex:1"><i class="fa-solid fa-gift"></i> {{ t('rewardsAvailable') }}: {{ auth.user.rewardBlurt }} / {{ auth.user.rewardVesting }}</div>
-      <button class="btn btn-sm" @click="() => claimRewards()" style="background:var(--bg-white); color:var(--accent); border:none">{{ t('claimRewards') }}</button>
+      <button class="btn btn-sm" @click="() => claimRewards()" style="background:var(--surface-1); color:var(--accent); border:none">{{ t('claimRewards') }}</button>
     </div>
 
     <div v-if="loading" class="loader"><span class="spin"></span>{{ t('loading') }} {{ config.communityAccount }}…</div>
 
-    <div v-if="!loading && forumPagination.bgLoading" style="background: var(--nav-bg); padding: 5px 15px; margin-bottom: 15px; border-radius: 4px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--border-main);">
-      <div style="flex: 1; height: 4px; background: var(--bg-page); border-radius: 2px; overflow: hidden;">
-        <div :style="{ width: (forumPagination.fetchedCount / 300 * 100) + '%', height: '100%', background: 'var(--primary)', transition: 'width 0.3s' }"></div>
+    <div v-if="!loading && forumPagination.bgLoading" style="background: var(--surface-nav); padding: 5px 15px; margin-bottom: 15px; border-radius: 4px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--surface-border);">
+      <div style="flex: 1; height: 4px; background: var(--page-bg); border-radius: 2px; overflow: hidden;">
+        <div :style="{ width: (forumPagination.fetchedCount / 300 * 100) + '%', height: '100%', background: 'var(--brand)', transition: 'width 0.3s' }"></div>
       </div>
       <span class="gs">{{ t('fetchingMore') }} ({{ forumPagination.fetchedCount }}/300)</span>
     </div>
@@ -284,7 +284,7 @@ const {
       <!-- Tag filter bar -->
       <div v-if="(view==='index' && currentTagFilter) || (view==='forum')" class="tag-filter-bar forumline">
         <div style="display:flex; align-items:center; gap:10px; width: 100%;">
-          <i class="fa-solid fa-filter" style="color:var(--primary); opacity:0.7;"></i>
+          <i class="fa-solid fa-filter" style="color:var(--brand); opacity:0.7;"></i>
           <div style="position:relative; flex:1; max-width: 300px;">
             <input type="text" v-model="currentTagFilter" :placeholder="t('filterByTag')"
                    @keyup.enter="applyTagFilter"
@@ -454,7 +454,7 @@ const {
     <!-- Footer -->
     <div class="site-footer">
       BlurtForum — Thanks to: <a href="#" @click.stop.prevent="openProfile('drakernoise')">@drakernoise</a> (for RPC), @beblurt/dblurt · Blurt Network | #{{ globalProps.head_block_number||'…' }} | {{ lang.toUpperCase() }}
-      <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--border-main); display: flex; justify-content: center; align-items: center; gap: 10px;">
+      <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--surface-border); display: flex; justify-content: center; align-items: center; gap: 10px;">
         <span style="font-size: 11px; opacity: 0.6;">Media Player Enabled</span>
       </div>
     </div>
@@ -612,15 +612,15 @@ const {
   <!-- Status modal -->
   <div v-if="statusModal.show" class="modal-overlay" @click.self="statusModal.show=false" style="z-index: 5000;">
     <div class="modal-box" style="width: 350px;">
-      <div class="modal-header" :style="{ background: statusModal.type === 'error' ? 'var(--error-border)' : (statusModal.type === 'success' ? 'var(--success-border)' : 'var(--primary)') }">
+      <div class="modal-header" :style="{ background: statusModal.type === 'error' ? 'var(--alert-error-border)' : (statusModal.type === 'success' ? 'var(--alert-success-border)' : 'var(--modal-header-bg)') }">
         <span>{{ statusModal.title }}</span>
         <button class="modal-close" @click="statusModal.show=false">×</button>
       </div>
       <div class="modal-body" style="text-align: center;">
         <div style="font-size: 40px; margin-bottom: 15px;">
-          <i v-if="statusModal.type === 'success'" class="fa-solid fa-circle-check" style="color: var(--success-text);"></i>
-          <i v-else-if="statusModal.type === 'error'" class="fa-solid fa-circle-xmark" style="color: var(--error-text);"></i>
-          <i v-else class="fa-solid fa-circle-info" style="color: var(--primary);"></i>
+          <i v-if="statusModal.type === 'success'" class="fa-solid fa-circle-check" style="color: var(--alert-success-text);"></i>
+          <i v-else-if="statusModal.type === 'error'" class="fa-solid fa-circle-xmark" style="color: var(--alert-error-text);"></i>
+          <i v-else class="fa-solid fa-circle-info" style="color: var(--alert-info-text);"></i>
         </div>
         <div style="font-size: 13px; line-height: 1.5; margin-bottom: 20px;">{{ statusModal.body }}</div>
         <button class="btn btn-primary" style="width: 100%; padding: 10px;" @click="statusModal.show=false">OK</button>

@@ -36,7 +36,7 @@ const handleSubmit = () => {
     </div>
     <div class="modal-body">
       <div style="margin-bottom: 15px;">
-        <i class="fa-solid fa-shield-halved" style="color: var(--primary); font-size: 24px; display: block; margin-bottom: 10px; text-align: center;"></i>
+        <i class="fa-solid fa-shield-halved" style="color: var(--brand); font-size: 24px; display: block; margin-bottom: 10px; text-align: center;"></i>
         <p style="font-size: 14px; text-align: center;">
           {{ t('provideKeyFor') || 'Please provide your' }} <strong>{{ authority }}</strong> {{ t('keyForAccount') || 'key for' }} <strong>@{{ username }}</strong>
         </p>

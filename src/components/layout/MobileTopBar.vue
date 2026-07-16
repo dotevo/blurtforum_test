@@ -71,7 +71,7 @@ const getLatestActivities = () => {
           </div>
           <NotifBell :has-new="hasNewNotif" size="md" @click="emit('openNotifModal')" />
           <UserAvatar :username="auth.user.username" size="xs" round @click="emit('openProfile', auth.user.username)" 
-                      style="width: 28px; height: 28px; border: 1px solid var(--border-main);" />
+                      style="width: 28px; height: 28px; border: 1px solid var(--surface-border);" />
         </template>
         <template v-else>
           <button class="btn btn-xs btn-primary" @click="emit('openLoginModal')">{{ t('login') }}</button>
@@ -132,8 +132,8 @@ const getLatestActivities = () => {
   position: sticky;
   top: 0;
   z-index: 1000;
-  background: var(--nav-bg);
-  border-bottom: 2px solid var(--primary);
+  background: var(--surface-nav);
+  border-bottom: 2px solid var(--brand);
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   display: flex;
   flex-direction: column;
@@ -148,7 +148,7 @@ const getLatestActivities = () => {
 }
 
 .mtb-logo {
-  background: var(--primary);
+  background: var(--brand);
   color: var(--accent);
   width: 34px;
   height: 34px;
@@ -194,7 +194,7 @@ const getLatestActivities = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
+  color: var(--text-strong);
   line-height: 1.2;
 }
 
@@ -208,12 +208,12 @@ const getLatestActivities = () => {
 .mtb-vp {
   font-size: 11px;
   font-weight: bold;
-  color: var(--primary);
+  color: var(--brand);
   white-space: nowrap;
 }
 
 .mtb-toggle {
-  color: var(--primary);
+  color: var(--brand);
   width: 20px;
   text-align: center;
   cursor: pointer;
@@ -221,7 +221,7 @@ const getLatestActivities = () => {
 
 /* Drawer Styles */
 .mtb-drawer {
-  background: var(--bg-white);
+  background: var(--surface-1);
   max-height: 80vh;
   display: flex;
   flex-direction: column;
@@ -229,8 +229,8 @@ const getLatestActivities = () => {
 
 .drawer-settings {
   display: flex;
-  background: var(--bg-r1);
-  border-bottom: 1px solid var(--border-main);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--surface-border);
   padding: 8px 10px;
 }
 
@@ -246,13 +246,13 @@ const getLatestActivities = () => {
   align-items: center;
   gap: 8px;
   padding-left: 10px;
-  border-left: 1px solid var(--border-main);
+  border-left: 1px solid var(--surface-border);
   margin-left: 5px;
 }
 
 .btn-hdr {
   background: var(--input-bg);
-  color: var(--text);
+  color: var(--text-strong);
   border: 1px solid var(--input-border);
   padding: 5px 10px;
   font-size: 14px;
@@ -267,18 +267,18 @@ const getLatestActivities = () => {
 
 .drawer-header {
   padding: 8px 10px;
-  background: var(--bg-white);
-  border-bottom: 1px solid var(--border-main);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .drawer-footer {
   padding: 10px;
   text-align: center;
-  background: var(--bg-r2);
+  background: var(--surface-3);
   font-size: 11px;
   font-weight: bold;
-  color: var(--primary);
-  border-top: 1px solid var(--border-main);
+  color: var(--brand);
+  border-top: 1px solid var(--surface-border);
   cursor: pointer;
 }
 </style>

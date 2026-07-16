@@ -41,10 +41,10 @@ const hasExisting = () => !!(props.oldContentModal.existingPermlink && props.old
       <!-- No support comment yet -->
       <template v-else>
         <div class="alert alert-info" style="margin-bottom: 15px;">{{ t('oldContentDesc') }}</div>
-        <div class="gs" style="margin-bottom: 15px; padding: 8px 12px; background: var(--bg-page); border: 1px solid var(--border-main); border-radius: 4px;">
+        <div class="gs" style="margin-bottom: 15px; padding: 8px 12px; background: var(--page-bg); border: 1px solid var(--surface-border); border-radius: 4px;">
           {{ t('oldContentBeneficiary').replace('{author}', oldContentModal.author) }}
           <div v-if="oldContentModal.beneficiaries && oldContentModal.beneficiaries.length > 0"
-               style="margin-top: 8px; font-size: 11px; border-top: 1px solid var(--border-main); padding-top: 8px;">
+               style="margin-top: 8px; font-size: 11px; border-top: 1px solid var(--surface-border); padding-top: 8px;">
             <strong>{{ t('beneficiaries') }}:</strong>
             <span v-for="(b, bi) in oldContentModal.beneficiaries" :key="b.account">
               @{{ b.account }} ({{ (b.weight/100).toFixed(0) }}%)<span v-if="bi < oldContentModal.beneficiaries.length - 1">, </span>
@@ -54,7 +54,7 @@ const hasExisting = () => !!(props.oldContentModal.existingPermlink && props.old
         <div style="margin-bottom: 15px;">
           <label class="form-label">{{ t('writeReply') }}</label>
           <textarea v-model="oldContentModal.body" :placeholder="t('supportCommentPlaceholder')" :disabled="oldContentModal.loading"
-                    style="width:100%; height:100px; font-family:var(--sans); font-size:12px; padding:10px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text);"></textarea>
+                    style="width:100%; height:100px; font-family:var(--sans); font-size:12px; padding:10px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text-strong);"></textarea>
         </div>
       </template>
 

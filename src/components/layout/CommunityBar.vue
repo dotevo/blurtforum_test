@@ -21,7 +21,7 @@ const emit = defineEmits<{
 <!-- COMMUNITY SELECTOR -->
 <div class="community-bar">
   <div class="cb-label hide-on-mobile">
-    <span style="font-weight: bold; color: var(--primary);">{{ t('community') }}:</span>
+    <span style="font-weight: bold; color: var(--brand);">{{ t('community') }}:</span>
   </div>
 
   <div class="cb-selectors">
@@ -54,9 +54,9 @@ const emit = defineEmits<{
   align-items: center;
   gap: 15px;
   padding: 10px 15px;
-  background: var(--bg-r3);
+  background: var(--surface-4);
   margin: 15px;
-  border: 1px solid var(--primary);
+  border: 1px solid var(--brand);
   border-radius: 6px;
 }
 
@@ -77,7 +77,7 @@ const emit = defineEmits<{
   flex: 1;
   background: var(--input-bg);
   border: 1px solid var(--input-border);
-  color: var(--text);
+  color: var(--text-strong);
   padding: 6px 10px;
   font-size: 13px;
   border-radius: 4px;
@@ -95,9 +95,9 @@ const emit = defineEmits<{
 
 .cb-custom-tag input {
   flex: 1;
-  background: var(--bg-white);
+  background: var(--surface-1);
   border: 1px solid var(--input-border);
-  color: var(--text);
+  color: var(--text-strong);
   padding: 6px 10px;
   font-size: 12px;
   border-radius: 4px;

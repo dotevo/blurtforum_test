@@ -61,6 +61,7 @@ export function useApp() {
     { id: 'ocean',     label: '🌊 Ocean' },
     { id: 'forest',    label: '🌿 Forest' },
     { id: 'midnight',  label: '🌙 Midnight' },
+    { id: 'amber',     label: '🟠 Amber' },
   ];
   const theme = ref<string>(localStorage.getItem('bf-theme') || 'subsilver');
   const setTheme = (id: string) => {

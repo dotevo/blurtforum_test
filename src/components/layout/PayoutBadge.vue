@@ -21,21 +21,10 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+/* Colors come from the global .badge/.badge-blue/.badge-green theme styles.
+   Only the pointer cursor is specific to this clickable instance. */
 .badge {
-  display: inline-block;
-  padding: 2px 6px;
-  font-size: 10px;
-  font-weight: bold;
-  border-radius: 4px;
   cursor: pointer;
-}
-.badge-blue {
-  background: var(--primary);
-  color: #fff;
-}
-.badge-green {
-  background: #27ae60;
-  color: #fff;
 }
 .payout-link:hover {
   opacity: 0.8;

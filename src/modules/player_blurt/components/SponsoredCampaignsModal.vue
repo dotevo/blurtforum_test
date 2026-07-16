@@ -137,7 +137,7 @@ const chartTooltipHtml = (index: number): string => {
   if (!d) return '';
   const tag = d.isToday ? (props.t('today') || 'Today') : d.isFuture ? (props.t('upcoming') || 'Upcoming') : '';
   return `
-    <div style="padding:8px 10px; font-size:11px; line-height:1.6; background:var(--modal-bg); border:1px solid var(--border-main); border-radius:6px; color:var(--text);">
+    <div style="padding:8px 10px; font-size:11px; line-height:1.6; background:var(--modal-bg); border:1px solid var(--surface-border); border-radius:6px; color:var(--text-strong);">
       <div style="font-weight:700; margin-bottom:4px;">${d.iso}${tag ? ' · ' + tag : ''}</div>
       <div>${bpsLabel.value}: <b>${d.maxBps != null ? d.maxBps.toFixed(4) : '—'}</b></div>
       <div>${props.t('adsCount') || 'Ads'}: <b>${d.count}</b></div>
@@ -230,7 +230,7 @@ onMounted(() => {
 .sp-ads-chart { margin-bottom: 16px; }
 .sp-ads-chart { cursor: default; }
 
-.sp-ads-empty { font-size: 12px; color: var(--text-muted); padding: 24px 0; text-align: center; }
+.sp-ads-empty { font-size: 12px; color: var(--text-soft); padding: 24px 0; text-align: center; }
 
 .sp-ads-table { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
 .sp-ads-row {
@@ -242,8 +242,8 @@ onMounted(() => {
 }
 .sp-ads-row--head {
   font-weight: 700;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-main, #98AAB1);
+  color: var(--text-soft);
+  border-bottom: 1px solid var(--surface-border, #98AAB1);
   padding-bottom: 8px;
 }
 .sp-ads-row:not(.sp-ads-row--head) { border-bottom: 1px solid rgba(128, 128, 128, 0.15); }
@@ -254,7 +254,7 @@ onMounted(() => {
 .sp-ads-sender a { color: inherit; text-decoration: none; }
 .sp-ads-sender a:hover { text-decoration: underline; }
 
-.sp-ads-hint { font-size: 11px; color: var(--text-muted); margin-top: 14px; }
+.sp-ads-hint { font-size: 11px; color: var(--text-soft); margin-top: 14px; }
 
 @media (max-width: 560px) {
   .sp-ads-row { grid-template-columns: 1fr 1fr; }

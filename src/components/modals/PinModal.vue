@@ -27,7 +27,7 @@ const emit = defineEmits<{
       <template v-else>
         <input type="password" v-model="pinModal.value" :placeholder="t('pinPlaceholder')" maxlength="6"
                @keyup.enter="emit('submit')"
-               style="width:100%; padding:10px; text-align:center; font-size:24px; letter-spacing:8px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text);"
+               style="width:100%; padding:10px; text-align:center; font-size:24px; letter-spacing:8px; border:1px solid var(--input-border); background:var(--input-bg); color:var(--text-strong);"
                autofocus>
         <div v-if="pinModal.error" class="alert alert-error" style="margin-top:10px; padding:5px 10px;">{{ pinModal.error }}</div>
         <button class="btn btn-primary" style="width:100%; margin-top:15px; padding:10px;" 

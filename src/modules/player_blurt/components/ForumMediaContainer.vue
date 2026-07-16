@@ -105,7 +105,7 @@ const hasMirrors = computed(() => (currentInPost.value?.sources?.length || 0) > 
 }
 .media-icon {
   cursor: pointer;
-  color: var(--primary, #006699);
+  color: var(--brand, #006699);
   opacity: 0.7;
   transition: all 0.2s;
   font-size: 14px;

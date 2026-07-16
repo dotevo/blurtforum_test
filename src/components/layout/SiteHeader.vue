@@ -41,7 +41,7 @@ const emit = defineEmits<{
       <div class="user-bar" v-if="!auth.user">
         <span>{{ t('notLoggedIn') }}</span>
         <button class="btn-hdr" @click="emit('openLoginModal')">{{ t('login') }}</button>
-        <a href="https://blurt.pl" target="_blank" class="btn btn-sm btn-hdr" style="text-decoration:none; margin-left:5px; background:var(--bg-r3); color:var(--text);">
+        <a href="https://blurt.pl" target="_blank" class="btn btn-sm btn-hdr" style="text-decoration:none; margin-left:5px; background:var(--surface-4); color:var(--text-strong);">
           <i class="fa-solid fa-user-plus"></i> {{ t('register') }}
         </a>
       </div>
@@ -60,7 +60,7 @@ const emit = defineEmits<{
             <span class="gs" style="font-size: 9px; display: block;">{{ t('loggedInAs') }}</span>
             <b class="interactive-username">@{{ auth.user.username }}</b>
           </div>
-          <UserAvatar :username="auth.user.username" size="xs" round style="border: 1px solid var(--primary);" />
+          <UserAvatar :username="auth.user.username" size="xs" round style="border: 1px solid var(--brand);" />
         </div>
 
         <button class="btn-hdr" @click="emit('openSwitchAccountModal')" :title="t('switchAccount')" style="margin-left: 5px;"><i class="fa-solid fa-users-viewfinder"></i></button>
@@ -73,9 +73,9 @@ const emit = defineEmits<{
 
 <style scoped>
 .site-header {
-  background: var(--bg-white);
+  background: var(--surface-1);
   padding: 20px;
-  border-bottom: 1px solid var(--border-main);
+  border-bottom: 1px solid var(--surface-border);
 }
 .header-inner {
   display: flex;
@@ -87,18 +87,18 @@ const emit = defineEmits<{
   font-family: 'Trebuchet MS', sans-serif;
   font-size: 32px;
   font-weight: bold;
-  color: var(--text);
+  color: var(--text-strong);
 }
-.logo-title em { color: var(--primary); font-style: normal; }
+.logo-title em { color: var(--brand); font-style: normal; }
 .logo-sub {
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-soft);
   margin-top: 5px;
 }
 .active-community-badge {
   display: inline-block !important;
   margin-top: 15px !important;
-  background: var(--primary) !important;
+  background: var(--brand) !important;
   color: var(--accent) !important;
   padding: 10px 25px !important;
   border-radius: 8px !important;
@@ -115,18 +115,18 @@ const emit = defineEmits<{
 .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .block-status {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text-soft);
 }
-.user-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+.user-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-strong); }
 .btn-hdr {
   background: var(--input-bg);
-  color: var(--text);
+  color: var(--text-strong);
   border: 1px solid var(--input-border);
   padding: 5px 12px;
   font-size: 12px;
   cursor: pointer;
 }
-.btn-hdr:hover { background: var(--bg-white); border-color: var(--primary); color: var(--primary); }
+.btn-hdr:hover { background: var(--surface-1); border-color: var(--brand); color: var(--brand); }
 
 .header-vp-bar {
   display: flex;
@@ -139,7 +139,7 @@ const emit = defineEmits<{
 .vp-label {
   font-size: 10px;
   font-weight: bold;
-  color: var(--primary);
+  color: var(--brand);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -147,15 +147,15 @@ const emit = defineEmits<{
 
 .vp-track {
   height: 4px;
-  background: var(--bg-r1);
+  background: var(--surface-2);
   border-radius: 2px;
   overflow: hidden;
-  border: 1px solid var(--border-main);
+  border: 1px solid var(--surface-border);
 }
 
 .vp-fill {
   height: 100%;
-  background: var(--primary);
+  background: var(--brand);
   transition: width 0.3s;
 }
 
@@ -170,7 +170,7 @@ const emit = defineEmits<{
 }
 
 .header-user-info:hover {
-  background: var(--bg-r1);
+  background: var(--surface-2);
 }
 
 .header-user-text {
@@ -178,14 +178,14 @@ const emit = defineEmits<{
 }
 
 .interactive-username {
-  color: var(--primary);
+  color: var(--brand);
   font-size: 13px;
 }
 
 .logout-btn {
   margin-left: 10px;
   padding: 5px 10px;
-  color: var(--text-muted);
+  color: var(--text-soft);
 }
 
 .logout-btn:hover {

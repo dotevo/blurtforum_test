@@ -77,8 +77,8 @@ const _t = (k: string) => (props.t ? props.t(k) : k);
   margin: 15px 0;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-r1, #eee);
-  border: 1px solid var(--border-main, #999);
+  background: var(--surface-2, #eee);
+  border: 1px solid var(--surface-border, #999);
 }
 
 .iframe-placeholder {
@@ -91,7 +91,7 @@ const _t = (k: string) => (props.t ? props.t(k) : k);
 }
 
 .iframe-placeholder:hover {
-  background: var(--bg-r2, #e5e5e5);
+  background: var(--surface-3, #e5e5e5);
 }
 
 .placeholder-content {
@@ -114,12 +114,12 @@ const _t = (k: string) => (props.t ? props.t(k) : k);
 
 .info strong {
   font-size: 14px;
-  color: var(--text, #333);
+  color: var(--text-strong, #333);
 }
 
 .info span {
   font-size: 11px;
-  color: var(--text-muted, #666);
+  color: var(--text-soft, #666);
 }
 
 .iframe-wrapper {
@@ -141,7 +141,7 @@ const _t = (k: string) => (props.t ? props.t(k) : k);
   cursor: pointer;
   border: 1px solid var(--input-border, #999);
   background: var(--input-bg, #fff);
-  color: var(--text, #333);
+  color: var(--text-strong, #333);
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
@@ -152,12 +152,12 @@ const _t = (k: string) => (props.t ? props.t(k) : k);
 }
 
 .btn-primary {
-  background: var(--primary, #006699);
+  background: var(--brand, #006699);
   color: #fff;
-  border-color: var(--primary-dk, #005580);
+  border-color: var(--brand-strong, #005580);
 }
 
 .btn-primary:hover {
-  background: var(--primary-lt, #0076B1);
+  background: var(--brand-soft, #0076B1);
 }
 </style>

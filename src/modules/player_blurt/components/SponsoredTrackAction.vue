@@ -67,7 +67,7 @@ const tOrFallback = (t: ((k: string) => string) | undefined, key: string, fallba
   height: 24px;
   border: none;
   background: transparent;
-  color: var(--primary, #006699);
+  color: var(--brand, #006699);
   opacity: 0.7;
   cursor: pointer;
   font-size: 13px;

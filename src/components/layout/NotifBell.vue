@@ -21,7 +21,7 @@ const emit = defineEmits<{
 .notif-bell {
   position: relative;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--text-soft);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29,7 +29,7 @@ const emit = defineEmits<{
 }
 
 .notif-bell:hover {
-  color: var(--primary);
+  color: var(--brand);
 }
 
 .notif-bell.sm { font-size: 14px; }
@@ -41,7 +41,7 @@ const emit = defineEmits<{
   position: absolute;
   background: var(--accent, #ff4400);
   border-radius: 50%;
-  border: 1.5px solid var(--nav-bg);
+  border: 1.5px solid var(--surface-nav);
 }
 
 .notif-bell.sm.has-new::after { width: 6px; height: 6px; top: -1px; right: -1px; }

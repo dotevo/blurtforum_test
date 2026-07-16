@@ -31,22 +31,15 @@ const emit = defineEmits<{
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
-  background: rgba(0,0,0,0.05);
+  background: var(--chip-bg);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;
 }
 .ben-icon { opacity: 0.7; font-size: 10px; }
-.ben-link { color: var(--primary); font-weight: bold; }
+.ben-link { color: var(--link-color); font-weight: bold; }
 .ben-link:hover { text-decoration: underline; }
 .ben-pct { opacity: 0.6; font-size: 9px; }
 .ben-sep { opacity: 0.3; }
 .ben-more { font-weight: bold; opacity: 0.8; font-size: 9px; }
-
-[data-theme="dark"] .beneficiaries-inline,
-[data-theme="deepnight"] .beneficiaries-inline,
-[data-theme="ocean"] .beneficiaries-inline,
-[data-theme="midnight"] .beneficiaries-inline {
-  background: rgba(255,255,255,0.05);
-}
 </style>

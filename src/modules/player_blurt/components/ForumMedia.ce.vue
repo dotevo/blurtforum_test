@@ -566,7 +566,7 @@ const selectInputText = (event: Event) => {
   cursor: pointer;
   border: 1px solid var(--input-border, #999);
   background: var(--input-bg, #fff);
-  color: var(--text, #333);
+  color: var(--text-strong, #333);
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
@@ -575,11 +575,11 @@ const selectInputText = (event: Event) => {
   text-decoration: none;
   transition: all 0.2s;
 }
-.btn:hover { background: var(--bg-white, #fff); border-color: var(--primary, #006699); color: var(--primary, #006699); }
-.btn-primary { background: var(--primary, #006699); color: #fff; border-color: var(--primary-dk, #005580); }
-.btn-primary:hover { background: var(--primary-lt, #0076B1); color: #fff; }
-.btn-ghost { background: transparent; color: var(--primary, #006699); border: 1px solid var(--primary, #006699); }
-.btn-ghost:hover { background: var(--primary, #006699); color: #fff; }
+.btn:hover { background: var(--surface-1, #fff); border-color: var(--brand, #006699); color: var(--brand, #006699); }
+.btn-primary { background: var(--brand, #006699); color: #fff; border-color: var(--brand-strong, #005580); }
+.btn-primary:hover { background: var(--brand-soft, #0076B1); color: #fff; }
+.btn-ghost { background: transparent; color: var(--brand, #006699); border: 1px solid var(--brand, #006699); }
+.btn-ghost:hover { background: var(--brand, #006699); color: #fff; }
 .btn:disabled { opacity: .5; cursor: default; }
 
 .forum-media-container {
@@ -603,7 +603,7 @@ const selectInputText = (event: Event) => {
 
 .media-icon {
   cursor: pointer;
-  color: var(--primary, #006699);
+  color: var(--brand, #006699);
   opacity: 0.7;
   transition: opacity 0.2s;
   font-size: 14px;
@@ -626,7 +626,7 @@ const selectInputText = (event: Event) => {
   background-position: center;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid var(--border-main, #98AAB1);
+  border: 1px solid var(--surface-border, #98AAB1);
   box-sizing: border-box;
   cursor: pointer;
 }
@@ -690,8 +690,8 @@ const selectInputText = (event: Event) => {
 }
 
 .webtorrent-card {
-  background: var(--nav-bg, rgba(20, 30, 40, 0.05));
-  border: 1px solid var(--border-main, #98AAB1);
+  background: var(--surface-nav, rgba(20, 30, 40, 0.05));
+  border: 1px solid var(--surface-border, #98AAB1);
   border-radius: 8px;
   padding: 14px;
   box-sizing: border-box;
@@ -723,7 +723,7 @@ const selectInputText = (event: Event) => {
 .wt-title {
   font-weight: bold;
   font-size: 13px;
-  color: var(--text, #333);
+  color: var(--text-strong, #333);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
@@ -748,9 +748,9 @@ const selectInputText = (event: Event) => {
   width: 100%;
   padding: 6px 10px;
   font-size: 11px;
-  border: 1px solid var(--border-main, #ccc);
-  background: var(--bg-page, #f9f9f9);
-  color: var(--text, #666);
+  border: 1px solid var(--surface-border, #ccc);
+  background: var(--page-bg, #f9f9f9);
+  color: var(--text-strong, #666);
   border-radius: 4px;
   box-sizing: border-box;
   text-overflow: ellipsis;
@@ -764,7 +764,7 @@ const selectInputText = (event: Event) => {
 }
 .wt-progress-fill {
   height: 100%;
-  background: var(--primary, #006699);
+  background: var(--brand, #006699);
   transition: width 0.3s;
 }
 .wt-stats-row {

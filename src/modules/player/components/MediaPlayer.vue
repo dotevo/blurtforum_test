@@ -722,7 +722,7 @@ onUnmounted(() => {
        class="pl-dropdown-item" @click="addToPlaylistFromDropdown(pl.id)">
     <div class="pl-dropdown-dot" :style="{ background: pl.color }"></div>
     <span>{{ pl.name }}</span>
-    <i class="fa-solid fa-check" style="margin-left:auto; color:var(--primary);"
+    <i class="fa-solid fa-check" style="margin-left:auto; color:var(--brand);"
        v-if="pl.tracks.some(t => t.author === dropdownTrack?.author && t.permlink === dropdownTrack?.permlink)"></i>
   </div>
   <div class="pl-dropdown-sep"></div>
@@ -753,11 +753,11 @@ onUnmounted(() => {
 
 /* ── Variables (inherit from theme) ─────────────────────────────────────── */
 .bfp-bar, .bfp-panel {
-  --bfp-bg:      var(--nav-bg, #1a1a2e);
-  --bfp-border:  var(--border-main, rgba(255,255,255,0.08));
-  --bfp-text:    var(--text, #e0e0e0);
-  --bfp-muted:   var(--text-muted, rgba(255,255,255,0.45));
-  --bfp-accent:  var(--primary, #1a9b78);
+  --bfp-bg:      var(--surface-nav, #1a1a2e);
+  --bfp-border:  var(--surface-border, rgba(255,255,255,0.08));
+  --bfp-text:    var(--text-strong, #e0e0e0);
+  --bfp-muted:   var(--text-soft, rgba(255,255,255,0.45));
+  --bfp-accent:  var(--brand, #1a9b78);
   --bfp-hover:   rgba(255,255,255,0.06);
   --bfp-radius:  6px;
   --bfp-h:       72px;
@@ -972,7 +972,7 @@ onUnmounted(() => {
 }
 
 .bfp-mirror-row:hover { background: var(--bfp-hover); }
-.bfp-mirror-row.active { background: rgba(var(--bfp-accent-rgb, 26, 155, 120), 0.1); color: var(--bfp-accent); font-weight: 600; }
+.bfp-mirror-row.active { background: color-mix(in srgb, var(--bfp-accent) 12%, transparent); color: var(--bfp-accent); font-weight: 600; }
 .bfp-mirror-row i { width: 16px; text-align: center; }
 .ms-auto { margin-left: auto; }
 
@@ -1516,7 +1516,7 @@ onUnmounted(() => {
 /* Dropdown */
 .pl-dropdown {
   position: fixed; z-index: 9999;
-  background: var(--nav-bg, #1e1e2e);
+  background: var(--surface-nav, #1e1e2e);
   border: 1px solid var(--bfp-border);
   border-radius: 6px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);

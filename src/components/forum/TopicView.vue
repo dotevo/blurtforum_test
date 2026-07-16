@@ -133,7 +133,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
               <div class="post-header">
                 <span class="gs">{{ t('posted') }}: {{ fmtDate(activeTopic.created) }}</span>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <span v-if="activeTopic.isMuted" style="color:var(--error-text); font-weight:bold;">[{{ t('muted') }}]</span>
+                  <span v-if="activeTopic.isMuted" style="color:var(--alert-error-text); font-weight:bold;">[{{ t('muted') }}]</span>
                   
                   <template v-if="canMute && isPostInCommunity(activeTopic)">
                     <button v-if="!activeTopic.isMuted" class="btn btn-sm btn-hdr" @click="emit('mutePost', activeTopic, true)">🚫 {{ t('mute') }}</button>
@@ -193,7 +193,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                 <div class="post-body" v-html="renderMD(activeTopic.body, activeTopic)" @click="handleLinkClick"></div>
               </ForumMedia>
               <div v-else class="post-body" v-html="renderMD(activeTopic.body, activeTopic)" @click="handleLinkClick"></div>
-              <div style="margin-top:15px;padding-top:10px;border-top:1px solid var(--bg-r3); display: flex; justify-content: space-between; align-items: center;">
+              <div style="margin-top:15px;padding-top:10px;border-top:1px solid var(--surface-4); display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; gap: 10px;">
                   <template v-if="auth.user">
                     <button class="btn btn-sm" @click="emit('startReply', activeTopic)">{{ t('reply') }}</button>
@@ -246,7 +246,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
  
       <template v-else>
         <div v-if="replies.length>0"
-             style="background:var(--primary);color:var(--accent);padding:8px 12px;font-weight:bold;font-size:11px;text-transform:uppercase;margin-bottom:5px; border-radius: 4px;">
+             style="background:var(--brand);color:var(--accent);padding:8px 12px;font-weight:bold;font-size:11px;text-transform:uppercase;margin-bottom:5px; border-radius: 4px;">
           {{ t('comments') }} ({{ replies.length }})
         </div>
         <div v-else style="padding:20px 0;color:#666;font-size:12px; font-weight: bold; text-align: center;">{{ t('noComments') }}</div>
@@ -255,7 +255,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
           <!-- Compact Bar for Collapsed Support Comment -->
           <div v-if="r.isCollapsed" class="collapsed-support-bar" @click="r.isCollapsed=false" style="cursor:pointer;">
             <span class="vote-info">
-              <i class="fa-solid fa-caret-up" style="color:var(--primary)"></i>
+              <i class="fa-solid fa-caret-up" style="color:var(--brand)"></i>
               {{ r.vote_count }}
             </span>
             <span class="gs"><i class="fa-solid fa-robot" style="font-size:10px; opacity:0.6;"></i> {{ t('automatedSupportComment') }}</span>
@@ -278,7 +278,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                       <span v-if="(r.depth ?? 0) > 1" class="depth-badge">↳ {{ t('nested') }}</span>
                     </span>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                      <span v-if="r.isMuted" style="color:var(--error-text); font-weight:bold;">[{{ t('muted') }}]</span>
+                      <span v-if="r.isMuted" style="color:var(--alert-error-text); font-weight:bold;">[{{ t('muted') }}]</span>
                       <PostBeneficiaries :beneficiaries="r.beneficiaries" :t="t" :community-account="config.communityAccount" @open-profile="(u) => emit('openProfile', u)" />
                       <template v-if="canMute && isPostInCommunity(r)">
                         <button v-if="!r.isMuted" class="btn btn-sm btn-hdr" @click="emit('mutePost', r, true)">🚫 {{ t('mute') }}</button>
@@ -354,7 +354,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                   </ForumMedia>
                   <div v-else class="post-body" v-html="renderMD(r.body, r)" @click="handleLinkClick"></div>
     
-                  <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--bg-r3); display: flex; justify-content: space-between; align-items: center;">
+                  <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--surface-4); display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; gap: 10px;">
                       <template v-if="auth.user">
                         <button class="btn btn-sm" @click="emit('startReply', r)">{{ t('reply') }}</button>

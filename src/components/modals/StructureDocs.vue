@@ -15,7 +15,7 @@ const emit = defineEmits<{ close: [] }>();
     </div>
     <div class="modal-body">
       <p>{{ t('structureHelp') }}</p>
-      <pre style="background: var(--bg-page); padding: 10px; margin: 10px 0; border: 1px solid var(--border-main); overflow-x: auto; font-family: var(--mono);">
+      <pre style="background: var(--page-bg); padding: 10px; margin: 10px 0; border: 1px solid var(--surface-border); overflow-x: auto; font-family: var(--mono);">
 ## Category Name
 > Forum Name | tag1, tag2 | Optional Description
 > Another Forum | tag3 | etc.

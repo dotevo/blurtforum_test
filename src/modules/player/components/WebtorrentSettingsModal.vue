@@ -159,15 +159,15 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
       <!-- Lifetime totals -->
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:18px;">
         <div>
-          <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">{{ t('downloaded') || 'Downloaded' }}</div>
+          <div style="font-size:10px; color:var(--text-soft); text-transform:uppercase;">{{ t('downloaded') || 'Downloaded' }}</div>
           <div style="font-size:15px; font-weight:700;">{{ fmtBytes(stats.totalDownloaded) }}</div>
         </div>
         <div>
-          <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">{{ t('uploaded') || 'Uploaded' }}</div>
+          <div style="font-size:10px; color:var(--text-soft); text-transform:uppercase;">{{ t('uploaded') || 'Uploaded' }}</div>
           <div style="font-size:15px; font-weight:700;">{{ fmtBytes(stats.totalUploaded) }}</div>
         </div>
         <div>
-          <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">{{ t('ratio') || 'Ratio' }}</div>
+          <div style="font-size:10px; color:var(--text-soft); text-transform:uppercase;">{{ t('ratio') || 'Ratio' }}</div>
           <div style="font-size:15px; font-weight:700;">
             {{ stats.totalDownloaded > 0 ? (stats.totalUploaded / stats.totalDownloaded).toFixed(2) : '—' }}
           </div>
@@ -178,25 +178,25 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
       <div style="margin-bottom:18px;">
         <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:5px;">
           <span>{{ t('diskUsage') || 'Disk usage' }}</span>
-          <span style="color:var(--text-muted);">{{ fmtBytes(usageBytes) }} / {{ fmtBytes(quotaBytes) }}</span>
+          <span style="color:var(--text-soft);">{{ fmtBytes(usageBytes) }} / {{ fmtBytes(quotaBytes) }}</span>
         </div>
-        <div style="height:6px; background:var(--bg-r2); border-radius:4px; overflow:hidden;">
+        <div style="height:6px; background:var(--surface-3); border-radius:4px; overflow:hidden;">
           <div :style="{ width: usagePct + '%', height: '100%', background: usagePct > 90 ? '#ef4444' : 'var(--accent)' }"></div>
         </div>
-        <div v-if="browserEstimate" style="font-size:10px; color:var(--text-muted); margin-top:4px;">
+        <div v-if="browserEstimate" style="font-size:10px; color:var(--text-soft); margin-top:4px;">
           {{ t('browserQuotaAvailable') || 'Browser quota available' }}: {{ fmtBytes(browserEstimate.quota - browserEstimate.usage) }}
         </div>
         <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
-          <label style="font-size:11px; color:var(--text-muted);">{{ t('storageLimit') || 'Storage limit (GB)' }}</label>
+          <label style="font-size:11px; color:var(--text-soft);">{{ t('storageLimit') || 'Storage limit (GB)' }}</label>
           <input type="number" min="1" step="1" v-model.number="quotaGB" style="width:70px; padding:3px 6px; font-size:11px;" />
         </div>
       </div>
 
       <!-- Seeding toggle -->
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:10px 12px; background:var(--bg-r2); border-radius:6px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:10px 12px; background:var(--surface-3); border-radius:6px;">
         <div>
           <div style="font-size:12px; font-weight:600;">{{ t('seeding') || 'Seed downloaded torrents' }}</div>
-          <div style="font-size:10px; color:var(--text-muted);">{{ t('seedingHint') || 'Help others download by uploading what you already have' }}</div>
+          <div style="font-size:10px; color:var(--text-soft);">{{ t('seedingHint') || 'Help others download by uploading what you already have' }}</div>
         </div>
         <button class="btn" :class="seeding ? 'btn-primary' : 'btn-ghost'" style="padding:6px 14px;" @click="toggleSeeding">
           {{ seeding ? (t('on') || 'On') : (t('off') || 'Off') }}
@@ -206,10 +206,10 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
       <!-- Cellular seeding toggle — native app only; on web we have no
            reliable way to tell wifi from cellular, so the setting would
            mostly be a no-op there and just add confusion. -->
-      <div v-if="isNativeApp" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:10px 12px; background:var(--bg-r2); border-radius:6px;">
+      <div v-if="isNativeApp" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; padding:10px 12px; background:var(--surface-3); border-radius:6px;">
         <div>
           <div style="font-size:12px; font-weight:600;">{{ t('seedOnCellular') || 'Seed on mobile data' }}</div>
-          <div style="font-size:10px; color:var(--text-muted);">{{ t('seedOnCellularHint') || 'Off by default to protect your data plan — seeding still works normally on Wi-Fi' }}</div>
+          <div style="font-size:10px; color:var(--text-soft);">{{ t('seedOnCellularHint') || 'Off by default to protect your data plan — seeding still works normally on Wi-Fi' }}</div>
         </div>
         <button class="btn" :class="seedOnCellular ? 'btn-primary' : 'btn-ghost'" style="padding:6px 14px;" @click="toggleSeedOnCellular">
           {{ seedOnCellular ? (t('on') || 'On') : (t('off') || 'Off') }}
@@ -221,12 +221,12 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
         {{ t('storedTorrents') || 'Stored torrents' }} ({{ manifest.length }})
       </div>
       <div style="max-height:220px; overflow-y:auto; margin-bottom:18px;">
-        <div v-if="!manifest.length" style="font-size:11px; color:var(--text-muted);">{{ t('noStoredTorrents') || 'Nothing stored yet.' }}</div>
-        <div v-for="e in manifest" :key="e.infoHash" style="padding:7px 0; border-bottom:1px solid var(--border-main);">
+        <div v-if="!manifest.length" style="font-size:11px; color:var(--text-soft);">{{ t('noStoredTorrents') || 'Nothing stored yet.' }}</div>
+        <div v-for="e in manifest" :key="e.infoHash" style="padding:7px 0; border-bottom:1px solid var(--surface-border);">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px;">
             <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;" :title="e.title">{{ e.title }}</span>
             <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-              <span style="color:var(--text-muted);">{{ fmtBytes(e.sizeBytes) }}</span>
+              <span style="color:var(--text-soft);">{{ fmtBytes(e.sizeBytes) }}</span>
               <button class="btn btn-ghost" style="padding:3px 8px; font-size:10px;"
                       :title="t('playStoredTorrent') || 'Play'" @click="playStored(e)">
                 <i class="fa-solid fa-play"></i>
@@ -239,7 +239,7 @@ function toggleEntryFullDownload(e: WTPool.SeedManifestEntry): void {
               </button>
             </span>
           </div>
-          <div v-if="e.fullDownload && !e.done" style="height:4px; background:var(--bg-r2); border-radius:3px; overflow:hidden; margin-top:5px;">
+          <div v-if="e.fullDownload && !e.done" style="height:4px; background:var(--surface-3); border-radius:3px; overflow:hidden; margin-top:5px;">
             <div :style="{ width: Math.round(e.progress * 100) + '%', height: '100%', background: 'var(--accent)' }"></div>
           </div>
         </div>

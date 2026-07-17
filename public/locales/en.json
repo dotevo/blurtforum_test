@@ -355,5 +355,6 @@
   "noStoredTorrents": "Nothing stored yet.",
   "playStoredTorrent": "Play",
   "clearing": "Clearing…",
-  "fullscreen": "Fullscreen"
+  "fullscreen": "Fullscreen",
+  "cinemaMode": "Cinema"
 }

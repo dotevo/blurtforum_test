@@ -1450,6 +1450,10 @@ a:hover { color: var(--link-hover-color); text-decoration: underline; }
  
 /* ===== CONTENT AREA ===== */
 .content { padding: 15px; }
+.content.cinema-active { margin-left: 72px; padding: 0; }
+@media (max-width: 768px) {
+  .content.cinema-active { margin-left: 0; }
+}
  
 /* ===== FORUM TABLES ===== */
 .forumline {

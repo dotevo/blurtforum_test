@@ -3,7 +3,7 @@
  * Handles audio/video playback, queuing, playlists, event emitter and plugin API.
  */
 import { reactive, watch, nextTick, ref, computed } from 'vue';
-import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution, PeerActionContribution, PlayerTabContribution } from './types';
+import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution, PeerActionContribution, PlayerTabContribution, RailItemContribution } from './types';
 import { trackEvent } from '../analytics';
 import * as WTPool from './webtorrent-pool';
 import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
@@ -59,6 +59,9 @@ export const state = reactive<PlayerState>({
   tabsWidth: 340,
   expandedTab: 'video',
   cinema: false,
+  hidden: false,
+  cinemaBrowseView: 'categories',
+  cinemaControlsVisible: true,
   currentTrack: null,
   queue: [],
   autoQueue: [],
@@ -72,6 +75,14 @@ export const state = reactive<PlayerState>({
   skipLocked: false,
   seedingEnabled: WTPool.isSeedingEnabled()
 });
+
+// Cinema mode currently keeps YouTube/PeerTube's own native controls (their
+// iframe UI) rather than disabling them and building replacements -- mainly
+// because remote/keyboard focus reaching *into* an iframe's own controls is
+// untested and may not work well on TV. If that turns out to be a real
+// problem, flip this one flag to hide native controls everywhere and fall
+// back to our own bottom bar for every source, not just audio/webtorrent.
+export const CINEMA_HIDE_NATIVE_CONTROLS = true;
 
 const defaultPriorities = ['youtube', 'audio', 'peertube'];
 const getPriorities = () => JSON.parse(localStorage.getItem('bf-player-priorities') || JSON.stringify(defaultPriorities)) as string[];
@@ -88,7 +99,7 @@ const findBestSourceIndex = (sources: MediaEntryMirror[]): number => {
   return 0;
 };
 
-const playlistState = reactive<PlaylistState>({ playlists: [] });
+export const playlistState = reactive<PlaylistState>({ playlists: [] });
 
 export const currentSource = computed<MediaEntryMirror | null>(() => {
   if (!state.currentTrack || !state.currentTrack.sources.length) return null;
@@ -195,6 +206,58 @@ const registerExpandedTab = (contribution: PlayerTabContribution): void => {
 };
 
 const getExpandedTabs = (): PlayerTabContribution[] => _expandedTabs;
+
+// Same idea, but for cinema mode's left rail (see RailItemContribution in
+// types.ts). Native player features (Playlists below) register here exactly
+// the same way an external plugin would -- no special-casing.
+
+const _railItems: RailItemContribution[] = [];
+
+const registerRailItem = (contribution: RailItemContribution): void => {
+  if (!contribution?.id) { console.warn('BFPlayer.registerRailItem: contribution must have an id'); return; }
+  if (_railItems.find(r => r.id === contribution.id)) { console.warn(`BFPlayer: rail item "${contribution.id}" already registered`); return; }
+  _railItems.push(contribution);
+};
+
+const getRailItems = (): RailItemContribution[] => _railItems;
+
+// Built-in: surface Playlists in cinema mode's left rail, opening the same
+// playlists tab the bottom control bar's icon opens. Only shown once the
+// user actually has a playlist (see `visible`), so it doesn't clutter the
+// rail for people who've never used them.
+registerRailItem({
+  id: 'playlists',
+  label: 'Playlists',
+  icon: 'fa-solid fa-list',
+  visible: () => playlistState.playlists.length > 0,
+  badge: () => playlistState.playlists.length || null,
+  onClick: () => {
+    state.cinemaBrowseView = 'playlists';
+  },
+});
+
+// ── Cinema mode auto-hide ────────────────────────────────────────────────
+// One shared timer for the whole floating chrome (top bar, side icons,
+// bottom bar, and anything teleported in by a source-specific component
+// like WebtorrentVideo.vue) -- everything shows/hides together, driven by
+// a single call site instead of N independent timers.
+let _cinemaHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+export const showCinemaControls = (): void => {
+  if (!state.cinema) return;
+  state.cinemaControlsVisible = true;
+  if (_cinemaHideTimer) clearTimeout(_cinemaHideTimer);
+  if (state.expandedTab !== 'video') return; // a side panel is open -- stay visible
+  _cinemaHideTimer = setTimeout(() => { state.cinemaControlsVisible = false; }, 3000);
+};
+
+watch(() => state.cinema, (isCinema) => {
+  if (isCinema) showCinemaControls();
+  else {
+    state.cinemaControlsVisible = true;
+    if (_cinemaHideTimer) clearTimeout(_cinemaHideTimer);
+  }
+});
 
 // Same idea as track actions, but for a webtorrent peer-list row — no zone,
 // since peer rows only exist in one place (WebtorrentInfoModal.vue).
@@ -775,7 +838,7 @@ const initYT = async (): Promise<void> => {
   await loadYTAPI();
   ytPlayer = new window.YT!.Player('bf-yt-player-target', {
     height: '100%', width: '100%',
-    playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0 },
+    playerVars: { autoplay: 1, controls: (CINEMA_HIDE_NATIVE_CONTROLS && state.cinema) ? 0 : 1, disablekb: (CINEMA_HIDE_NATIVE_CONTROLS && state.cinema) ? 1 : 0, modestbranding: 1, rel: 0 },
     events: {
       onReady: (event: { target: YTPlayer }) => {
         event.target.setVolume(state.volume * 100);
@@ -1458,6 +1521,8 @@ export const BFPlayer: BFPlayerAPI = {
   on, off, registerPlugin,
   registerTrackAction, getTrackActions,
   registerExpandedTab, getExpandedTabs,
+  registerRailItem, getRailItems,
+  showCinemaControls,
   createPlaylist, deletePlaylist, renamePlaylist,
   addTrackToPlaylist, removeTrackFromPlaylist, playPlaylist,
   setSeedingEnabled, setMaxSeedStorageBytes, getMaxSeedStorageBytes,

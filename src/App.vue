@@ -11,6 +11,8 @@ import GlobalActivity from './components/layout/GlobalActivity.vue';
 import NavBar from './components/layout/NavBar.vue';
 import MobileTopBar from './components/layout/MobileTopBar.vue';
 import MobileContext from './components/layout/MobileContext.vue';
+import CinemaRail from './components/cinema/CinemaRail.vue';
+import CinemaIndex from './components/cinema/CinemaIndex.vue';
 
 // Views (Sync for core, Async for heavy)
 import ForumIndex from './components/forum/ForumIndex.vue';
@@ -40,7 +42,7 @@ const SwitchAccountModal = defineAsyncComponent(() => import('./components/modal
 const OldContentModal = defineAsyncComponent(() => import('./components/modals/OldContentModal.vue'));
 
 const {
-  lang, setLang, langs, t, theme, setTheme, themes, config, view, loading, globalProps, forumStructure,
+  lang, setLang, langs, t, theme, setTheme, themes, cinemaMode, setCinemaMode, config, view, loading, globalProps, forumStructure,
   activeForum, activeTopic, replies, repliesLoading, moderators, communityInfo,
   structureNote, selectedCommunity, currentTagFilter, applyTagFilter, clearTagFilter,
   customTag, allCommunities, userSubscriptions, auth, showLoginModal, loginTab,
@@ -64,7 +66,7 @@ const {
   structureForm, showStructureDocs,
   forumPagination,
   pinModal, handlePinSubmit,
-  globalActivity, activityTab, activityExpanded, activityFullList, mobileActivityExpanded, openActivity,
+  globalActivity, updateGlobalActivity, activityTab, activityExpanded, activityFullList, mobileActivityExpanded, openActivity,
   editModal, startEdit, submitEdit,
   voteModal, submitVoteConfirmed, estimateVote,
   supportModal, submitSupportComment,
@@ -121,6 +123,7 @@ const {
   <!-- ── Layout ─────────────────────────────────────────────────── -->
 
   <MobileTopBar
+    v-if="!cinemaMode"
     class="show-mobile"
     :auth="auth"
     :global-activity="globalActivity"
@@ -136,6 +139,7 @@ const {
     :langs="langs"
     :rpc-menu-open="rpcMenuOpen"
     :community-account="config.communityAccount"
+    :cinemaMode="cinemaMode"
     @update:expanded="mobileActivityExpanded = $event"
     @update:activity-tab="activityTab = $event"
     @update:rpc-menu-open="rpcMenuOpen = $event"
@@ -146,17 +150,21 @@ const {
     @go-home="goHome"
     @set-theme="setTheme"
     @set-lang="(v: string) => setLang(v as 'en'|'pl'|'eo')"
+    @set-cinema-mode="setCinemaMode"
     @logout="logout"
     @open-switch-account-modal="openSwitchAccountModal"
   />
 
   <LangBar
+    v-if="!cinemaMode"
     class="hide-mobile"
     :theme="theme" :themes="themes" :lang="lang" :langs="langs"
     :rpc-menu-open="rpcMenuOpen"
     :t="t"
+    :cinemaMode="cinemaMode"
     @set-theme="setTheme" @set-lang="(v: string) => setLang(v as 'en'|'pl'|'eo')"
     @update:rpc-menu-open="rpcMenuOpen = $event"
+    @set-cinema-mode="setCinemaMode"
   />
 
   <RpcModal
@@ -175,6 +183,7 @@ const {
   />
 
   <SiteHeader
+    v-if="!cinemaMode"
     class="hide-mobile"
     :community-title="communityInfo.title || ''"
     :community-account="config.communityAccount"
@@ -192,6 +201,7 @@ const {
   />
 
   <CommunityBar
+    v-if="!cinemaMode"
     :selected-community="selectedCommunity"
     :all-communities="allCommunities"
     :custom-tag="customTag"
@@ -204,12 +214,14 @@ const {
   />
 
   <GlobalActivity
+    v-if="!cinemaMode"
     class="hide-mobile"
     :auth="auth"
     :global-activity="globalActivity"
     :activity-tab="activityTab"
     :activity-expanded="activityExpanded"
     :activity-full-list="activityFullList"
+    :update-global-activity="updateGlobalActivity"
     :t="t"
     :time-ago="timeAgo"
     @update:activity-tab="activityTab = $event"
@@ -219,6 +231,7 @@ const {
   />
 
   <NavBar
+    v-if="!cinemaMode"
     :view="view"
     :community-account="config.communityAccount"
     :auth="auth"
@@ -231,11 +244,32 @@ const {
     @open-forum="openForum"
   />
 
+  <CinemaRail
+    v-if="cinemaMode"
+    :auth="auth"
+    :has-new-notif="notifModal.hasNew"
+    :theme="theme" :themes="themes" :lang="lang" :langs="langs"
+    :rpc-menu-open="rpcMenuOpen"
+    :cinema-mode="cinemaMode"
+    :player="player"
+    :t="t"
+    @go-home="goHome"
+    @open-login-modal="openLoginModal"
+    @open-notif-modal="openNotifModal"
+    @open-profile="openProfile"
+    @logout="logout"
+    @set-theme="setTheme"
+    @set-lang="(v: string) => setLang(v as 'en'|'pl'|'eo')"
+    @update:rpc-menu-open="rpcMenuOpen = $event"
+    @set-cinema-mode="setCinemaMode"
+  />
+
   <!-- ── Main content ───────────────────────────────────────────── -->
 
-  <div class="content">
+  <div class="content" :class="{ 'cinema-active': cinemaMode }">
 
     <MobileContext
+      v-if="!cinemaMode"
       class="show-mobile"
       :view="view"
       :active-forum="activeForum"
@@ -246,7 +280,7 @@ const {
     />
 
     <!-- Reward notification -->
-    <div v-if="auth.user && auth.user.hasRewards"
+    <div v-if="!cinemaMode && auth.user && auth.user.hasRewards"
          style="background:var(--accent); color:var(--page-bg); padding:10px 15px; margin-bottom:15px; border-radius:4px; display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
       <div style="flex:1"><i class="fa-solid fa-gift"></i> {{ t('rewardsAvailable') }}: {{ auth.user.rewardBlurt }} / {{ auth.user.rewardVesting }}</div>
       <button class="btn btn-sm" @click="() => claimRewards()" style="background:var(--surface-1); color:var(--accent); border:none">{{ t('claimRewards') }}</button>
@@ -254,7 +288,7 @@ const {
 
     <div v-if="loading" class="loader"><span class="spin"></span>{{ t('loading') }} {{ config.communityAccount }}…</div>
 
-    <div v-if="!loading && forumPagination.bgLoading" style="background: var(--surface-nav); padding: 5px 15px; margin-bottom: 15px; border-radius: 4px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--surface-border);">
+    <div v-if="!cinemaMode && !loading && forumPagination.bgLoading" style="background: var(--surface-nav); padding: 5px 15px; margin-bottom: 15px; border-radius: 4px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--surface-border);">
       <div style="flex: 1; height: 4px; background: var(--page-bg); border-radius: 2px; overflow: hidden;">
         <div :style="{ width: (forumPagination.fetchedCount / 300 * 100) + '%', height: '100%', background: 'var(--brand)', transition: 'width 0.3s' }"></div>
       </div>
@@ -282,7 +316,7 @@ const {
     <template v-if="!loading">
 
       <!-- Tag filter bar -->
-      <div v-if="(view==='index' && currentTagFilter) || (view==='forum')" class="tag-filter-bar forumline">
+      <div v-if="!cinemaMode && ((view==='index' && currentTagFilter) || (view==='forum'))" class="tag-filter-bar forumline">
         <div style="display:flex; align-items:center; gap:10px; width: 100%;">
           <i class="fa-solid fa-filter" style="color:var(--brand); opacity:0.7;"></i>
           <div style="position:relative; flex:1; max-width: 300px;">
@@ -300,6 +334,9 @@ const {
 
       <!-- ── Views ───────────────────────────────────────────────── -->
 
+      <CinemaIndex v-if="cinemaMode" :client="client" :t="t" />
+
+      <template v-else>
       <ForumIndex
         v-if="view === 'index'"
         :forum-structure="forumStructure"
@@ -449,10 +486,12 @@ const {
         @submit-vote="submitVote"
       />
 
+      </template>
+
     </template>
 
     <!-- Footer -->
-    <div class="site-footer">
+    <div v-if="!cinemaMode" class="site-footer">
       BlurtForum — Thanks to: <a href="#" @click.stop.prevent="openProfile('drakernoise')">@drakernoise</a> (for RPC), @beblurt/dblurt · Blurt Network | #{{ globalProps.head_block_number||'…' }} | {{ lang.toUpperCase() }}
       <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--surface-border); display: flex; justify-content: center; align-items: center; gap: 10px;">
         <span style="font-size: 11px; opacity: 0.6;">Media Player Enabled</span>

@@ -15,7 +15,7 @@
  * reference would go stale and playback would silently break.
  */
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
-import { currentSource, playWebtorrentFile, wtActiveFileIndex } from '../player';
+import { currentSource, playWebtorrentFile, wtActiveFileIndex, state as playerState, showCinemaControls as showSharedCinemaControls } from '../player';
 import * as WTPool from '../webtorrent-pool';
 import type { TorrentSnapshot } from '../webtorrent-pool';
 import WebtorrentInfoModal from './WebtorrentInfoModal.vue';
@@ -167,6 +167,7 @@ function isVideoPlaying(): boolean {
 }
 
 function scheduleHide(): void {
+  if (playerState.cinema) return; // shared timer owns this in cinema mode
   if (hideTimer) clearTimeout(hideTimer);
   if (!isVideoPlaying()) return; // stay visible while paused/ended
   // WebtorrentAudioSubtitleMenu closes its own dropdown/panel on its own —
@@ -175,9 +176,16 @@ function scheduleHide(): void {
 }
 
 function showControls(): void {
+  if (playerState.cinema) { showSharedCinemaControls(); return; }
   controlsVisible.value = true;
   scheduleHide();
 }
+
+// What the template actually shows/hides: the shared cinema flag while in
+// cinema mode (so this stays in lockstep with the top bar / side icons /
+// anything else contributing to the same fullscreen chrome), our own local
+// flag otherwise (normal forum usage, unchanged from before).
+const effectiveControlsVisible = computed(() => playerState.cinema ? playerState.cinemaControlsVisible : controlsVisible.value);
 
 onMounted(() => {
   const video = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
@@ -260,45 +268,47 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
       -->
       <video id="bf-wt-player-video" class="bfp-video-iframe" controls playsinline controls-list="nodownload nofullscreen"></video>
 
-      <div class="wtv-controls" v-if="isWebtorrent" :class="{ 'wtv-controls--hidden': !controlsVisible }">
-        <button class="wtv-btn" @click="showInfo = true" :title="t('torrentInfo') || 'Torrent info'">
-          <i class="fa-solid fa-circle-info"></i>
-        </button>
-        <button class="wtv-btn" :class="{ 'wtv-btn--active': fullDownload }" @click="toggleFullDownload"
-                :title="t('downloadWholeTorrent') || 'Download entire torrent for offline playback later'">
-          <i v-if="fullDownload && torrent?.done" class="fa-solid fa-check"></i>
-          <i v-else class="fa-solid fa-download"></i>
-          <span v-if="fullDownload && torrent && !torrent.done" class="wtv-dl-pct">{{ Math.round((torrent.progress || 0) * 100) }}%</span>
-        </button>
-        <span v-if="torrent" class="wtv-peers" :title="t('peers') || 'Peers'">
-          <i class="fa-solid fa-users"></i> {{ torrent.numPeers }}
-        </span>
-        <span v-if="torrent" class="wtv-speed" :title="t('downloadSpeed') || 'Download speed'">
-          <i class="fa-solid fa-arrow-down"></i> {{ (torrent.downloadSpeed / 1024).toFixed(0) }} KB/s
-        </span>
-        <button class="wtv-btn" @click="toggleFullscreen"
-                :title="t('fullscreen') || 'Fullscreen'">
-          <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand'"></i>
-        </button>
-        <!--
-          Subtitles + alternate audio track, entirely self-contained — see
-          WebtorrentAudioSubtitleMenu.vue's own top-of-file comment for why
-          this had to be its own component rather than inline markup here:
-          it must have ZERO reactive dependency on `torrent` (updated every
-          second above) so a stats poll tick can never touch it, even
-          indirectly through a shared render pass. `files`/`activeFileIndex`
-          only actually change when the file list or the attached file index
-          change — not every second — so this only re-renders when something
-          real changes.
-        -->
-        <WebtorrentAudioSubtitleMenu
-          :t="t"
-          :info-hash="infoHash"
-          :files="stableFiles"
-          :active-file-index="activeFileIndex"
-          :visible="controlsVisible"
-        />
-      </div>
+      <Teleport to="#bfp-cinema-extra-controls" :disabled="!playerState.cinema">
+        <div class="wtv-controls" v-if="isWebtorrent" :class="{ 'wtv-controls--hidden': !effectiveControlsVisible, 'wtv-controls--cinema': playerState.cinema }">
+          <button class="wtv-btn" @click="showInfo = true" :title="t('torrentInfo') || 'Torrent info'">
+            <i class="fa-solid fa-circle-info"></i>
+          </button>
+          <button class="wtv-btn" :class="{ 'wtv-btn--active': fullDownload }" @click="toggleFullDownload"
+                  :title="t('downloadWholeTorrent') || 'Download entire torrent for offline playback later'">
+            <i v-if="fullDownload && torrent?.done" class="fa-solid fa-check"></i>
+            <i v-else class="fa-solid fa-download"></i>
+            <span v-if="fullDownload && torrent && !torrent.done" class="wtv-dl-pct">{{ Math.round((torrent.progress || 0) * 100) }}%</span>
+          </button>
+          <span v-if="torrent" class="wtv-peers" :title="t('peers') || 'Peers'">
+            <i class="fa-solid fa-users"></i> {{ torrent.numPeers }}
+          </span>
+          <span v-if="torrent" class="wtv-speed" :title="t('downloadSpeed') || 'Download speed'">
+            <i class="fa-solid fa-arrow-down"></i> {{ (torrent.downloadSpeed / 1024).toFixed(0) }} KB/s
+          </span>
+          <button v-if="!playerState.cinema" class="wtv-btn" @click="toggleFullscreen"
+                  :title="t('fullscreen') || 'Fullscreen'">
+            <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand'"></i>
+          </button>
+          <!--
+            Subtitles + alternate audio track, entirely self-contained — see
+            WebtorrentAudioSubtitleMenu.vue's own top-of-file comment for why
+            this had to be its own component rather than inline markup here:
+            it must have ZERO reactive dependency on `torrent` (updated every
+            second above) so a stats poll tick can never touch it, even
+            indirectly through a shared render pass. `files`/`activeFileIndex`
+            only actually change when the file list or the attached file index
+            change — not every second — so this only re-renders when something
+            real changes.
+          -->
+          <WebtorrentAudioSubtitleMenu
+            :t="t"
+            :info-hash="infoHash"
+            :files="stableFiles"
+            :active-file-index="activeFileIndex"
+            :visible="effectiveControlsVisible"
+          />
+        </div>
+      </Teleport>
     </div>
 
     <!-- Downloaded/to-download piece map — the bar the user liked from the
@@ -347,6 +357,10 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
 .wtv-controls--hidden {
   opacity: 0;
   pointer-events: none;
+}
+.wtv-controls--cinema {
+  position: static;
+  top: auto; left: auto; right: auto;
 }
 .wtv-btn {
   position: relative;

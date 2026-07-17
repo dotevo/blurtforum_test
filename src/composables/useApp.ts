@@ -71,6 +71,37 @@ export function useApp() {
     document.body.className = `theme-${id}`;
   };
 
+  // Manual toggle always wins once used; before that, default on if we look
+  // like we're running on an Android TV (large screen, no touch, TV-ish UA).
+  const isAndroidTV = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    return /Android/i.test(ua) && (/\bTV\b/i.test(ua) || /GoogleTV/i.test(ua) || /AFT[A-Z]/i.test(ua));
+  };
+  const cinemaModeUserSet = localStorage.getItem('bf-cinema-mode-user-set') === 'true';
+  const cinemaMode = ref<boolean>(cinemaModeUserSet ? localStorage.getItem('bf-cinema-mode') === 'true' : isAndroidTV());
+  // Set this synchronously, right here, rather than waiting for CinemaIndex's
+  // own onMounted to do it -- CinemaIndex can mount a tick later than
+  // MediaPlayer (e.g. once `loading` resolves), which left a brief window
+  // where the docked bar's default (visible) state got rendered/painted
+  // before flipping hidden, causing a visible flash on load.
+  if (cinemaMode.value) BFPlayer.state.hidden = true;
+  const setCinemaMode = (value: boolean) => {
+    cinemaMode.value = value;
+    localStorage.setItem('bf-cinema-mode', String(value));
+    localStorage.setItem('bf-cinema-mode-user-set', 'true');
+    if (value) {
+      BFPlayer.state.hidden = true;
+      // Fix #5: if something was already playing in the normal (non-cinema)
+      // expanded panel when the user switches into cinema mode, promote it
+      // to fullscreen cinema display instead of leaving it stuck in the old
+      // inline panel style.
+      if (BFPlayer.state.currentTrack && BFPlayer.state.expanded) {
+        BFPlayer.state.cinema = true;
+      }
+    }
+  };
+
   const config = reactive({
     communityAccount: 'blurt-140455',
     nodes: ['https://blurtrpc.dagobert.uk', 'https://rpc.blurt.blog', 'https://rpc.beblurt.com', 'https://rpc.drakernoise.com'],
@@ -1404,8 +1435,10 @@ export function useApp() {
         }
       }
       handleUrlChange();
-      setTimeout(updateGlobalActivity, 2000);
-      setInterval(updateGlobalActivity, 300000);
+      // NOTE: global activity polling is started/stopped by <GlobalActivity>'s
+      // own onMounted/onUnmounted (see components/layout/GlobalActivity.vue).
+      // Not triggered here so that simply not rendering the component (as in
+      // cinema mode) is enough to stop the RPC calls, no cinemaMode checks needed.
     });
 
     setInterval(() => {
@@ -1417,7 +1450,7 @@ export function useApp() {
   });
 
   return {
-    lang, setLang, langs, t, theme, setTheme, themes, config, view, loading, globalProps, forumStructure,
+    lang, setLang, langs, t, theme, setTheme, themes, cinemaMode, setCinemaMode, config, view, loading, globalProps, forumStructure,
     activeForum, activeTopic, replies, repliesLoading, moderators, communityInfo,
     structureNote, selectedCommunity, currentTagFilter, applyTagFilter, clearTagFilter, customTag, allCommunities, userSubscriptions, auth, showLoginModal, loginTab,
     loginForm, loginErr, loginBusy, wvAvailable, loginOptions, replyTarget, quickReplyBody, replyForm,
@@ -1439,7 +1472,7 @@ export function useApp() {
     structureForm, showStructureDocs,
     forumPagination, loadMorePosts,
     pinModal, handlePinSubmit,
-    globalActivity, activityTab, activityExpanded, activityFullList, mobileActivityExpanded, openActivity,
+    globalActivity, updateGlobalActivity, activityTab, activityExpanded, activityFullList, mobileActivityExpanded, openActivity,
     editModal, startEdit, submitEdit,
     voteModal, openVoteModal, submitVoteConfirmed, estimateVote,
     feeInfo, feeEstimates, scheduleFeeUpdate,

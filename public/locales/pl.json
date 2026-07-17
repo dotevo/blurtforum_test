@@ -391,5 +391,6 @@
   "noStoredTorrents": "Brak zapisanych torrentów.",
   "playStoredTorrent": "Odtwórz",
   "clearing": "Czyszczenie…",
-  "fullscreen": "Pełny ekran"
+  "fullscreen": "Pełny ekran",
+  "cinemaMode": "Kino"
 }

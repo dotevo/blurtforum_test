@@ -388,5 +388,6 @@
   "noStoredTorrents": "Rien de stocké pour le moment.",
   "playStoredTorrent": "Lire",
   "clearing": "Effacement…",
-  "fullscreen": "Plein écran"
+  "fullscreen": "Plein écran",
+  "cinemaMode": "Cinéma"
 }

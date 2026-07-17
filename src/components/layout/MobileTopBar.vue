@@ -20,6 +20,7 @@ const props = defineProps<{
   langs: string[];
   rpcMenuOpen: boolean;
   communityAccount: string;
+  cinemaMode: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   goHome: [];
   setTheme: [theme: string];
   setLang: [lang: string];
+  setCinemaMode: [value: boolean];
   logout: [];
   openSwitchAccountModal: [];
 }>();
@@ -95,9 +97,11 @@ const getLatestActivities = () => {
           :langs="langs"
           :t="t"
           :rpc-menu-open="rpcMenuOpen"
+          :cinemaMode="cinemaMode"
           @set-theme="emit('setTheme', $event)"
           @set-lang="emit('setLang', $event)"
           @update:rpc-menu-open="emit('update:rpcMenuOpen', $event)"
+          @set-cinema-mode="emit('setCinemaMode', $event)"
         />
         <div class="mtb-auth-actions" v-if="auth.user">
           <button class="btn-hdr" @click="emit('openSwitchAccountModal')" :title="t('switchAccount')">

@@ -5,7 +5,7 @@ import PlaylistModal from './PlaylistModal.vue';
 import WebtorrentVideo from './WebtorrentVideo.vue';
 import WebtorrentSettingsModal from './WebtorrentSettingsModal.vue';
 import type { MediaTrack, BFPlayerAPI, Playlist } from '../types';
-import { currentSource } from '../player';
+import { currentSource, CINEMA_HIDE_NATIVE_CONTROLS } from '../player';
 
 const props = defineProps<{
   player: BFPlayerAPI;
@@ -23,6 +23,14 @@ watch(() => props.player.state.expanded, (isExpanded) => {
 });
 
 const handleResize = () => { vw.value = window.innerWidth; };
+
+function exitCinema(): void {
+  // No PiP yet -- leaving fullscreen shouldn't leave something playing
+  // invisibly in the background, so pause first.
+  if (props.player.state.playing) props.player.togglePlay();
+  props.player.state.expanded = false;
+  props.player.state.cinema = false;
+}
 
 const emit = defineEmits<{
   /** A track's title/author area, or the "open" link, was clicked — host app decides what that means (e.g. open the source post). */
@@ -105,6 +113,61 @@ function formatRelativeTime(timestamp?: number): string {
 
 // ── Media type badge labels ─────────────────────────────────────────────────
 const typeLabel: Record<string, string> = { youtube: 'YT', peertube: 'PT', audio: 'MP3' };
+
+// Cinema mode hides the normal tab-bar header entirely and instead surfaces
+// a small set of icon buttons that each open the same slide-in tabs panel.
+// Native tabs (queue/playlists/settings) aren't in player.getExpandedTabs()
+// -- that only holds plugin-registered ones (e.g. Comments) -- so build the
+// combined list here instead of only using plugin tabs.
+const cinemaPanelTabs = computed(() => [
+  { id: 'queue', label: props.t('queue') || 'Queue', icon: 'fa-solid fa-list-ul' },
+  { id: 'playlists', label: props.t('playlists') || 'Playlists', icon: 'fa-solid fa-list' },
+  { id: 'settings', label: props.t('settings') || 'Settings', icon: 'fa-solid fa-gear' },
+  ...props.player.getExpandedTabs(),
+]);
+
+// YouTube/PeerTube keep their own native play/pause/progress UI for now (see
+// CINEMA_HIDE_NATIVE_CONTROLS in player.ts). WebTorrent is NOT included here
+// even though it's "ours" -- WebtorrentVideo.vue already has its own
+// complete, purpose-built overlay (torrent info, download toggle,
+// peers/speed, its own fullscreen fix, subtitles menu) on top of the native
+// <video controls>. Duplicating play/pause/progress here on top of that was
+// just a second (really third) bar. Only audio has genuinely zero UI of its
+// own.
+const showOwnCinemaControls = computed(() =>
+  CINEMA_HIDE_NATIVE_CONTROLS || currentSource.value?.type === 'audio'
+);
+
+// Cinema mode's floating chrome (top bar, side icons, bottom bar) auto-hides
+// after a few seconds of no activity -- the actual timer lives in player.ts
+// (player.showCinemaControls() / player.state.cinemaControlsVisible) so that
+// anything else contributing controls (e.g. WebtorrentVideo.vue teleporting
+// its own overlay in) shares the exact same timer instead of running its own.
+
+// mousemove over a YouTube/PeerTube iframe never reaches our document at
+// all (separate browsing context, doesn't bubble) -- so hovering/clicking
+// inside the video would otherwise leave our controls stuck hidden after
+// the timeout with no way to bring them back except moving the mouse
+// somewhere outside the iframe. `blur` on window fires reliably the instant
+// focus moves into an iframe (e.g. clicking its pause button), which is the
+// one cross-iframe signal we can actually observe.
+function onWindowBlur(): void { props.player.showCinemaControls(); }
+onMounted(() => window.addEventListener('blur', onWindowBlur));
+onUnmounted(() => window.removeEventListener('blur', onWindowBlur));
+
+// Left/right remote or keyboard navigation across every button in the
+// cinema controls row (playback controls + panel-toggle icons) -- plain
+// native buttons don't get D-pad traversal for free.
+function onCinemaControlsKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const row = e.currentTarget as HTMLElement;
+  const buttons = Array.from(row.querySelectorAll<HTMLElement>('button:not(:disabled)'));
+  const idx = buttons.indexOf(document.activeElement as HTMLElement);
+  if (idx === -1) return;
+  e.preventDefault();
+  const next = e.key === 'ArrowRight' ? Math.min(buttons.length - 1, idx + 1) : Math.max(0, idx - 1);
+  buttons[next]?.focus();
+}
 
 const brokenImages = ref(new Set<string>());
 function handleImgError(url: string) {
@@ -240,6 +303,7 @@ onUnmounted(() => {
 
 <template>
 <div
+  v-if="!player.state.hidden"
   class="bfp-bar"
   :class="{
     'bfp-bar--minimized': player.state.minimized,
@@ -409,8 +473,12 @@ onUnmounted(() => {
     </template>
   </div></div><div
   class="bfp-panel"
-  :class="{ 'bfp-panel--hidden': !player.state.expanded || player.state.minimized, 'bfp-panel--cinema': player.state.cinema }"
+  :class="{ 'bfp-panel--hidden': !player.state.expanded || player.state.minimized, 'bfp-panel--cinema': player.state.cinema, 'bfp-cinema-tab-open': player.state.cinema && player.state.expandedTab !== 'video', 'bfp-cinema-controls-hidden': player.state.cinema && !player.state.cinemaControlsVisible }"
   :style="{ height: player.state.expandedHeight + 'px' }"
+  @mousemove="player.showCinemaControls()"
+  @touchstart.passive="player.showCinemaControls()"
+  @keydown="player.showCinemaControls()"
+  @click="player.showCinemaControls()"
 >
 
   <div class="bfp-panel-resize"
@@ -420,15 +488,20 @@ onUnmounted(() => {
 
   <div class="bfp-panel-content" :class="'bfp-panel-content--' + player.state.expandedTab">
     
-    <div class="bfp-panel-video" :class="{ 'bfp-media-hidden': vw <= 900 && player.state.expandedTab !== 'video' }"
+    <div class="bfp-panel-video" :class="{ 'bfp-media-hidden': !player.state.cinema && vw <= 900 && player.state.expandedTab !== 'video' }"
          :style="vw > 900 ? { flex: '1 1 0' } : {}">
       
       <div class="bfp-video-header">
+        <button v-if="player.state.cinema" class="bfp-cinema-back-btn"
+                @click="exitCinema"
+                :title="t('backToLibrary') || 'Back to library'">
+          <i class="fa-solid fa-arrow-left"></i> {{ t('backToLibrary') || 'Powrót do biblioteki' }}
+        </button>
         <div class="bfp-video-header-info">
           <div class="bfp-video-header-title">{{ player.state.currentTrack?.title }}</div>
           <div class="gs" style="font-size: 10px;">@{{ player.state.currentTrack?.author }}</div>
         </div>
-        <div class="bfp-video-header-stats" v-if="player.state.currentTrack">
+        <div class="bfp-video-header-stats" v-if="player.state.currentTrack && !player.state.cinema">
           <slot name="track-actions" :track="player.state.currentTrack" zone="expanded"></slot>
         </div>
       </div>
@@ -443,22 +516,93 @@ onUnmounted(() => {
             id="bf-pt-player-iframe"
             class="bfp-video-iframe"
             :key="currentSource?.id"
-            :src="currentSource?.type === 'peertube' ? `https://${currentSource.host}/videos/embed/${currentSource.id}?api=1${player.state.isAutoStarting ? '&autoplay=1' : ''}` : ''"
+            :src="currentSource?.type === 'peertube' ? `https://${currentSource.host}/videos/embed/${currentSource.id}?api=1${player.state.isAutoStarting ? '&autoplay=1' : ''}${(CINEMA_HIDE_NATIVE_CONTROLS && player.state.cinema) ? '&controls=0' : ''}` : ''"
             frameborder="0" allowfullscreen 
             sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             allow="autoplay"
           ></iframe>
         </div>
 
+        <!-- Cinema mode + native controls disabled: a transparent shield
+             over the iframe. Without it, clicking the video to reveal our
+             chrome can also trigger the iframe's own built-in click-to-pause
+             (YouTube/PeerTube still do this even with controls=0). It just
+             absorbs the click (does nothing with it) and forwards activity
+             to showCinemaControls -- our own buttons render above it
+             (higher z-index) so they're never blocked by this. -->
+        <div
+          v-if="player.state.cinema && CINEMA_HIDE_NATIVE_CONTROLS && (currentSource?.type === 'youtube' || currentSource?.type === 'peertube')"
+          class="bfp-iframe-shield"
+          @mousemove="player.showCinemaControls()"
+          @click="player.showCinemaControls()"
+          @touchstart.passive="player.showCinemaControls()"
+        ></div>
+
         <WebtorrentVideo :t="t" />
 
-        <div v-if="player.state.cinema && player.getExpandedTabs().length" class="bfp-cinema-overlay-actions">
-          <button v-for="tab in player.getExpandedTabs()" :key="'ov-' + tab.id" class="bfp-cinema-overlay-btn"
+        <!-- Panel-toggle icons: always shown regardless of source, parked on
+             the left edge so they never collide with YouTube/PeerTube's own
+             native controls (which tend to live bottom/top) or with our own
+             playback bar below (audio/webtorrent only). -->
+        <div v-if="player.state.cinema" class="bfp-cinema-side-actions" @keydown="onCinemaControlsKeydown">
+          <button v-for="tab in cinemaPanelTabs" :key="'ov-' + tab.id" class="bfp-cinema-overlay-btn"
                   :class="{ active: player.state.expandedTab === tab.id }"
                   @click="player.state.expandedTab = player.state.expandedTab === tab.id ? 'video' : tab.id"
                   :title="tab.label">
             <i :class="tab.icon"></i>
           </button>
+        </div>
+
+        <!-- Bottom chrome: always present in cinema mode as a scaffold, even
+             for sources that don't use our own play/pause/progress (e.g.
+             WebTorrent) -- #bfp-cinema-extra-controls is a stable Teleport
+             target a source-specific component can render its own controls
+             into (see WebtorrentVideo.vue) instead of reimplementing an
+             overlay + auto-hide timer of its own. -->
+        <div v-if="player.state.cinema" class="bfp-cinema-controls">
+          <div
+            v-if="showOwnCinemaControls"
+            class="bfp-cinema-progress"
+            @click="handleProgressClick"
+            @mousemove="handleProgressHover"
+            @mouseleave="hoverProgressPct = null"
+            role="slider"
+            :aria-valuenow="Math.round(player.state.progress)"
+            aria-valuemin="0" aria-valuemax="100"
+          >
+            <div class="bfp-cinema-progress-fill" :style="{ width: player.state.progress + '%' }"></div>
+            <div class="bfp-cinema-progress-thumb" :style="{ left: player.state.progress + '%' }"></div>
+            <div class="bfp-progress-tooltip" v-if="hoverProgressPct !== null"
+                 :style="{ left: Math.min(Math.max(hoverProgressPct, 3), 97) + '%' }">{{ formatTime(hoverProgressTime) }}</div>
+          </div>
+
+          <div class="bfp-cinema-controls-row">
+            <div v-if="showOwnCinemaControls" class="bfp-cinema-controls-left">
+              <button class="bfp-btn" @click="player.playPrev()" title="Previous"><i class="fa-solid fa-backward-step"></i></button>
+              <button class="bfp-btn bfp-btn--play" @click="player.togglePlay()" :title="player.state.playing ? 'Pause' : 'Play'">
+                <i class="fa-solid fa-spinner fa-spin" v-if="player.state.loading"></i>
+                <i class="fa-solid fa-pause" v-else-if="player.state.playing"></i>
+                <i class="fa-solid fa-play"  v-else></i>
+              </button>
+              <button class="bfp-btn" @click="player.playNext()" :title="!hasNext ? 'Stop' : 'Next'">
+                <i class="fa-solid" :class="!hasNext ? 'fa-xmark' : 'fa-forward-step'"></i>
+              </button>
+              <div class="bfp-vol">
+                <button class="bfp-btn bfp-vol-icon" @click="player.state.volume = player.state.volume > 0 ? 0 : 0.7">
+                  <i class="fa-solid fa-volume-xmark" v-if="player.state.volume === 0"></i>
+                  <i class="fa-solid fa-volume-high"  v-else-if="player.state.volume > 0.5"></i>
+                  <i class="fa-solid fa-volume-low"   v-else></i>
+                </button>
+                <input type="range" min="0" max="1" step="0.01" class="bfp-vol-slider" v-model.number="player.state.volume"
+                       :style="`background: linear-gradient(to right, var(--bfp-accent) ${player.state.volume * 100}%, rgba(255,255,255,0.3) ${player.state.volume * 100}%)`" />
+              </div>
+              <span class="bfp-cinema-time gs" v-if="player.state.duration > 0">
+                {{ formatTime(player.state.duration * player.state.progress / 100) }} / {{ formatTime(player.state.duration) }}
+              </span>
+            </div>
+
+            <div id="bfp-cinema-extra-controls" class="bfp-cinema-extra-controls"></div>
+          </div>
         </div>
 
         <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'audio' }" class="bfp-video-audio-placeholder">
@@ -478,6 +622,9 @@ onUnmounted(() => {
     <div v-if="vw > 900" class="bfp-tabs-resize" @mousedown="player.initTabsResize($event)" @touchstart.prevent="player.initTabsResize($event)" title="Drag to resize"></div>
 
     <div class="bfp-panel-tabs" :style="vw > 900 ? { flex: '0 0 ' + player.state.tabsWidth + 'px' } : {}">
+      <button v-if="player.state.cinema" class="bfp-cinema-tab-close" @click="player.state.expandedTab = 'video'" aria-label="Close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
       <div class="bfp-panel-header">
         <ScrollableTabs>
           <button v-if="vw <= 900" class="bfp-tab" :class="{ active: player.state.expandedTab === 'video' }" @click="player.state.expandedTab = 'video'">
@@ -502,7 +649,7 @@ onUnmounted(() => {
             <i :class="tab.icon"></i> <span>{{ tab.label }}</span>
           </button>
         </ScrollableTabs>
-        <button class="bfp-btn bfp-panel-close" @click="player.state.expanded = false; player.state.cinema = false" aria-label="Close panel">
+        <button class="bfp-btn bfp-panel-close" @click="player.state.cinema ? exitCinema() : (player.state.expanded = false)" aria-label="Close panel">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -1102,31 +1249,130 @@ onUnmounted(() => {
 .bfp-panel--cinema {
   top: 0 !important;
   height: 100vh !important;
-  padding-bottom: calc(var(--bfp-h) + var(--bfp-prog-h)) !important;
   box-shadow: none;
 }
+.bfp-panel--cinema .bfp-panel-content { position: relative; }
 .bfp-panel--cinema .bfp-panel-resize { display: none; }
 .bfp-panel--cinema .bfp-panel-video { flex: 5; }
-
-.bfp-cinema-overlay-actions {
+.bfp-panel--cinema .bfp-panel-tabs { display: none; }
+.bfp-panel--cinema .bfp-panel-header { display: none; }
+.bfp-panel--cinema.bfp-cinema-tab-open .bfp-panel-tabs {
+  display: flex;
   position: absolute;
-  right: 16px; bottom: 16px;
-  z-index: 5;
-  display: flex; flex-direction: column; gap: 10px;
+  top: 0; right: 0; bottom: 0;
+  width: min(380px, calc(100% - 44px));
+  z-index: 20;
+  box-shadow: -10px 0 30px rgba(0,0,0,0.4);
+}
+.bfp-cinema-tab-close {
+  position: absolute;
+  top: 10px; right: 10px;
+  z-index: 21;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.35);
+  color: var(--bfp-text);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.bfp-cinema-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: none;
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(4px);
+  color: var(--bfp-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 14px;
+  flex-shrink: 0;
+}
+.bfp-cinema-back-btn:hover { background: rgba(255,255,255,0.22); }
+
+.bfp-iframe-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bfp-cinema-controls {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 6;
+  padding: 24px 24px 16px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 65%, transparent 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.bfp-cinema-progress {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+.bfp-cinema-progress-fill { height: 100%; background: var(--bfp-accent); border-radius: 3px; }
+.bfp-cinema-progress-thumb {
+  position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px rgba(0,0,0,0.5);
+}
+.bfp-cinema-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.bfp-cinema-controls-left { display: flex; align-items: center; gap: 10px; }
+.bfp-cinema-extra-controls:empty { display: none; }
+.bfp-cinema-extra-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.bfp-cinema-time { color: #ddd; font-size: 12px; margin-left: 6px; }
+.bfp-cinema-controls .bfp-btn { color: #fff; }
+.bfp-cinema-controls .bfp-vol-slider { width: 80px; }
+
+.bfp-cinema-side-actions {
+  position: absolute;
+  left: 16px; top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 26px;
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .bfp-cinema-overlay-btn {
   width: 42px; height: 42px;
   border-radius: 50%;
   border: none;
-  background: rgba(0,0,0,0.55);
+  background: rgba(255,255,255,0.12);
   color: #fff;
   font-size: 16px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   backdrop-filter: blur(4px);
   transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
 }
-.bfp-cinema-overlay-btn:hover { background: rgba(0,0,0,0.75); }
+.bfp-cinema-overlay-btn:hover, .bfp-cinema-overlay-btn:focus-visible { background: rgba(255,255,255,0.25); outline: none; }
 .bfp-cinema-overlay-btn.active { background: var(--bfp-accent); color: #1a1206; }
 
 /* Hide inactive media containers without display:none to keep them alive */
@@ -1586,6 +1832,29 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--bfp-border);
   display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
+}
+.bfp-panel--cinema .bfp-panel-video { position: relative; }
+.bfp-panel--cinema .bfp-video-header,
+.bfp-panel--cinema .bfp-video-header .gs { color: #fff; }
+.bfp-panel--cinema .bfp-video-header {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 7;
+  background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: none;
+  transition: opacity 0.25s ease;
+}
+.bfp-panel--cinema .bfp-cinema-side-actions,
+.bfp-panel--cinema .bfp-cinema-controls {
+  transition: opacity 0.25s ease;
+}
+.bfp-panel--cinema.bfp-cinema-controls-hidden .bfp-video-header,
+.bfp-panel--cinema.bfp-cinema-controls-hidden .bfp-cinema-side-actions,
+.bfp-panel--cinema.bfp-cinema-controls-hidden .bfp-cinema-controls {
+  opacity: 0;
+  pointer-events: none;
 }
 .bfp-video-header-info { min-width: 0; flex: 1; }
 .bfp-video-header-title { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

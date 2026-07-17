@@ -8,12 +8,14 @@ defineProps<{
   langs: string[];
   rpcMenuOpen: boolean;
   t: (k: string) => string;
+  cinemaMode: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:rpcMenuOpen': [value: boolean];
   'setTheme': [value: string];
   'setLang': [value: string];
+  'setCinemaMode': [value: boolean];
 }>();
 </script>
 
@@ -26,9 +28,11 @@ const emit = defineEmits<{
     :lang="lang"
     :langs="langs"
     :t="t"
+    :cinemaMode="cinemaMode"
     @set-theme="emit('setTheme', $event)"
     @set-lang="emit('setLang', $event)"
     @open-rpc="emit('update:rpcMenuOpen', true)"
+    @set-cinema-mode="emit('setCinemaMode', $event)"
   />
 </div>
 </template>

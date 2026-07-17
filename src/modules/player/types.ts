@@ -52,6 +52,25 @@ export interface PlayerState {
    *  player instance, purely a display-mode flag the UI reacts to. Not
    *  persisted: like `expanded`/`minimized`, it's session-only. */
   cinema: boolean;
+  /** Player is fully hidden (no docked bar, no panel) — used by cinema mode's
+   *  browse screen so nothing shows until a track actually starts playing.
+   *  Distinct from `active` (which just means the player feature is enabled
+   *  for the session, not "something is playing"). Same family as
+   *  expanded/minimized/cinema: a display-mode flag, not persisted. A future
+   *  picture-in-picture mode would be another flag alongside this one. */
+  hidden: boolean;
+  /** Which browse view CinemaIndex (the cinema-mode grid screen) should
+   *  show: category rows, or the user's playlists as rows instead. Lives
+   *  here (not local to CinemaIndex) so the left rail's Playlists entry can
+   *  switch it without needing any direct reference to the CinemaIndex
+   *  component instance. */
+  cinemaBrowseView: 'categories' | 'playlists';
+  /** Whether cinema mode's floating chrome (top bar, side icons, bottom bar,
+   *  and anything a source component teleports in via showCinemaControls())
+   *  is currently visible. Single shared flag so every contributor uses the
+   *  same auto-hide timer instead of each running its own -- see
+   *  showCinemaControls() in player.ts. */
+  cinemaControlsVisible: boolean;
   currentTrack: MediaTrack | null;
   queue: MediaTrack[];
   autoQueue: MediaTrack[];
@@ -126,6 +145,26 @@ export interface PlayerTabContribution {
   icon: string;
   component: any;
   props?: Record<string, unknown>;
+}
+
+/**
+ * A contribution to cinema mode's left-side rail (see CinemaRail.vue) --
+ * distinct from PlayerTabContribution above, which contributes into the
+ * player's own expanded-panel tab bar. Rail items live in the app-level
+ * left nav instead, alongside Home/theme/profile. `onClick` decides what
+ * happens (typically: open the player's own matching tab, e.g. Playlists),
+ * so the rail doesn't need to know anything about what it's showing.
+ * `visible`/`badge` are re-evaluated reactively by CinemaRail on every
+ * render, so e.g. a "Playlists" entry can appear only once the user
+ * actually has one, without needing to register/unregister dynamically.
+ */
+export interface RailItemContribution {
+  id: string;
+  label: string;
+  icon: string;
+  onClick: () => void;
+  visible?: () => boolean;
+  badge?: () => number | string | null;
 }
 
 /**
@@ -218,6 +257,16 @@ export interface BFPlayerAPI {
   registerExpandedTab: (contribution: PlayerTabContribution) => void;
   /** Tabs currently registered, in registration order. Used by MediaPlayer.vue to render extra tab buttons/bodies generically. */
   getExpandedTabs: () => PlayerTabContribution[];
+  /** Registers a contribution into cinema mode's left rail (see RailItemContribution). Idempotent by id. */
+  registerRailItem: (contribution: RailItemContribution) => void;
+  /** Rail items currently registered, in registration order. Used by CinemaRail.vue. */
+  getRailItems: () => RailItemContribution[];
+  /** Call on any user activity (mousemove/click/keydown/touch) while cinema
+   *  mode is active -- shows the floating chrome and resets the auto-hide
+   *  timer. Any component contributing its own cinema controls (e.g.
+   *  WebtorrentVideo.vue teleporting its overlay in) should call this
+   *  instead of running its own timer, so everything hides/shows together. */
+  showCinemaControls: () => void;
   /** Temporarily blocks manual skip (e.g. while a sponsored track must play). Plugins are responsible for calling unlockSkip(). */
   lockSkip: () => void;
   unlockSkip: () => void;

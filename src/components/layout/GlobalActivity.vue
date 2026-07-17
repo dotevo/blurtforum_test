@@ -1,13 +1,15 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue';
 import type { ActivityItem, AuthUser } from '../../types';
 import ActivityFeed from './ActivityFeed.vue';
 
-defineProps<{
+const props = defineProps<{
   auth: { user: AuthUser | null };
   globalActivity: ActivityItem[];
   activityTab: string;
   activityExpanded: boolean;
   activityFullList: boolean;
+  updateGlobalActivity: () => void | Promise<void>;
   t: (k: string) => string;
   timeAgo: (s: string) => string;
 }>();
@@ -18,6 +20,25 @@ const emit = defineEmits<{
   'update:activityFullList': [value: boolean];
   openActivity: [act: ActivityItem];
 }>();
+
+// Polling lives here on purpose: it should only run while this component is
+// actually mounted. In cinema mode the parent simply doesn't render
+// <GlobalActivity> (v-if="!cinemaMode"), which means these timers never get
+// created in the first place — no extra cinemaMode plumbing needed.
+let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+  pollTimeout = setTimeout(() => {
+    props.updateGlobalActivity();
+    pollInterval = setInterval(() => props.updateGlobalActivity(), 300000);
+  }, 2000);
+});
+
+onUnmounted(() => {
+  if (pollTimeout) clearTimeout(pollTimeout);
+  if (pollInterval) clearInterval(pollInterval);
+});
 </script>
 
 <template>

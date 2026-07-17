@@ -473,9 +473,23 @@ const selectInputText = (event: Event) => {
 
     <!-- CARD MODE (Explicit cards) -->
     <template v-else-if="mode === 'card'">
-      <!-- WebTorrent Custom Card -->
+      <!-- WebTorrent: compact plain thumbnail when hideButtons (e.g. cinema
+           mode's grid) -- the detailed header/stats/magnet-box below don't
+           fit a small grid tile and just duplicate the title/author the
+           caller already renders alongside the card. -->
+      <div
+        v-if="trackData.sources[0]?.type === 'webtorrent' && hideButtons"
+        class="media-placeholder wt-placeholder-compact"
+      >
+        <i class="fa-solid fa-magnet no-thumb-icon"></i>
+        <div v-if="torrentStatus" class="wt-compact-progress">
+          <div class="wt-compact-progress-fill" :style="{ width: torrentStatus.progress + '%' }"></div>
+        </div>
+      </div>
+
+      <!-- WebTorrent Custom Card (full detail, normal forum usage) -->
       <div 
-        v-if="trackData.sources[0]?.type === 'webtorrent'"
+        v-else-if="trackData.sources[0]?.type === 'webtorrent'"
         class="webtorrent-card" 
         :class="{ 'is-active': isActive, 'is-playing': isPlaying }"
       >
@@ -533,9 +547,9 @@ const selectInputText = (event: Event) => {
         class="media-placeholder" 
         :class="{ 'is-resolving': trackData.pending, 'no-thumb': !thumbUrl }"
         :style="thumbUrl ? `background-image: url(${thumbUrl})` : ''"
-        @click="handlePlay"
+        @click="() => { if (!hideButtons) handlePlay(); }"
       >
-        <div class="media-placeholder-overlay">
+        <div v-if="!hideButtons" class="media-placeholder-overlay">
           <div class="media-placeholder-actions">
             <button class="btn btn-primary" @click.stop="handlePlay" :disabled="trackData.pending">
               <i v-if="trackData.pending" class="fa-solid fa-spinner fa-spin"></i>
@@ -552,6 +566,7 @@ const selectInputText = (event: Event) => {
           </div>
           <div class="source-label">{{ displayHost }}</div>
         </div>
+        <i v-else-if="!thumbUrl" class="fa-solid fa-photo-film no-thumb-icon"></i>
       </div>
     </template>
   </div>
@@ -642,6 +657,23 @@ const selectInputText = (event: Event) => {
   opacity: 0.9;
   transition: opacity 0.3s;
 }
+
+.no-thumb-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  color: rgba(255,255,255,0.4);
+}
+
+.wt-placeholder-compact { position: relative; background: linear-gradient(135deg, #2a2438, #1a1622); }
+.wt-compact-progress {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 3px; background: rgba(255,255,255,0.15);
+}
+.wt-compact-progress-fill { height: 100%; background: var(--brand, #58A6FF); }
 
 .media-placeholder-actions {
   display: flex;

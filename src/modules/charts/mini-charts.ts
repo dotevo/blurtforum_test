@@ -52,12 +52,12 @@ function getTooltipEl(): HTMLDivElement {
     position: 'fixed',
     pointerEvents: 'none',
     zIndex: '2000',
-    background: '#0c0e12',
-    border: '1px solid var(--border-main)',
+    background: 'var(--surface-2)',
+    border: '1px solid var(--surface-border)',
     borderRadius: '6px',
     padding: '8px 10px',
     fontSize: '11px',
-    color: 'var(--text)',
+    color: 'var(--text-strong)',
     boxShadow: '0 6px 18px rgba(0,0,0,.4)',
     opacity: '0',
     transform: 'translateY(4px)',
@@ -72,7 +72,7 @@ function getTooltipEl(): HTMLDivElement {
 function showTooltip(x: number, y: number, title: string | null, rows: TooltipRow[], html?: string): void {
   const el = getTooltipEl();
   el.innerHTML = html ?? (
-    (title ? `<div style="font-weight:600;margin-bottom:4px;color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.02em;">${title}</div>` : '') +
+    (title ? `<div style="font-weight:600;margin-bottom:4px;color:var(--text-soft);font-size:10px;text-transform:uppercase;letter-spacing:.02em;">${title}</div>` : '') +
     rows.map(r => `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="width:8px;height:8px;border-radius:2px;flex:none;background:${r.color}"></span>${r.label}<span style="margin-left:auto;font-variant-numeric:tabular-nums;padding-left:14px;font-weight:600;">${r.value}</span></div>`).join('')
   );
   el.style.left = x + 14 + 'px';
@@ -111,7 +111,7 @@ function buildLegend(
 ): void {
   const legend = document.createElement('div');
   legend.className = 'mini-chart-legend';
-  Object.assign(legend.style, { display: 'flex', flexWrap: 'wrap', gap: '10px 16px', padding: '8px 0 2px', fontSize: '11px', color: 'var(--text-muted)' } as CSSStyleDeclaration);
+  Object.assign(legend.style, { display: 'flex', flexWrap: 'wrap', gap: '10px 16px', padding: '8px 0 2px', fontSize: '11px', color: 'var(--text-soft)' } as CSSStyleDeclaration);
   items.forEach((it, i) => {
     const item = document.createElement('div');
     item.className = 'mini-chart-legend-item' + (it.hidden ? ' off' : '');
@@ -162,7 +162,7 @@ export function renderDonut(
     const circumference = 2 * Math.PI * r;
     let acc = 0;
 
-    svg.appendChild(svgEl('circle', { cx, cy, r, fill: 'none', stroke: 'var(--border-main)', 'stroke-width': thickness }));
+    svg.appendChild(svgEl('circle', { cx, cy, r, fill: 'none', stroke: 'var(--surface-border)', 'stroke-width': thickness }));
 
     items.forEach((it, i) => {
       const value = currentSeries[i] || 0;
@@ -191,10 +191,10 @@ export function renderDonut(
     });
 
     const centerLabel = svgEl('text', { x: cx, y: cy - 4, 'text-anchor': 'middle' });
-    centerLabel.setAttribute('style', 'fill:var(--text-muted);font-size:10px;');
+    centerLabel.setAttribute('style', 'fill:var(--text-soft);font-size:10px;');
     centerLabel.textContent = currentOpts.totalLabel ?? 'RAZEM';
     const centerVal = svgEl('text', { x: cx, y: cy + 14, 'text-anchor': 'middle' });
-    centerVal.setAttribute('style', 'fill:var(--text);font-size:16px;font-weight:600;');
+    centerVal.setAttribute('style', 'fill:var(--text-strong);font-size:16px;font-weight:600;');
     centerVal.textContent = total.toFixed(2);
     svg.appendChild(centerLabel);
     svg.appendChild(centerVal);
@@ -277,9 +277,9 @@ export function renderBars(container: HTMLElement, opts: BarOptions): ChartHandl
       const bar = document.createElement('div');
       Object.assign(bar.style, { display: 'flex', alignItems: 'center', gap: '8px', margin: '-4px 0 6px' } as CSSStyleDeclaration);
       const minimap = document.createElement('div');
-      Object.assign(minimap.style, { flex: '1', height: '6px', background: 'var(--bg-r2)', borderRadius: '3px', position: 'relative', overflow: 'hidden' } as CSSStyleDeclaration);
+      Object.assign(minimap.style, { flex: '1', height: '6px', background: 'var(--surface-2)', borderRadius: '3px', position: 'relative', overflow: 'hidden' } as CSSStyleDeclaration);
       minimapThumb = document.createElement('div');
-      Object.assign(minimapThumb.style, { position: 'absolute', top: '0', bottom: '0', background: 'var(--primary)', borderRadius: '3px', minWidth: '3px' } as CSSStyleDeclaration);
+      Object.assign(minimapThumb.style, { position: 'absolute', top: '0', bottom: '0', background: 'var(--brand)', borderRadius: '3px', minWidth: '3px' } as CSSStyleDeclaration);
       minimap.appendChild(minimapThumb);
       bar.appendChild(minimap);
       const mkBtn = (label: string, title: string, fn: () => void) => {
@@ -287,7 +287,7 @@ export function renderBars(container: HTMLElement, opts: BarOptions): ChartHandl
         b.type = 'button';
         b.textContent = label;
         b.title = title;
-        Object.assign(b.style, { background: 'var(--bg-r2)', border: '1px solid var(--border-main)', color: 'var(--text-muted)', borderRadius: '5px', width: '22px', height: '22px', cursor: 'pointer', fontSize: '13px', lineHeight: '1', flex: 'none' } as CSSStyleDeclaration);
+        Object.assign(b.style, { background: 'var(--surface-2)', border: '1px solid var(--surface-border)', color: 'var(--text-soft)', borderRadius: '5px', width: '22px', height: '22px', cursor: 'pointer', fontSize: '13px', lineHeight: '1', flex: 'none' } as CSSStyleDeclaration);
         b.addEventListener('click', fn);
         return b;
       };
@@ -311,10 +311,10 @@ export function renderBars(container: HTMLElement, opts: BarOptions): ChartHandl
 
     ticks.forEach(t => {
       const line = svgEl('line', { x1: padL, x2: W - padR, y1: y(t), y2: y(t) });
-      line.setAttribute('style', 'stroke:var(--border-main);stroke-dasharray:4 4;');
+      line.setAttribute('style', 'stroke:var(--surface-border);stroke-dasharray:4 4;');
       svg.appendChild(line);
       const lbl = svgEl('text', { x: padL - 6, y: y(t) + 3, 'text-anchor': 'end' });
-      lbl.setAttribute('style', 'fill:var(--text-muted);font-size:9px;');
+      lbl.setAttribute('style', 'fill:var(--text-soft);font-size:9px;');
       lbl.textContent = String(t);
       svg.appendChild(lbl);
     });
@@ -365,7 +365,7 @@ export function renderBars(container: HTMLElement, opts: BarOptions): ChartHandl
     const labelEls: SVGTextElement[] = [];
     for (let i = 0; i < LABEL_COUNT; i++) {
       const t = svgEl('text', { x: 0, y: H - 8, 'text-anchor': 'middle' });
-      t.setAttribute('style', 'fill:var(--text-muted);font-size:9px;');
+      t.setAttribute('style', 'fill:var(--text-soft);font-size:9px;');
       svg.appendChild(t);
       labelEls.push(t);
     }
@@ -563,10 +563,10 @@ export function renderCombo(container: HTMLElement, opts: ComboOptions): ChartHa
     // primary gridlines (left axis)
     primaryTicks.forEach(t => {
       const line = svgEl('line', { x1: padL, x2: W - padR, y1: yP(t), y2: yP(t) });
-      line.setAttribute('style', 'stroke:var(--border-main);stroke-dasharray:4 4;');
+      line.setAttribute('style', 'stroke:var(--surface-border);stroke-dasharray:4 4;');
       svg.appendChild(line);
       const lbl = svgEl('text', { x: padL - 6, y: yP(t) + 3, 'text-anchor': 'end' });
-      lbl.setAttribute('style', 'fill:var(--text-muted);font-size:9px;');
+      lbl.setAttribute('style', 'fill:var(--text-soft);font-size:9px;');
       lbl.textContent = String(t);
       svg.appendChild(lbl);
       // secondary axis label at the SAME height, showing the secondary
@@ -575,7 +575,7 @@ export function renderCombo(container: HTMLElement, opts: ComboOptions): ChartHa
       if (secondaryOf().length) {
         const frac = t / primaryYMax;
         const lblS = svgEl('text', { x: W - padR + 6, y: yP(t) + 3, 'text-anchor': 'start' });
-        lblS.setAttribute('style', 'fill:var(--text-muted);font-size:9px;');
+        lblS.setAttribute('style', 'fill:var(--text-soft);font-size:9px;');
         lblS.textContent = (frac * maxSecondary * 1.15).toFixed(2);
         svg.appendChild(lblS);
       }
@@ -583,13 +583,13 @@ export function renderCombo(container: HTMLElement, opts: ComboOptions): ChartHa
 
     if (o.primaryAxisLabel) {
       const t = svgEl('text', { x: padL, y: 10, 'text-anchor': 'start' });
-      t.setAttribute('style', 'fill:var(--text-muted);font-size:9px;');
+      t.setAttribute('style', 'fill:var(--text-soft);font-size:9px;');
       t.textContent = o.primaryAxisLabel;
       svg.appendChild(t);
     }
     if (o.secondaryAxisLabel && secondaryOf().length) {
       const t = svgEl('text', { x: W - padR, y: 10, 'text-anchor': 'end' });
-      t.setAttribute('style', 'fill:var(--text-muted);font-size:9px;');
+      t.setAttribute('style', 'fill:var(--text-soft);font-size:9px;');
       t.textContent = o.secondaryAxisLabel;
       svg.appendChild(t);
     }
@@ -653,10 +653,10 @@ export function renderCombo(container: HTMLElement, opts: ComboOptions): ChartHa
     if (o.selectedIndex != null && o.selectedIndex >= 0 && o.selectedIndex < fullLen) {
       const ax = x(o.selectedIndex);
       const line = svgEl('line', { x1: ax, x2: ax, y1: padT, y2: padT + plotH });
-      line.setAttribute('style', 'stroke:var(--primary);stroke-width:1.5;');
+      line.setAttribute('style', 'stroke:var(--brand);stroke-width:1.5;');
       svg.appendChild(line);
       const label = svgEl('text', { x: ax, y: padT - 4, 'text-anchor': 'middle' });
-      label.setAttribute('style', 'fill:var(--primary);font-size:9px;font-weight:600;');
+      label.setAttribute('style', 'fill:var(--brand);font-size:9px;font-weight:600;');
       label.textContent = '▼';
       svg.appendChild(label);
     }
@@ -667,7 +667,7 @@ export function renderCombo(container: HTMLElement, opts: ComboOptions): ChartHa
       if (ci % labelEvery !== 0 && ci !== o.highlightIndex) return;
       const lbl = svgEl('text', { x: x(ci), y: H - 8, 'text-anchor': 'middle' });
       const isHighlighted = ci === o.highlightIndex;
-      lbl.setAttribute('style', `font-size:9px;fill:${isHighlighted ? 'var(--primary)' : 'var(--text-muted)'};${isHighlighted ? 'font-weight:600;' : ''}`);
+      lbl.setAttribute('style', `font-size:9px;fill:${isHighlighted ? 'var(--brand)' : 'var(--text-soft)'};${isHighlighted ? 'font-weight:600;' : ''}`);
       lbl.textContent = cat;
       svg.appendChild(lbl);
     });

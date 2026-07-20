@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { onMounted, onUpdated } from 'vue';
-import { dispatchScanView } from '../../modules/player/player';
+import { dispatchScanView } from '../player/player';
 import type { Forum, Post, AuthUser } from '../../types';
-import VoteButton from '../layout/VoteButton.vue';
-import ForumMediaContainer from '../../modules/player_blurt/components/ForumMediaContainer.vue';
-import PayoutBadge from '../layout/PayoutBadge.vue';
-import UserAvatar from '../layout/UserAvatar.vue';
-import PostEditor from '../layout/PostEditor.vue';
+import VoteButton from '../../components/layout/VoteButton.vue';
+import ForumMediaContainer from '../player_blurt/components/ForumMediaContainer.vue';
+import PayoutBadge from '../../components/layout/PayoutBadge.vue';
+import UserAvatar from '../../components/layout/UserAvatar.vue';
+import PostEditor from '../../components/layout/PostEditor.vue';
 
 const props = defineProps<{
   activeForum: Forum;

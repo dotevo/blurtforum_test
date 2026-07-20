@@ -15,7 +15,7 @@
  * reference would go stale and playback would silently break.
  */
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
-import { currentSource, playWebtorrentFile, wtActiveFileIndex, state as playerState, showCinemaControls as showSharedCinemaControls } from '../player';
+import { currentSource, playWebtorrentFile, wtActiveFileIndex, state as playerState, showCinemaControls as showSharedCinemaControls, togglePlay } from '../player';
 import * as WTPool from '../webtorrent-pool';
 import type { TorrentSnapshot } from '../webtorrent-pool';
 import WebtorrentInfoModal from './WebtorrentInfoModal.vue';
@@ -259,7 +259,7 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
       not 100% of the whole tab — leaving room for the fixed-height piece
       map + legend below it, all still fitting inside the tab's 100%.
     -->
-    <div class="wtv-video-area" ref="videoAreaEl" @mousemove="showControls" @mouseenter="showControls" @touchstart="showControls" @click="showControls">
+    <div class="wtv-video-area" ref="videoAreaEl" @mousemove="showControls" @mouseenter="showControls" @touchstart="showControls" @click="showControls(); if (playerState.cinema) { if (playerState.expandedTab !== 'video') { playerState.expandedTab = 'video'; } else { togglePlay(); } }">
       <!--
         WTPool.attachPlayback() (see loadWebtorrentSource in player.ts) assigns
         this element's src directly — a single persistent element, not

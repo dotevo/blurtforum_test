@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { AuthUser } from '../../types';
-import type { BFPlayerAPI } from '../../modules/player/types';
-import NotifBell from '../layout/NotifBell.vue';
-import UserAvatar from '../layout/UserAvatar.vue';
-import SettingsSelectors from '../layout/SettingsSelectors.vue';
+import type { AuthUser, Notification } from '../../types';
+import type { BFPlayerAPI } from '../player/types';
+import NotifBell from '../../components/layout/NotifBell.vue';
+import UserAvatar from '../../components/layout/UserAvatar.vue';
+import SettingsSelectors from '../../components/layout/SettingsSelectors.vue';
+import NotificationsList from '../../components/layout/NotificationsList.vue';
 
-defineProps<{
+const props = defineProps<{
   auth: { user: AuthUser | null };
   hasNewNotif: boolean;
   theme: string;
@@ -21,23 +22,35 @@ defineProps<{
    *  else about CinemaRail needs to know what a given item does. */
   player?: BFPlayerAPI;
   t: (k: string) => string;
+  notifModal: {
+    show: boolean; loading: boolean;
+    list: Notification[]; lastReadIds: Record<string, number>;
+    clickedIds: (number | string)[];
+    pushSupported: boolean;
+    pushEnabled: boolean;
+  };
+  timeAgo: (s: string) => string;
+  getNotifIcon: (type: string) => string;
 }>();
 
 const emit = defineEmits<{
   goHome: [];
   openLoginModal: [];
-  openNotifModal: [];
+  openSwitchAccountModal: [];
+  openNotification: [notif: Notification];
   openProfile: [username: string];
   logout: [];
   setTheme: [value: string];
   setLang: [value: string];
   'update:rpcMenuOpen': [value: boolean];
   setCinemaMode: [value: boolean];
+  togglePushNotifications: [];
 }>();
 
 // Desktop: expand on hover/focus. Mobile: expand via swipe-from-edge, same
 // gesture as in the reference mock.
 const expanded = ref(false);
+const railEl = ref<HTMLElement | null>(null);
 let touchStartX: number | null = null;
 let touchStartY: number | null = null;
 const EDGE_ZONE = 24;
@@ -60,12 +73,64 @@ function onTouchEnd(e: TouchEvent) {
   touchStartX = null;
   touchStartY = null;
 }
+
+// Keyboard/remote (D-pad) support: focus reaching any item inside the rail
+// (e.g. CinemaIndex's grid sending focus here on ArrowLeft from the first
+// column) expands it exactly like hovering does. Losing focus to something
+// outside the rail collapses it again the same way mouseleave does.
+function onRailFocusIn(): void { expanded.value = true; }
+function onRailFocusOut(e: FocusEvent): void {
+  const next = e.relatedTarget as Node | null;
+  if (railEl.value && next && railEl.value.contains(next)) return;
+  expanded.value = false;
+}
+
+// Notifications open as a panel right here next to the rail -- not a
+// modal window -- consistent with the rest of cinema mode's chrome
+// (everything lives in panels that expand/collapse, nothing pops a
+// centered dialog on top of the video).
+const showNotifPanel = ref(false);
+function onNotifClick(): void {
+  showNotifPanel.value = !showNotifPanel.value;
+}
+
+// Escape always collapses the rail (same rule as every other panel in the
+// app) and hands focus back off so a stray Escape doesn't leave it stuck
+// focused-but-collapsed.
+function onRailKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    if (showNotifPanel.value) {
+      showNotifPanel.value = false;
+      return;
+    }
+    expanded.value = false;
+    (document.activeElement as HTMLElement | null)?.blur();
+    // Let whichever screen is behind the rail (the cinema grid, most of
+    // the time) restore focus to wherever the user actually was, instead
+    // of leaving focus stranded on <body> with nothing left to steer.
+    document.dispatchEvent(new CustomEvent('cinema-rail-escape'));
+    return;
+  }
+  // Plain focusable <div>s (footer actions) don't activate on Enter/Space
+  // for free the way <button>/<a href> do -- forward it to the same click
+  // handler already on the element.
+  if (e.key === 'Enter' || e.key === ' ') {
+    const target = e.target as HTMLElement;
+    const isPlainDiv = target.tagName === 'DIV';
+    if (isPlainDiv && (target.classList.contains('rail-item') || target.classList.contains('rail-toggle-btn') || target.classList.contains('rail-logo'))) {
+      e.preventDefault();
+      target.click();
+    }
+  }
+}
 </script>
 
 <template>
 <div
   class="rail-toggle-btn"
+  tabindex="0"
   @click="expanded = !expanded"
+  @keydown="onRailKeydown"
   :aria-label="expanded ? 'Close menu' : 'Open menu'"
 >
   <i class="fa-solid" :class="expanded ? 'fa-xmark' : 'fa-bars'"></i>
@@ -74,14 +139,18 @@ function onTouchEnd(e: TouchEvent) {
 <div class="cinema-rail-overlay" :class="{ visible: expanded }" @click="expanded = false"></div>
 
 <div
+  ref="railEl"
   class="cinema-rail"
   :class="{ expanded }"
   @mouseenter="expanded = true"
   @mouseleave="expanded = false"
+  @focusin="onRailFocusIn"
+  @focusout="onRailFocusOut"
+  @keydown="onRailKeydown"
   @touchstart.passive="onTouchStart"
   @touchend.passive="onTouchEnd"
 >
-  <div class="rail-logo" @click="emit('goHome')">
+  <div class="rail-logo" tabindex="0" @click="emit('goHome')">
     <i class="fa-solid fa-clapperboard"></i>
     <span class="rail-label">{{ t('siteTitle') || 'BlurtForum' }}</span>
   </div>
@@ -125,25 +194,50 @@ function onTouchEnd(e: TouchEvent) {
       />
     </div>
 
-    <div class="rail-item" v-if="!auth.user" @click="emit('openLoginModal')">
+    <div class="rail-item" v-if="!auth.user" tabindex="0" @click="emit('openLoginModal')">
       <i class="fa-solid fa-right-to-bracket"></i>
       <span class="rail-label">{{ t('login') }}</span>
     </div>
     <template v-else>
-      <div class="rail-item" @click="emit('openNotifModal')">
+      <div class="rail-item" tabindex="0" @click="onNotifClick" :class="{ active: showNotifPanel }">
         <NotifBell :has-new="hasNewNotif" size="sm" />
         <span class="rail-label">{{ t('notifications') || 'Powiadomienia' }}</span>
       </div>
-      <div class="rail-item" @click="emit('openProfile', auth.user.username)">
+      <div class="rail-item" tabindex="0" @click="emit('openProfile', auth.user.username)">
         <UserAvatar :username="auth.user.username" size="xs" round />
         <span class="rail-label">@{{ auth.user.username }}</span>
       </div>
-      <div class="rail-item" @click="emit('logout')">
+      <div class="rail-item" tabindex="0" @click="emit('openSwitchAccountModal')" :title="t('switchAccount')">
+        <i class="fa-solid fa-users-viewfinder"></i>
+        <span class="rail-label">{{ t('switchAccount') }}</span>
+      </div>
+      <div class="rail-item" tabindex="0" @click="emit('logout')">
         <i class="fa-solid fa-right-from-bracket"></i>
         <span class="rail-label">{{ t('logout') }}</span>
       </div>
     </template>
   </div>
+</div>
+
+<!-- Notifications: a panel anchored next to the rail, not a modal window --
+     stays part of cinema mode's own chrome instead of stacking a dialog on
+     top of the video. Works the same whether or not anything is playing. -->
+<div class="cinema-notif-overlay" v-if="showNotifPanel" @click="showNotifPanel = false"></div>
+<div class="cinema-notif-panel" v-if="showNotifPanel" @keydown.esc="showNotifPanel = false">
+  <div class="cinema-notif-panel-header">
+    <span>{{ t('notifications') || 'Powiadomienia' }}</span>
+    <button type="button" class="cinema-notif-close" @click="showNotifPanel = false" :aria-label="t('close') || 'Close'">✕</button>
+  </div>
+  <NotificationsList
+    :notif-modal="notifModal"
+    :auth="auth"
+    :t="t"
+    :time-ago="timeAgo"
+    :get-notif-icon="getNotifIcon"
+    @open-notification="(n: Notification) => { emit('openNotification', n); showNotifPanel = false; }"
+    @open-profile="(u: string) => { emit('openProfile', u); showNotifPanel = false; }"
+    @toggle-push-notifications="emit('togglePushNotifications')"
+  />
 </div>
 </template>
 
@@ -207,7 +301,7 @@ function onTouchEnd(e: TouchEvent) {
   font-size: 14px;
   font-weight: 500;
 }
-.rail-item:hover, .rail-item.active { color: var(--brand); background: var(--surface-2); }
+.rail-item:hover, .rail-item.active, .rail-item:focus-visible, .rail-logo:focus-visible, .rail-toggle-btn:focus-visible { color: var(--brand); background: var(--surface-2); outline: none; }
 .rail-item i { font-size: 18px; min-width: 20px; text-align: center; }
 .rail-badge {
   margin-left: auto;
@@ -265,6 +359,53 @@ function onTouchEnd(e: TouchEvent) {
 .cinema-rail-overlay.visible {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Notifications panel -- anchored right next to the rail, above it, not a
+   centered modal dialog. Same overlay-to-dismiss convention as the rail's
+   own mobile drawer. */
+.cinema-notif-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: rgba(0,0,0,0.4);
+}
+.cinema-notif-panel {
+  position: fixed;
+  top: 0;
+  left: 72px;
+  height: 100vh;
+  width: 340px;
+  max-width: calc(100vw - 72px);
+  background: var(--surface-1);
+  border-right: 1px solid var(--surface-border);
+  box-shadow: 10px 0 30px rgba(0,0,0,0.35);
+  z-index: 251;
+  display: flex;
+  flex-direction: column;
+}
+.cinema-notif-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--surface-border);
+  font-weight: bold;
+  color: var(--text-strong);
+  flex-shrink: 0;
+}
+.cinema-notif-close {
+  background: none;
+  border: none;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+.cinema-notif-close:hover, .cinema-notif-close:focus-visible { color: var(--brand); background: var(--surface-2); outline: none; }
+@media (max-width: 768px) {
+  .cinema-notif-panel { left: 0; width: 100vw; max-width: 100vw; }
 }
 /* On desktop the rail only ever grows in place (no overlay needed behind it,
    matches the mock where hover-expand doesn't blur the page) -- the blur

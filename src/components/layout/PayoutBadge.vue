@@ -15,7 +15,10 @@ const emit = defineEmits<{
 <template>
   <span class="badge payout-link" 
         :class="post.isPaid ? 'badge-green' : 'badge-blue'" 
-        @click.stop="emit('click', post)">
+        role="button"
+        tabindex="0"
+        @click.stop="emit('click', post)"
+        @keydown.enter.space.stop.prevent="emit('click', post)">
     {{ (post.payout || 0).toFixed(precision !== undefined ? precision : 2) }} {{ showCurrency ? 'BLURT' : 'B' }}
   </span>
 </template>

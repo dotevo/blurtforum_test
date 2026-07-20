@@ -10,12 +10,12 @@
  * `navigateToPath` is only used for in-body link clicks (e.g. a comment
  * quoting/linking another post) — same handling as TopicView.vue had inline.
  */
-import VoteButton from '../layout/VoteButton.vue';
-import PostBeneficiaries from '../layout/PostBeneficiaries.vue';
-import ForumMedia from '../../modules/player_blurt/components/ForumMedia.ce.vue';
-import PayoutBadge from '../layout/PayoutBadge.vue';
-import UserAvatar from '../layout/UserAvatar.vue';
-import PostEditor from '../layout/PostEditor.vue';
+import VoteButton from '../../components/layout/VoteButton.vue';
+import PostBeneficiaries from '../../components/layout/PostBeneficiaries.vue';
+import ForumMedia from '../player_blurt/components/ForumMedia.ce.vue';
+import PayoutBadge from '../../components/layout/PayoutBadge.vue';
+import UserAvatar from '../../components/layout/UserAvatar.vue';
+import PostEditor from '../../components/layout/PostEditor.vue';
 import type { Post, AuthUser } from '../../types';
 
 const props = defineProps<{

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
-import ScrollableTabs from './ScrollableTabs.vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import ScrollableTabs from '../../ui/ScrollableTabs.vue';
 import PlaylistModal from './PlaylistModal.vue';
 import WebtorrentVideo from './WebtorrentVideo.vue';
 import WebtorrentSettingsModal from './WebtorrentSettingsModal.vue';
@@ -38,7 +38,7 @@ const emit = defineEmits<{
 }>();
 
 defineSlots<{
-  'track-actions'(props: { track: MediaTrack; zone: 'mini' | 'expanded' }): unknown;
+  'track-actions'(props: { track: MediaTrack; zone: 'mini' | 'expanded' | 'cinema' }): unknown;
 }>();
 
 // ── Playlists ───────────────────────────────────────────────────────────────
@@ -155,21 +155,84 @@ function onWindowBlur(): void { props.player.showCinemaControls(); }
 onMounted(() => window.addEventListener('blur', onWindowBlur));
 onUnmounted(() => window.removeEventListener('blur', onWindowBlur));
 
-// Left/right remote or keyboard navigation across every button in the
-// cinema controls row (playback controls + panel-toggle icons) -- plain
-// native buttons don't get D-pad traversal for free.
+// Left/right remote or keyboard navigation across every button in a given
+// cinema control zone (the side icon column, or the bottom controls row) --
+// plain native buttons don't get D-pad traversal for free. Up/down jumps
+// between those two zones instead, landing on the closest button by screen
+// position so a TV remote's vertical move feels spatially sensible rather
+// than always resetting to the first button.
 function onCinemaControlsKeydown(e: KeyboardEvent): void {
-  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
   const row = e.currentTarget as HTMLElement;
-  const buttons = Array.from(row.querySelectorAll<HTMLElement>('button:not(:disabled)'));
+  const buttons = Array.from(row.querySelectorAll<HTMLElement>('button:not(:disabled), [role="button"]:not([aria-disabled="true"])'));
   const idx = buttons.indexOf(document.activeElement as HTMLElement);
   if (idx === -1) return;
   e.preventDefault();
-  const next = e.key === 'ArrowRight' ? Math.min(buttons.length - 1, idx + 1) : Math.max(0, idx - 1);
-  buttons[next]?.focus();
+
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    const next = e.key === 'ArrowRight' ? Math.min(buttons.length - 1, idx + 1) : Math.max(0, idx - 1);
+    buttons[next]?.focus();
+    return;
+  }
+
+  // Up/down: jump to the other zone, landing on whichever of its buttons
+  // sits closest horizontally to the one we're leaving.
+  const panel = row.closest('.bfp-panel--cinema');
+  if (!panel) return;
+  const otherZoneSelector = row.classList.contains('bfp-cinema-side-actions') ? '.bfp-cinema-controls-row' : '.bfp-cinema-side-actions';
+  const otherZone = panel.querySelector<HTMLElement>(otherZoneSelector);
+  const otherButtons = otherZone ? Array.from(otherZone.querySelectorAll<HTMLElement>('button:not(:disabled), [role="button"]:not([aria-disabled="true"])')) : [];
+  if (!otherButtons.length) return;
+  const currentX = buttons[idx].getBoundingClientRect().left;
+  const closest = otherButtons.reduce((best, btn) =>
+    Math.abs(btn.getBoundingClientRect().left - currentX) < Math.abs(best.getBoundingClientRect().left - currentX) ? btn : best
+  );
+  closest.focus();
 }
 
+// The moment cinema fullscreen opens (or a new track starts while already
+// in cinema, e.g. picked from the queue), put focus on the play/pause
+// button -- otherwise D-pad/keyboard arrows have nothing focused to act on
+// at all until the person happens to click something by hand first.
+function focusCinemaPlayButton(): void {
+  nextTick(() => {
+    (document.querySelector<HTMLElement>('.bfp-panel--cinema .bfp-cinema-controls-row .bfp-btn--play'))?.focus();
+  });
+}
+watch(() => props.player.state.cinema, (v) => { if (v) focusCinemaPlayButton(); });
+watch(() => props.player.state.currentTrack, () => { if (props.player.state.cinema) focusCinemaPlayButton(); });
+
+// Cinema mode: a single click on the video itself is overloaded with two
+// jobs depending on state --
+//  - if a side panel (comments/queue/playlists/settings) is open, the click
+//    just dismisses it (matches clicking outside any other panel to close
+//    it) rather than also toggling playback, which would be a surprising
+//    double-effect from one click;
+//  - otherwise it's a plain play/pause toggle, like YouTube/Netflix.
+function handleCinemaVideoClick(): void {
+  if (props.player.state.expandedTab !== 'video') {
+    props.player.state.expandedTab = 'video';
+    return;
+  }
+  props.player.togglePlay();
+}
+
+// Escape always closes whatever's currently open on top of the video --
+// the side panel tab (comments/queue/playlists/settings) first. Every
+// panel in the app is expected to collapse on Escape; this is cinema
+// mode's version of that same rule.
+function onPanelKeydown(e: KeyboardEvent): void {
+  props.player.showCinemaControls();
+  if (e.key !== 'Escape') return;
+  if (props.player.state.cinema && props.player.state.expandedTab !== 'video') {
+    e.preventDefault();
+    props.player.state.expandedTab = 'video';
+  }
+}
+
+
 const brokenImages = ref(new Set<string>());
+
 function handleImgError(url: string) {
   if (url) brokenImages.value.add(url);
 }
@@ -303,7 +366,7 @@ onUnmounted(() => {
 
 <template>
 <div
-  v-if="!player.state.hidden"
+  v-if="!player.state.hidden && !player.state.cinema"
   class="bfp-bar"
   :class="{
     'bfp-bar--minimized': player.state.minimized,
@@ -477,7 +540,7 @@ onUnmounted(() => {
   :style="{ height: player.state.expandedHeight + 'px' }"
   @mousemove="player.showCinemaControls()"
   @touchstart.passive="player.showCinemaControls()"
-  @keydown="player.showCinemaControls()"
+  @keydown="onPanelKeydown"
   @click="player.showCinemaControls()"
 >
 
@@ -516,7 +579,7 @@ onUnmounted(() => {
             id="bf-pt-player-iframe"
             class="bfp-video-iframe"
             :key="currentSource?.id"
-            :src="currentSource?.type === 'peertube' ? `https://${currentSource.host}/videos/embed/${currentSource.id}?api=1${player.state.isAutoStarting ? '&autoplay=1' : ''}${(CINEMA_HIDE_NATIVE_CONTROLS && player.state.cinema) ? '&controls=0' : ''}` : ''"
+            :src="currentSource?.type === 'peertube' ? `https://${currentSource.host}/videos/embed/${currentSource.id}?api=1${player.state.isAutoStarting ? '&autoplay=1' : ''}${(CINEMA_HIDE_NATIVE_CONTROLS && player.state.cinema) ? '&controls=0&title=0&warningTitle=0&peertubeLink=0' : ''}` : ''"
             frameborder="0" allowfullscreen 
             sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             allow="autoplay"
@@ -534,7 +597,7 @@ onUnmounted(() => {
           v-if="player.state.cinema && CINEMA_HIDE_NATIVE_CONTROLS && (currentSource?.type === 'youtube' || currentSource?.type === 'peertube')"
           class="bfp-iframe-shield"
           @mousemove="player.showCinemaControls()"
-          @click="player.showCinemaControls()"
+          @click="player.showCinemaControls(); handleCinemaVideoClick()"
           @touchstart.passive="player.showCinemaControls()"
         ></div>
 
@@ -576,7 +639,7 @@ onUnmounted(() => {
                  :style="{ left: Math.min(Math.max(hoverProgressPct, 3), 97) + '%' }">{{ formatTime(hoverProgressTime) }}</div>
           </div>
 
-          <div class="bfp-cinema-controls-row">
+          <div class="bfp-cinema-controls-row" @keydown="onCinemaControlsKeydown">
             <div v-if="showOwnCinemaControls" class="bfp-cinema-controls-left">
               <button class="bfp-btn" @click="player.playPrev()" title="Previous"><i class="fa-solid fa-backward-step"></i></button>
               <button class="bfp-btn bfp-btn--play" @click="player.togglePlay()" :title="player.state.playing ? 'Pause' : 'Play'">
@@ -601,11 +664,17 @@ onUnmounted(() => {
               </span>
             </div>
 
+            <div class="bfp-cinema-track-actions" v-if="player.state.currentTrack">
+              <slot name="track-actions" :track="player.state.currentTrack" zone="cinema"></slot>
+            </div>
+
             <div id="bfp-cinema-extra-controls" class="bfp-cinema-extra-controls"></div>
           </div>
         </div>
 
-        <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'audio' }" class="bfp-video-audio-placeholder">
+        <div :class="{ 'bfp-media-hidden': currentSource?.type !== 'audio' }" class="bfp-video-audio-placeholder"
+             @click="player.state.cinema && (player.showCinemaControls(), handleCinemaVideoClick())"
+             @mousemove="player.state.cinema && player.showCinemaControls()">
           <img v-if="effectiveCover" :src="effectiveCover" class="bfp-placeholder-cover" alt="" @error="handleImgError(effectiveCover)" />
           <div v-else class="bfp-placeholder-icon"><i class="fa-solid fa-music" style="font-size:48px; opacity:0.3;"></i></div>
           <div class="bfp-placeholder-info">
@@ -619,7 +688,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="vw > 900" class="bfp-tabs-resize" @mousedown="player.initTabsResize($event)" @touchstart.prevent="player.initTabsResize($event)" title="Drag to resize"></div>
+    <div v-if="vw > 900 && !player.state.cinema" class="bfp-tabs-resize" @mousedown="player.initTabsResize($event)" @touchstart.prevent="player.initTabsResize($event)" title="Drag to resize"></div>
 
     <div class="bfp-panel-tabs" :style="vw > 900 ? { flex: '0 0 ' + player.state.tabsWidth + 'px' } : {}">
       <button v-if="player.state.cinema" class="bfp-cinema-tab-close" @click="player.state.expandedTab = 'video'" aria-label="Close">
@@ -1243,12 +1312,15 @@ onUnmounted(() => {
   pointer-events: none !important;
 }
 
-/* Fullscreen presentation of the same panel/video (no remount) — bottom
-   playback bar (.bfp-bar, z-index 1000) stays above this (z-index 999) so
-   play/pause/seek/volume remain reachable without any new controls. */
+/* Fullscreen presentation of the same panel/video (no remount). The docked
+   .bfp-bar is never shown in cinema mode any more (see the `v-if` on
+   .bfp-bar below) — playback controls live inside this panel itself
+   (.bfp-cinema-controls) — so, unlike the collapsed/docked panel above,
+   there's no bar to reserve bottom space for here. */
 .bfp-panel--cinema {
   top: 0 !important;
   height: 100vh !important;
+  padding-bottom: 0 !important;
   box-shadow: none;
 }
 .bfp-panel--cinema .bfp-panel-content { position: relative; }
@@ -1334,6 +1406,8 @@ onUnmounted(() => {
   gap: 16px;
 }
 .bfp-cinema-controls-left { display: flex; align-items: center; gap: 10px; }
+.bfp-cinema-track-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.bfp-cinema-track-actions:empty { display: none; }
 .bfp-cinema-extra-controls:empty { display: none; }
 .bfp-cinema-extra-controls {
   display: flex;

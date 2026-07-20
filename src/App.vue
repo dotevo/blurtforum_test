@@ -11,14 +11,14 @@ import GlobalActivity from './components/layout/GlobalActivity.vue';
 import NavBar from './components/layout/NavBar.vue';
 import MobileTopBar from './components/layout/MobileTopBar.vue';
 import MobileContext from './components/layout/MobileContext.vue';
-import CinemaRail from './components/cinema/CinemaRail.vue';
-import CinemaIndex from './components/cinema/CinemaIndex.vue';
+import CinemaRail from './modules/cinema/CinemaRail.vue';
+import CinemaIndex from './modules/cinema/CinemaIndex.vue';
 
 // Views (Sync for core, Async for heavy)
-import ForumIndex from './components/forum/ForumIndex.vue';
-import ForumView from './components/forum/ForumView.vue';
-import TopicView from './components/forum/TopicView.vue';
-const CommunitiesView = defineAsyncComponent(() => import('./components/forum/CommunitiesView.vue'));
+import ForumIndex from './modules/forum/ForumIndex.vue';
+import ForumView from './modules/forum/ForumView.vue';
+import TopicView from './modules/forum/TopicView.vue';
+const CommunitiesView = defineAsyncComponent(() => import('./modules/forum/CommunitiesView.vue'));
 const ProfileView = defineAsyncComponent(() => import('./components/profile/ProfileView.vue'));
 
 // Player
@@ -253,9 +253,14 @@ const {
     :cinema-mode="cinemaMode"
     :player="player"
     :t="t"
+    :notif-modal="notifModal"
+    :time-ago="timeAgo"
+    :get-notif-icon="getNotifIcon"
     @go-home="goHome"
     @open-login-modal="openLoginModal"
-    @open-notif-modal="openNotifModal"
+    @open-switch-account-modal="openSwitchAccountModal"
+    @open-notification="openNotification"
+    @toggle-push-notifications="togglePushNotifications"
     @open-profile="openProfile"
     @logout="logout"
     @set-theme="setTheme"

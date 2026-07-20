@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ScrollableTabs from './ScrollableTabs.vue';
+import ScrollableTabs from '../../modules/ui/ScrollableTabs.vue';
 
 defineProps<{
   theme: string;

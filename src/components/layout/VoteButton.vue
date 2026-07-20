@@ -13,7 +13,10 @@ const emit = defineEmits<{
   <span 
     class="vote-btn" 
     :class="{ active: voted }" 
+    role="button"
+    tabindex="0"
     @click.stop="emit('vote')"
+    @keydown.enter.space.stop.prevent="emit('vote')"
   >
     <i class="fa-solid fa-caret-up"></i>
     <span class="vote-count">{{ count }}</span>

@@ -92,7 +92,7 @@ export function useApp() {
     localStorage.setItem('bf-cinema-mode-user-set', 'true');
     if (value) {
       BFPlayer.state.hidden = true;
-      // Fix #5: if something was already playing in the normal (non-cinema)
+      // If something was already playing in the normal (non-cinema)
       // expanded panel when the user switches into cinema mode, promote it
       // to fullscreen cinema display instead of leaving it stuck in the old
       // inline panel style.

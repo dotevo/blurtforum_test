@@ -50,8 +50,8 @@ const getLatestActivities = () => {
   <div class="mobile-top-bar" :class="{ 'is-expanded': expanded }">
     <!-- TOP LINE: Logo, User, Notifs -->
     <div class="mtb-main">
-      <a :href="'?community=' + communityAccount" class="mtb-logo" @click.prevent="emit('goHome')" style="text-decoration: none; color: inherit; display: block;">
-        <span class="logo-text">B<span>F</span></span>
+      <a :href="'?community=' + communityAccount" class="mtb-logo" @click.prevent="emit('goHome')" style="text-decoration: none; display: block;">
+        <img src="/favicon.svg" alt="" class="mtb-logo-icon" />
       </a>
 
       <div class="mtb-ticker" v-if="!expanded" @click="emit('update:expanded', true)">
@@ -153,19 +153,18 @@ const getLatestActivities = () => {
 }
 
 .mtb-logo {
-  background: var(--modal-header-bg);
-  color: var(--modal-header-text);
+  background: #f2f2f2;
   width: 34px;
   height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  font-weight: bold;
-  font-size: 16px;
   flex-shrink: 0;
+  padding: 4px;
+  box-sizing: border-box;
 }
-.mtb-logo span { color: var(--modal-header-text); opacity: 0.75; }
+.mtb-logo-icon { width: 100%; height: 100%; display: block; object-fit: contain; }
 
 .mtb-ticker {
   flex: 1;

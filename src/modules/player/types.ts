@@ -111,7 +111,7 @@ export interface PlayerPlugin {
 }
 
 /** Where a track-action UI contribution is allowed to render. */
-export type TrackActionZone = 'mini' | 'expanded' | 'both';
+export type TrackActionZone = 'mini' | 'expanded' | 'cinema' | 'both';
 
 /**
  * A single plugin's contribution to the player's track-actions area.

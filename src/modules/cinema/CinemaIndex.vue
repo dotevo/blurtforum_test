@@ -20,11 +20,11 @@
  * plays the track and flips the player into fullscreen cinema display.
  */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { Blockchain } from '../../modules/blockchain';
-import { PostProcessor } from '../../modules/post-processor';
-import { state as playerState, playlistState, playTrack } from '../../modules/player/player';
-import ForumMedia from '../../modules/player_blurt/components/ForumMedia.ce.vue';
-import type { MediaTrack } from '../../modules/player/types';
+import { Blockchain } from '../blockchain';
+import { PostProcessor } from '../post-processor';
+import { state as playerState, playlistState, playTrack } from '../player/player';
+import ForumMedia from '../player_blurt/components/ForumMedia.ce.vue';
+import type { MediaTrack } from '../player/types';
 
 const props = defineProps<{
   client: any;
@@ -169,8 +169,12 @@ const focusCard = (r: number, c: number) => {
 };
 
 const onGridKeydown = (e: KeyboardEvent) => {
-  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return;
   e.preventDefault();
+  if (e.key === 'Escape') {
+    focusRail();
+    return;
+  }
   const rowEls = getRows();
   if (!rowEls.length) return;
   if (e.key === 'Enter') {
@@ -178,10 +182,29 @@ const onGridKeydown = (e: KeyboardEvent) => {
     return;
   }
   if (e.key === 'ArrowRight') focusCard(pos.value.row, pos.value.col + 1);
-  else if (e.key === 'ArrowLeft') focusCard(pos.value.row, pos.value.col - 1);
+  else if (e.key === 'ArrowLeft') {
+    if (pos.value.col <= 0) { focusRail(); return; }
+    focusCard(pos.value.row, pos.value.col - 1);
+  }
   else if (e.key === 'ArrowDown') focusCard(Math.min(rowEls.length - 1, pos.value.row + 1), pos.value.col);
   else if (e.key === 'ArrowUp') focusCard(Math.max(0, pos.value.row - 1), pos.value.col);
 };
+
+// Hands focus off to the left rail (CinemaRail.vue) -- its own focusin
+// handler expands it the moment focus actually lands inside it, so this
+// is the one thing that has to reach across component boundaries, and a
+// DOM query is simpler/more robust here than plumbing a ref/emit through
+// whatever wraps both components.
+function focusRail(): void {
+  const target = document.querySelector<HTMLElement>('.cinema-rail .rail-item, .cinema-rail .rail-logo, .rail-toggle-btn');
+  target?.focus();
+}
+
+function onRailEscape(): void {
+  focusCard(pos.value.row, pos.value.col);
+}
+onMounted(() => document.addEventListener('cinema-rail-escape', onRailEscape));
+onUnmounted(() => document.removeEventListener('cinema-rail-escape', onRailEscape));
 
 // Nothing is focused by default, so arrow keys would never reach
 // onGridKeydown at all (they'd just scroll the page). Auto-focus the first
@@ -315,8 +338,8 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
      actually lets whatever's behind (the fixed hero sits on top of the
      page) show through near the bottom, instead of just blending to a
      flat color that only works if it happens to match exactly. */
-  -webkit-mask-image: linear-gradient(to top, transparent 0%, black 55%, black 100%);
-  mask-image: linear-gradient(to top, transparent 0%, black 55%, black 100%);
+  -webkit-mask-image: linear-gradient(to top, transparent 0, black 100px, black 100%);
+  mask-image: linear-gradient(to top, transparent 0, black 100px, black 100%);
 }
 .cinema-hero::after {
   /* Separate dark tint (not a mask) purely for text legibility where the
@@ -370,7 +393,8 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   display: flex;
   gap: 14px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  overflow-y: visible;
+  padding: 10px 10px 10px 6px;
 }
 .cinema-cards::-webkit-scrollbar { height: 6px; }
 .cinema-cards::-webkit-scrollbar-thumb { background: var(--surface-border); border-radius: 3px; }

@@ -98,10 +98,10 @@ const emit = defineEmits<{
 .active-community-badge {
   display: inline-block !important;
   margin-top: 15px !important;
-  background: var(--brand) !important;
-  color: var(--accent) !important;
+  background: var(--modal-header-bg) !important;
+  color: var(--modal-header-text) !important;
   padding: 10px 25px !important;
-  border-radius: 8px !important;
+  border-radius: var(--radius-lg) !important;
   font-weight: bold !important;
   font-size: 44px !important;
   box-shadow: 0 6px 16px rgba(0,0,0,0.3) !important;
@@ -109,7 +109,7 @@ const emit = defineEmits<{
   text-transform: uppercase !important;
   letter-spacing: 2px !important;
   width: fit-content !important;
-  border: 3px solid var(--accent) !important;
+  border: 3px solid var(--modal-header-bg) !important;
 }
 
 .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
@@ -125,6 +125,7 @@ const emit = defineEmits<{
   padding: 5px 12px;
   font-size: 12px;
   cursor: pointer;
+  border-radius: var(--radius-sm);
 }
 .btn-hdr:hover { background: var(--surface-1); border-color: var(--brand); color: var(--brand); }
 
@@ -165,7 +166,7 @@ const emit = defineEmits<{
   gap: 10px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.2s;
 }
 

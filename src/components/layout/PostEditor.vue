@@ -203,4 +203,64 @@ const finalTags = computed(() => {
   text-transform: uppercase;
 }
 .no-border { border: none !important; margin: 0 !important; }
+
+
+/* ===== Moved from global style.css (component-specific) ===== */
+/* ===== REPLY / POST FORMS ===== */
+.write-form {
+  background: var(--form-bg);
+  border: 1px solid var(--form-border);
+  padding: 15px;
+  margin: 10px 0;
+  border-radius: var(--radius-md);
+}
+.write-form textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 10px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text);
+  font-family: var(--sans);
+  font-size: 14px;
+  border-radius: var(--radius-sm);
+}
+.write-form input[type="text"], .write-form input[type="password"] {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text);
+  font-family: var(--sans);
+  font-size: 14px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-sm);
+}
+
+/* ===== BENEFICIARY FORM ROW (in write forms) ===== */
+.ben-form-row {
+  display: grid;
+  grid-template-columns: 1fr 72px auto;
+  gap: 8px;
+  align-items: center;
+}
+.ben-input-account,
+.ben-input-pct {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-text);
+  font-size: 13px;
+  font-family: var(--sans);
+  border-radius: var(--radius-sm);
+  box-sizing: border-box;
+  width: 100%;
+}
+.ben-pct-label {
+  font-size: 13px;
+  color: var(--meta-text);
+  white-space: nowrap;
+  line-height: 36px;
+}
 </style>

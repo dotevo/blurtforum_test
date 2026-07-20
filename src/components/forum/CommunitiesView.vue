@@ -68,3 +68,77 @@ const emit = defineEmits<{
  
 </template>
 
+<style scoped>
+/* ===== Moved from global style.css (component-specific) ===== */
+.avatar-sm { width: 50px; height: 50px; margin: 6px auto; background-size: cover; background-position: center; border-radius: var(--radius-sm); }
+
+/* ===== COMMUNITY DISCOVERY ===== */
+.community-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 15px;
+  margin-top: 20px;
+  width: 100%;
+}
+.community-card {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
+.community-card-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.community-card-header .avatar-sm {
+  margin: 0;
+}
+.community-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.community-card-title {
+  font-weight: bold;
+  color: var(--card-title-color);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 16px;
+}
+.community-card-title:hover {
+  text-decoration: underline;
+}
+.community-card-name {
+  font-size: 12px;
+  color: var(--card-muted-text);
+}
+.community-card-about {
+  font-size: 13px;
+  line-height: 1.4;
+  height: 4.2em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  color: var(--card-about-text);
+}
+.community-card-meta {
+  font-size: 12px;
+  color: var(--card-muted-text);
+  display: flex;
+  gap: 15px;
+}
+.community-card-actions {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid var(--card-divider);
+}
+ 
+</style>

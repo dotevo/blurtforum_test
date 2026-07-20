@@ -29,4 +29,14 @@ const emit = defineEmits<{
 .payout-link:hover {
   opacity: 0.8;
 }
+
+
+/* ===== Moved from global style.css (component-specific) ===== */
+.badge-blue { background: var(--badge-info-bg); }
+.badge-green { background: var(--badge-success-bg); }
+.badge-gray { background: var(--badge-neutral-bg); }
+
+/* PAYOUT LINK */
+.payout-link { cursor: pointer; text-decoration: underline dotted; }
+.payout-link:hover { color: var(--payout-link-hover); }
 </style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SettingsSelectors from './SettingsSelectors.vue';
 
-defineProps<{
+withDefaults(defineProps<{
   theme: string;
   themes: { id: string; label: string }[];
   lang: string;
@@ -9,7 +9,11 @@ defineProps<{
   rpcMenuOpen: boolean;
   t: (k: string) => string;
   cinemaMode: boolean;
-}>();
+  /** Compact icon-forward layout for the mobile top-bar drawer. */
+  mobile?: boolean;
+}>(), {
+  mobile: false,
+});
 
 const emit = defineEmits<{
   'update:rpcMenuOpen': [value: boolean];
@@ -29,6 +33,7 @@ const emit = defineEmits<{
     :langs="langs"
     :t="t"
     :cinemaMode="cinemaMode"
+    :mobile="mobile"
     @set-theme="emit('setTheme', $event)"
     @set-lang="emit('setLang', $event)"
     @open-rpc="emit('update:rpcMenuOpen', true)"

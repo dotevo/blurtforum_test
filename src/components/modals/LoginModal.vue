@@ -75,3 +75,23 @@ const emit = defineEmits<{
   </div>
 </div>
 </template>
+
+<style scoped>
+/* ===== Moved from global style.css (component-specific) ===== */
+/* ===== WHALEVAULT BUTTON ===== */
+.wv-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--wv-btn-bg);
+  color: var(--wv-btn-text);
+  border: 1px solid var(--wv-btn-border);
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.wv-btn:hover { opacity: 0.8; }
+.wv-btn:disabled { opacity: .5; cursor: default; }
+</style>

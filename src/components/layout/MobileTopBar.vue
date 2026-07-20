@@ -91,6 +91,7 @@ const getLatestActivities = () => {
       <div class="drawer-settings">
         <LangBar
           class="mtb-lang-bar"
+          mobile
           :theme="theme"
           :themes="themes"
           :lang="lang"
@@ -152,25 +153,25 @@ const getLatestActivities = () => {
 }
 
 .mtb-logo {
-  background: var(--brand);
-  color: var(--accent);
+  background: var(--modal-header-bg);
+  color: var(--modal-header-text);
   width: 34px;
   height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: bold;
   font-size: 16px;
   flex-shrink: 0;
 }
-.mtb-logo span { color: #fff; }
+.mtb-logo span { color: var(--modal-header-text); opacity: 0.75; }
 
 .mtb-ticker {
   flex: 1;
   min-width: 0;
   background: rgba(0,0,0,0.05);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   padding: 4px 8px;
@@ -261,7 +262,7 @@ const getLatestActivities = () => {
   padding: 5px 10px;
   font-size: 14px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .logout-btn:hover {

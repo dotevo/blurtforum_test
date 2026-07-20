@@ -104,7 +104,7 @@ const handleLinkClick = (event: MouseEvent) => {
 
   <template v-else>
     <div v-if="replies.length>0"
-         style="background:var(--brand);color:var(--accent);padding:8px 12px;font-weight:bold;font-size:11px;text-transform:uppercase;margin-bottom:5px; border-radius: 4px;">
+         style="background:var(--modal-header-bg);color:var(--modal-header-text);padding:8px 12px;font-weight:bold;font-size:11px;text-transform:uppercase;margin-bottom:5px; border-radius: var(--radius-sm);">
       {{ t('comments') }} ({{ replies.length }})
     </div>
     <div v-else style="padding:20px 0;color:#666;font-size:12px; font-weight: bold; text-align: center;">{{ t('noComments') }}</div>
@@ -275,4 +275,69 @@ const handleLinkClick = (event: MouseEvent) => {
 .pr-thread--compact :deep(.comment-mobile-header) { margin: 0 0 6px 0 !important; padding: 0 !important; background: none !important; border: none !important; }
 .pr-thread--compact :deep(.avatar-xs) { width: 24px !important; height: 24px !important; }
 .pr-thread--compact :deep(.quote-box) { padding: 6px !important; font-size: 11px !important; }
+
+
+/* ===== Moved from global style.css (component-specific) ===== */
+/* ===== QUOTE BLOCK ===== */
+.quote-box {
+  background: var(--quote-bg);
+  border: 1px solid var(--quote-border);
+  padding: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.quote-toggle {
+  cursor: pointer;
+  color: var(--quote-toggle-color);
+  font-weight: bold;
+  margin-left: 5px;
+}
+.quote-toggle:hover { color: var(--quote-toggle-hover-color); }
+.quote-content {
+  margin-top: 5px;
+  padding: 10px;
+  background: var(--quote-content-bg);
+  border: 1px solid var(--quote-content-border);
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+ 
+
+.depth-badge { display: inline-block; font-size: 11px; color: var(--depth-badge-text); margin-left: 5px; }
+
+/* ===== COMPACT COLLAPSED BAR ===== */
+.collapsed-support-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--collapsed-bar-bg);
+  border: 1px solid var(--collapsed-bar-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  margin-bottom: 5px;
+  font-size: 11px;
+  color: var(--collapsed-bar-text);
+}
+.collapsed-support-bar .author-tag {
+  font-weight: bold;
+  color: var(--collapsed-bar-strong-text);
+}
+.collapsed-support-bar .expand-btn {
+  margin-left: auto;
+  cursor: pointer;
+  font-weight: bold;
+  color: var(--collapsed-bar-link-color);
+  text-decoration: underline;
+}
+.collapsed-support-bar .expand-btn:hover {
+  color: var(--collapsed-bar-link-hover);
+}
+.collapsed-support-bar .vote-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--collapsed-bar-strong-text);
+  font-weight: bold;
+}
 </style>

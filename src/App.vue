@@ -670,3 +670,126 @@ const {
 
 </div><!-- /root -->
 </template>
+
+<style scoped>
+/* ===== Moved from global style.css (component-specific) ===== */
+/* ===== FOOTER ===== */
+.site-footer {
+  background: var(--footer-bg);
+  color: var(--footer-text);
+  text-align: center;
+  padding: 20px;
+  font-size: 12px;
+  border-top: 1px solid var(--footer-border);
+}
+ 
+
+/* TAG FILTER */
+.tag-filter-bar {
+  margin: 0 15px 15px;
+  padding: 8px 15px;
+  background: var(--tagfilter-bg);
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--tagfilter-border);
+  border-radius: var(--radius-sm);
+}
+.tag-filter-bar input {
+  background: var(--input-bg);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .tag-filter-bar div {
+    max-width: none !important;
+  }
+}
+
+/* ===== BLOCKCHAIN WAIT QUEUE PANEL ===== */
+.bc-queue-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: var(--queue-panel-bg);
+  border-top: 2px solid var(--queue-panel-border);
+  box-shadow: 0 -3px 12px rgba(0,0,0,0.2);
+  padding: 8px 14px;
+  transition: bottom 0.3s ease-in-out;
+}
+.has-player-active .bc-queue-panel {
+  bottom: 76px;
+}
+@media (max-width: 600px) {
+  .has-player-active .bc-queue-panel {
+    bottom: 64px;
+  }
+}
+.bc-queue-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.bc-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.bc-queue-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--queue-track-bg);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  min-width: 60px;
+}
+.bc-queue-bar-fill {
+  height: 100%;
+  background: var(--queue-fill-bg);
+  border-radius: var(--radius-xs);
+  transition: width 0.4s ease;
+}
+.bc-queue-label {
+  font-size: 12px;
+  color: var(--queue-label-text);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-queue-more {
+  background: none;
+  border: 1px solid var(--queue-more-color);
+  color: var(--queue-more-color);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  font-family: var(--sans);
+}
+.bc-queue-more:hover { background: var(--queue-more-color); color: #fff; }
+
+/* Desktop: side-by-side columns, more compact */
+@media (min-width: 681px) {
+  .bc-queue-item {
+    flex: 1 1 260px;
+    max-width: 340px;
+  }
+}
+
+/* Mobile: stack vertically, limit to 3 */
+@media (max-width: 680px) {
+  .bc-queue-item {
+    flex: 1 1 100%;
+  }
+  .bc-queue-label { max-width: 55vw; }
+}
+</style>

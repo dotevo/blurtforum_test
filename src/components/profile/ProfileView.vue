@@ -785,4 +785,33 @@ const barSeries = computed(() => {
     opacity: 0.9;
   }
 }
+
+
+/* ===== Moved from global style.css (component-specific) ===== */
+/* PROFILE STATS */
+.profile-stats {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-top: 15px;
+}
+.stat-box {
+  background: var(--stat-box-bg);
+  border: 1px solid var(--stat-box-border);
+  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  min-width: 140px;
+}
+.stat-label {
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--stat-label-text);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.stat-val {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--stat-value-text);
+}
 </style>

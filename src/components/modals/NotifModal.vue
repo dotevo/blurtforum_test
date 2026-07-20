@@ -135,4 +135,11 @@ input:checked + .slider-toggle:before {
   transform: translateX(14px);
   background-color: white;
 }
+
+
+/* ===== Moved from global style.css (component-specific) ===== */
+/* NOTIFICATIONS */
+.notif-item { padding: 10px; border-bottom: 1px solid var(--notif-border); font-size: 13px; color: var(--notif-text); }
+.notif-item:last-child { border-bottom: none; }
+.notif-item .gs { display: block; margin-top: 3px; }
 </style>

@@ -130,4 +130,51 @@ const emit = defineEmits<{
   color: var(--text-strong);
 }
 .vote-est-row span { color: var(--text-soft); }
+
+
+/* ===== Moved from global style.css (component-specific) ===== */
+/* ===== VOTE WEIGHT MODAL ===== */
+.vote-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+  display: block;
+}
+.vote-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vote-thumb-bg);
+  border: 2px solid var(--vote-thumb-border);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+.vote-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vote-thumb-bg);
+  border: 2px solid var(--vote-thumb-border);
+  cursor: pointer;
+}
+.vote-estimate-box {
+  background: var(--vote-box-bg);
+  border: 1px solid var(--vote-box-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  font-size: 13px;
+}
+.vote-est-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  color: var(--vote-row-text);
+}
+.vote-est-row span { color: var(--vote-row-muted); }
 </style>

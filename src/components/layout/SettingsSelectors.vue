@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ScrollableTabs from './ScrollableTabs.vue';
+
 defineProps<{
   theme: string;
   themes: { id: string; label: string }[];
@@ -21,32 +23,69 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="settings-selectors" :class="{ 'is-mobile': mobile, 'is-rail': rail }">
+  <!-- Rail (vertical side-nav): plain stacked list, never needs horizontal scrolling. -->
+  <div v-if="rail" class="settings-selectors is-rail">
     <div class="selector-item">
       <i class="fa-solid fa-palette"></i>
-      <span class="gs hide-on-mobile" v-if="!mobile || rail">{{ t('theme') }}:</span>
+      <span class="gs">{{ t('theme') }}:</span>
       <select :value="theme" @change="emit('setTheme', ($event.target as HTMLSelectElement).value)" class="lang-btn">
         <option v-for="th in themes" :key="th.id" :value="th.id">{{ th.label }}</option>
       </select>
     </div>
     <div class="selector-item">
       <i class="fa-solid fa-language"></i>
-      <span class="gs hide-on-mobile" v-if="!mobile || rail">{{ t('lang') }}:</span>
+      <span class="gs">{{ t('lang') }}:</span>
       <select :value="lang" @change="emit('setLang', ($event.target as HTMLSelectElement).value)" class="lang-btn">
         <option v-for="l in (langs as any)" :key="l.code || l" :value="l.code || l">{{ l.name || l.toUpperCase() }}</option>
       </select>
     </div>
     <button class="lang-btn rpc-btn" @click="emit('openRpc')" :title="t('rpcSettings')">
-      <i class="fa-solid fa-gear"></i> <span v-if="!mobile || rail">{{ t('rpc') }}</span>
+      <i class="fa-solid fa-gear"></i> <span>{{ t('rpc') }}</span>
     </button>
     <button class="lang-btn rpc-btn cinema-btn" :class="{ active: cinemaMode }"
             @click="emit('setCinemaMode', !cinemaMode)" :title="t('cinemaMode') || 'Cinema mode'">
-      <i class="fa-solid fa-film"></i> <span v-if="!mobile || rail">{{ t('cinemaMode') || 'Cinema' }}</span>
+      <i class="fa-solid fa-film"></i> <span>{{ t('cinemaMode') || 'Cinema' }}</span>
     </button>
   </div>
+
+  <!-- Top-bar layout: items keep their natural width and, if they don't all
+       fit (mainly on narrow phones), the row scrolls horizontally with a
+       drag/fade affordance instead of squeezing or overflowing off-screen —
+       the same pattern used for the player's tabs. -->
+  <ScrollableTabs v-else class="settings-selectors-scroll">
+    <div class="settings-selectors" :class="{ 'is-mobile': mobile }">
+      <div class="selector-item">
+        <i class="fa-solid fa-palette"></i>
+        <span class="gs hide-on-mobile" v-if="!mobile">{{ t('theme') }}:</span>
+        <select :value="theme" @change="emit('setTheme', ($event.target as HTMLSelectElement).value)" class="lang-btn">
+          <option v-for="th in themes" :key="th.id" :value="th.id">{{ th.label }}</option>
+        </select>
+      </div>
+      <div class="selector-item">
+        <i class="fa-solid fa-language"></i>
+        <span class="gs hide-on-mobile" v-if="!mobile">{{ t('lang') }}:</span>
+        <select :value="lang" @change="emit('setLang', ($event.target as HTMLSelectElement).value)" class="lang-btn">
+          <option v-for="l in (langs as any)" :key="l.code || l" :value="l.code || l">{{ l.name || l.toUpperCase() }}</option>
+        </select>
+      </div>
+      <button class="lang-btn rpc-btn" @click="emit('openRpc')" :title="t('rpcSettings')">
+        <i class="fa-solid fa-gear"></i> <span v-if="!mobile">{{ t('rpc') }}</span>
+      </button>
+      <button class="lang-btn rpc-btn cinema-btn" :class="{ active: cinemaMode }"
+              @click="emit('setCinemaMode', !cinemaMode)" :title="t('cinemaMode') || 'Cinema mode'">
+        <i class="fa-solid fa-film"></i> <span v-if="!mobile">{{ t('cinemaMode') || 'Cinema' }}</span>
+      </button>
+    </div>
+  </ScrollableTabs>
 </template>
 
 <style scoped>
+/* The ScrollableTabs wrapper sizes itself to the available space in its
+   flex parent (LangBar / MobileTopBar drawer) and handles overflow. */
+.settings-selectors-scroll {
+  width: 100%;
+}
+
 .settings-selectors {
   display: flex;
   gap: 10px;
@@ -57,6 +96,7 @@ const emit = defineEmits<{
   display: flex;
   gap: 5px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .selector-item i {
@@ -71,7 +111,7 @@ const emit = defineEmits<{
   padding: 2px 6px;
   font-size: 11px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-weight: bold;
   outline: none;
@@ -86,6 +126,7 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   gap: 5px;
+  flex-shrink: 0;
 }
 
 .cinema-btn.active {
@@ -94,31 +135,28 @@ const emit = defineEmits<{
   color: #fff;
 }
 
-/* Mobile overrides */
+/* Mobile: items keep a comfortable, tappable minimum size instead of being
+   squeezed — if they don't all fit, the surrounding ScrollableTabs lets the
+   row scroll horizontally (with drag + fade edges) instead. */
 .is-mobile {
-  width: 100%;
-  justify-content: space-between;
-  gap: 5px;
+  gap: 8px;
 }
 
 .is-mobile .selector-item {
-  flex: 1;
   background: var(--surface-nav);
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--surface-border);
 }
 
 .is-mobile .selector-item select {
-  flex: 1;
   border: none;
   background: transparent;
   padding: 0;
-  width: 100%;
+  max-width: 84px;
 }
 
 .is-mobile .rpc-btn {
-  flex: 0 0 auto;
   padding: 6px 10px;
   background: var(--surface-nav);
   border: 1px solid var(--surface-border);
@@ -173,5 +211,5 @@ const emit = defineEmits<{
   font-size: 13px;
   padding: 0;
 }
-.is-rail .cinema-btn.active { background: var(--brand); color: #fff; border-radius: 4px; }
+.is-rail .cinema-btn.active { background: var(--brand); color: #fff; border-radius: var(--radius-sm); }
 </style>

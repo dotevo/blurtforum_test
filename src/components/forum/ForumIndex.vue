@@ -176,4 +176,28 @@ const emit = defineEmits<{
 
 .index-table { width: 100%; margin-top: 15px; border-collapse: collapse; }
 .row-hover:hover { background: var(--table-row-hover-bg); cursor: pointer; }
+
+
+/* ===== Moved from global style.css (component-specific) ===== */
+/* ===== MODS SECTION ===== */
+.mods-section {
+  background: var(--mods-bg);
+  border: 1px solid var(--mods-border);
+  margin: 15px 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.mods-header { background: var(--mods-header-bg); color: var(--mods-header-text); padding: 8px 14px; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+.mods-body { padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+.mod-badge {
+  background: var(--mod-badge-bg);
+  border: 1px solid var(--mod-badge-border);
+  padding: 6px 12px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.mod-role { font-size: 10px; text-transform: uppercase; font-weight: bold; color: var(--mod-role-text); }
+ 
 </style>

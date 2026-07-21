@@ -5,7 +5,7 @@
 import {
   ref, reactive, computed, onMounted, nextTick, watch,
 } from 'vue';
-import { useNotifications, notifModal } from './useNotifications';
+import { createBlurtNotifications } from '../modules/notifications_blurt/notifications-blurt';
 import { BFUtils } from '../modules/utils';
 import { trackPageView } from '../modules/analytics';
 import { Blockchain } from '../modules/blockchain';
@@ -36,8 +36,9 @@ import * as sessionStore from '../modules/native/session-store';
 import type {
   Post, Forum, ForumCategory, RawPost, AuthUser, ActivityItem,
   Beneficiary, BcQueueEntry, GlobalProps, Moderator, CommunityInfo,
-  UserSubscription, Notification,
+  UserSubscription,
 } from '../types';
+import type { NotificationItem } from '../modules/notifications/types';
 
 
 export function useApp() {
@@ -961,11 +962,6 @@ export function useApp() {
     }
   };
 
-  const getNotifIcon = (type: string): string => {
-    const icons: Record<string, string> = { reply: '💬', reply_comment: '💬', vote: '👍', mention: '🔔', follow: '👤', reblog: '🔄', transfer: '💰', witness_vote: '🗳️' };
-    return icons[type] || '🔵';
-  };
-
   const loadUserCommunities = async (username: string): Promise<void> => {
     try {
       const subs = await Blockchain.listSubscriptions(rpc.dataClient.value, username);
@@ -1244,12 +1240,13 @@ export function useApp() {
 
   const handleWalletSubmit = (data: any) => _handleWalletSubmit(data, globalProps);
 
-  const { openNotifModal, openNotification: _openNotification, startPolling: startNotifPolling, togglePushNotifications } = useNotifications(rpc.dataClient.value, auth, t);
+  const notifications = createBlurtNotifications(rpc.dataClient.value, auth, t);
+  const { openList: openNotifModal, startPolling: startNotifPolling, togglePushNotifications, getNotifIcon, isUnread: isNotifUnread } = notifications;
+  const notifModal = notifications.state;
 
-  const openNotification = (notif: Notification) => _openNotification(notif, {
+  const openNotification = (notif: NotificationItem) => notifications.openNotification(notif, {
     openTopic, openProfile, normalizePost, client: rpc.dataClient.value, config, targetNotifPermlink,
-    selectedCommunity, loading, loadData, forumClient: rpc.forumClient.value, getForumUrl: rpc.getForumUrl, getDataUrl: rpc.getDataUrl,
-    auth, switchAccount
+    selectedCommunity, loading, auth, switchAccount,
   });
 
   onMounted(() => {
@@ -1463,7 +1460,7 @@ export function useApp() {
     community: BFCommunity, communityRewards,
     doKeyLogin, doWVLogin, logout, startReply, submitReply, submitPost, loadData,
     changePage,
-    submitVote, hasVoted, openPayoutModal, payoutModal, openNotifModal, notifModal, togglePushNotifications,
+    submitVote, hasVoted, openPayoutModal, payoutModal, openNotifModal, notifModal, togglePushNotifications, isNotifUnread,
     walletModal, openWalletModal, handleWalletSubmit, cancelDelegation,
     walletAuthModal,
     followModal, confirmToggleFollow,

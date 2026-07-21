@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { AuthUser, Notification } from '../../types';
+import type { AuthUser } from '../../types';
+import type { NotificationItem } from '../notifications/types';
 import type { BFPlayerAPI } from '../player/types';
-import NotifBell from '../../components/layout/NotifBell.vue';
+import NotifBell from '../notifications/components/NotifBell.vue';
 import UserAvatar from '../../components/layout/UserAvatar.vue';
 import SettingsSelectors from '../../components/layout/SettingsSelectors.vue';
-import NotificationsList from '../../components/layout/NotificationsList.vue';
+import NotificationsList from '../notifications/components/NotificationsList.vue';
 
 const props = defineProps<{
   auth: { user: AuthUser | null };
@@ -24,20 +25,21 @@ const props = defineProps<{
   t: (k: string) => string;
   notifModal: {
     show: boolean; loading: boolean;
-    list: Notification[]; lastReadIds: Record<string, number>;
+    list: NotificationItem[];
     clickedIds: (number | string)[];
     pushSupported: boolean;
     pushEnabled: boolean;
   };
   timeAgo: (s: string) => string;
   getNotifIcon: (type: string) => string;
+  isUnread: (item: NotificationItem) => boolean;
 }>();
 
 const emit = defineEmits<{
   goHome: [];
   openLoginModal: [];
   openSwitchAccountModal: [];
-  openNotification: [notif: Notification];
+  openNotification: [notif: NotificationItem];
   openProfile: [username: string];
   logout: [];
   setTheme: [value: string];
@@ -234,7 +236,8 @@ function onRailKeydown(e: KeyboardEvent): void {
     :t="t"
     :time-ago="timeAgo"
     :get-notif-icon="getNotifIcon"
-    @open-notification="(n: Notification) => { emit('openNotification', n); showNotifPanel = false; }"
+    :is-unread="isUnread"
+    @open-notification="(n: NotificationItem) => { emit('openNotification', n); showNotifPanel = false; }"
     @open-profile="(u: string) => { emit('openProfile', u); showNotifPanel = false; }"
     @toggle-push-notifications="emit('togglePushNotifications')"
   />

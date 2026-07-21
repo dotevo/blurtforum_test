@@ -27,7 +27,7 @@ const MediaPlayer = defineAsyncComponent(() => import('./modules/player_blurt/co
 // Modals (Async)
 const LoginModal = defineAsyncComponent(() => import('./components/modals/LoginModal.vue'));
 const PayoutModal = defineAsyncComponent(() => import('./components/modals/PayoutModal.vue'));
-const NotifModal = defineAsyncComponent(() => import('./components/modals/NotifModal.vue'));
+const NotifModal = defineAsyncComponent(() => import('./modules/notifications/components/NotifModal.vue'));
 const EditModal = defineAsyncComponent(() => import('./components/modals/EditModal.vue'));
 const PinModal = defineAsyncComponent(() => import('./components/modals/PinModal.vue'));
 const VoteModal = defineAsyncComponent(() => import('./components/modals/VoteModal.vue'));
@@ -56,7 +56,7 @@ const {
   community, communityRewards,
   doKeyLogin, doWVLogin, logout, startReply, submitReply, submitPost, loadData,
   changePage,
-  submitVote, hasVoted, openPayoutModal, payoutModal, openNotifModal, notifModal, togglePushNotifications,
+  submitVote, hasVoted, openPayoutModal, payoutModal, openNotifModal, notifModal, togglePushNotifications, isNotifUnread,
   walletModal, openWalletModal, handleWalletSubmit, cancelDelegation,
   walletAuthModal,
   followModal, confirmToggleFollow,
@@ -256,6 +256,7 @@ const {
     :notif-modal="notifModal"
     :time-ago="timeAgo"
     :get-notif-icon="getNotifIcon"
+    :is-unread="isNotifUnread"
     @go-home="goHome"
     @open-login-modal="openLoginModal"
     @open-switch-account-modal="openSwitchAccountModal"
@@ -560,6 +561,7 @@ const {
     :t="t"
     :time-ago="timeAgo"
     :get-notif-icon="getNotifIcon"
+    :is-unread="isNotifUnread"
     @close="notifModal.show = false"
     @open-notification="openNotification"
     @toggle-push-notifications="togglePushNotifications"

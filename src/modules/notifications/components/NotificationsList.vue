@@ -1,20 +1,20 @@
 <script setup lang="ts">
 /**
- * components/layout/NotificationsList.vue
+ * modules/notifications/components/NotificationsList.vue
  *
  * Just the list -- no modal box, no overlay, no panel chrome. Notifications
  * themselves don't (and shouldn't) know or care where they end up on
  * screen: NotifModal.vue wraps this in a modal for the classic forum UI,
- * and cinema mode registers it directly as a player side-panel tab (see
- * useApp.ts, BFPlayer.registerExpandedTab) when a fullscreen session is
- * active. Exactly one place owns the actual list markup/logic either way.
+ * and cinema mode renders it directly in a rail-anchored panel (see
+ * modules/cinema/CinemaRail.vue). Exactly one place owns the actual list
+ * markup/logic either way.
  */
-import type { Notification } from '../../types';
+import type { NotificationItem } from '../types';
 
 defineProps<{
   notifModal: {
     show: boolean; loading: boolean;
-    list: Notification[]; lastReadIds: Record<string, number>;
+    list: NotificationItem[];
     clickedIds: (number | string)[];
     pushSupported: boolean;
     pushEnabled: boolean;
@@ -23,10 +23,11 @@ defineProps<{
   t: (k: string) => string;
   timeAgo: (s: string) => string;
   getNotifIcon: (type: string) => string;
+  isUnread: (item: NotificationItem) => boolean;
 }>();
 
 const emit = defineEmits<{
-  openNotification: [notif: Notification];
+  openNotification: [notif: NotificationItem];
   openProfile: [username: string];
   togglePushNotifications: [];
 }>();
@@ -50,7 +51,7 @@ const emit = defineEmits<{
          :style="{ 
             padding: '10px 15px', 
             borderBottom: '1px solid var(--surface-border)',
-            background: (typeof n.id === 'number' && n.id > (notifModal.lastReadIds[n.account!] || 0)) ? 'var(--surface-4)' : (notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 'transparent' : 'var(--surface-3)'),
+            background: isUnread(n) ? 'var(--surface-4)' : (notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 'transparent' : 'var(--surface-3)'),
             fontWeight: notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 'normal' : 'bold',
             opacity: notifModal.clickedIds.includes(`${n.account}-${n.id}`) ? 0.7 : 1
          }">
@@ -73,7 +74,7 @@ const emit = defineEmits<{
            </div>
            <div class="gs" style="margin-top:2px;">{{ timeAgo(n.date) }}</div>
          </div>
-         <span v-if="typeof n.id === 'number' && n.id > (notifModal.lastReadIds[n.account!] || 0)" style="width:8px; height:8px; background:#ff4400; border-radius:50%; flex-shrink:0;"></span>
+         <span v-if="isUnread(n)" style="width:8px; height:8px; background:#ff4400; border-radius:50%; flex-shrink:0;"></span>
       </div>
     </div>
     <div v-if="notifModal.list.length===0" style="padding: 20px; text-align: center; color:var(--text-soft);">{{ t('noNotifications') }}</div>

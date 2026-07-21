@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AuthUser } from '../../types';
-import NotifBell from './NotifBell.vue';
+import NotifBell from '../../modules/notifications/components/NotifBell.vue';
 import UserAvatar from './UserAvatar.vue';
 
 defineProps<{

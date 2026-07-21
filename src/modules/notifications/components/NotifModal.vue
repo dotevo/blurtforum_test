@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { Notification } from '../../types';
-import NotificationsList from '../layout/NotificationsList.vue';
+import type { NotificationItem } from '../types';
+import NotificationsList from './NotificationsList.vue';
 
 defineProps<{
   notifModal: {
     show: boolean; loading: boolean;
-    list: Notification[]; lastReadIds: Record<string, number>;
+    list: NotificationItem[];
     clickedIds: (number | string)[];
     pushSupported: boolean;
     pushEnabled: boolean;
@@ -14,11 +14,12 @@ defineProps<{
   t: (k: string) => string;
   timeAgo: (s: string) => string;
   getNotifIcon: (type: string) => string;
+  isUnread: (item: NotificationItem) => boolean;
 }>();
 
 const emit = defineEmits<{
   close: [];
-  openNotification: [notif: Notification];
+  openNotification: [notif: NotificationItem];
   openProfile: [username: string];
   togglePushNotifications: [];
 }>();
@@ -39,6 +40,7 @@ const emit = defineEmits<{
         :t="t"
         :time-ago="timeAgo"
         :get-notif-icon="getNotifIcon"
+        :is-unread="isUnread"
         @open-notification="emit('openNotification', $event)"
         @open-profile="(u: string) => { emit('openProfile', u); emit('close'); }"
         @toggle-push-notifications="emit('togglePushNotifications')"

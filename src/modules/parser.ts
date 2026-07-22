@@ -45,7 +45,34 @@ export const Parser = {
         processedText = processedText.replace(endRegex, (m) => tokenize(m));
       });
 
-      // 1. Protect existing Markdown links and images from auto-embedding
+      // 1. Protect existing Markdown links from auto-embedding.
+      //
+      // Handle "linked thumbnail" posts first: `[![alt](imgUrl)](targetUrl)`.
+      // The generic mdLinkRegex below can't parse this nested-bracket shape —
+      // it only matches the inner `![alt](imgUrl)` and leaves `](targetUrl)`
+      // dangling, which then gets misread by the raw-URL auto-embed step and
+      // spliced back together into a broken link (href = literal embed HTML).
+      // Resolve the whole construct in one piece instead: if targetUrl is
+      // known media, replace it with the embed directly (the player renders
+      // its own preview, so the thumbnail wrapper is redundant); otherwise
+      // protect the whole thing as a single token so nothing else can split it.
+      processedText = processedText.replace(
+        /\[!\[[^\]]*\]\(\s*https?:\/\/[^\s\)]+\s*\)\]\(\s*(https?:\/\/[^\s\)]+)\s*\)/g,
+        (fullMatch, targetUrl) => {
+          const cleanTarget = targetUrl.replace(/[).,;]$/, '');
+          const media = this.detectMedia(cleanTarget);
+          if (media) {
+            const mediaKey = `${media.type}:${media.id}`;
+            if (seenMedia.has(mediaKey)) return '';
+            seenMedia.add(mediaKey);
+            typeCounters[media.type] = (typeCounters[media.type] || 0) + 1;
+            return tokenize(this.getExperimentalPlaceholder(media.type, media.id, media.host || '', context, currentGroup, typeCounters[media.type]));
+          }
+          return tokenize(fullMatch);
+        }
+      );
+
+      // Protect remaining (non-nested) Markdown links and images.
       const mdLinkRegex = /(!?\[.*?\]\(\s*https?:\/\/[^\s\)]+\s*\))/g;
       const mdTokens: Record<string, string> = {};
       let mdTokenCounter = 0;

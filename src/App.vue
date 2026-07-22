@@ -257,6 +257,8 @@ const {
     :time-ago="timeAgo"
     :get-notif-icon="getNotifIcon"
     :is-unread="isNotifUnread"
+    :payout-modal="payoutModal"
+    :fmt-date="fmtDate"
     @go-home="goHome"
     @open-login-modal="openLoginModal"
     @open-switch-account-modal="openSwitchAccountModal"
@@ -268,6 +270,7 @@ const {
     @set-lang="(v: string) => setLang(v as 'en'|'pl'|'eo')"
     @update:rpc-menu-open="rpcMenuOpen = $event"
     @set-cinema-mode="setCinemaMode"
+    @close-payout-modal="payoutModal.show = false"
   />
 
   <!-- ── Main content ───────────────────────────────────────────── -->
@@ -546,7 +549,7 @@ const {
   />
 
   <PayoutModal
-    v-if="payoutModal.show"
+    v-if="payoutModal.show && !player.state.cinema"
     :payout-modal="payoutModal"
     :t="t"
     :fmt-date="fmtDate"

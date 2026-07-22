@@ -865,9 +865,30 @@ const initYT = async (): Promise<void> => {
   });
 };
 
-const initPT = (): void => {
+// stopAll() nulls ptPlayer on every track switch (unlike ytPlayer/audioObj,
+// which are created once and reused for the whole session), and the
+// peertube iframe is re-keyed by currentSource.id so Vue tears it down and
+// re-mounts a fresh one on every new video. That means initPT() has to
+// win a real race against the DOM re-render (and the iframe's own
+// embed-page + SDK handshake) on *every single play*, not just the first
+// one. A single fixed-delay check was enough most of the time, but lost
+// the race often enough under extra render pressure (e.g. cinema mode
+// mounting/expanding the panel at the same time) to leave ptPlayer stuck
+// null — which silently breaks every transport control (play/pause/seek/
+// volume all guard on `if (ptPlayer)` and just no-op). Retry briefly
+// instead of giving up after one shot.
+const initPT = (retriesLeft = 15): void => {
+  if (!currentSource.value || currentSource.value.type !== 'peertube') return;
+
   const iframe = document.getElementById('bf-pt-player-iframe') as HTMLIFrameElement;
-  if (!iframe || !window.PeerTubePlayer || !currentSource.value || currentSource.value.type !== 'peertube') return;
+  if (!iframe || !window.PeerTubePlayer) {
+    if (retriesLeft > 0) {
+      setTimeout(() => initPT(retriesLeft - 1), 200);
+    } else {
+      console.warn('[BFPlayer] initPT: gave up waiting for PT iframe/SDK', { hasIframe: !!iframe, hasSdk: !!window.PeerTubePlayer });
+    }
+    return;
+  }
 
   const PTConstructor = window.PeerTubePlayer as any;
   if (PTConstructor) {
@@ -1189,18 +1210,22 @@ export const togglePlayMode = (): void => {
 export const togglePlay = (): void => {
   if (!state.currentTrack || !currentSource.value) return;
 
-  // If we have a track but no media object initialized (e.g. after refresh),
-  // start playback properly instead of just toggling the state.
+  // If we have a track but no media object initialized (e.g. after refresh,
+  // or initPT() losing its race against a panel re-render -- see initPT()),
+  // (re-)initialize directly rather than going through playTrack(): that
+  // function's "already playing this source, ignoring" dedupe guard would
+  // just swallow the click here, since state.playing is already true even
+  // though the actual player object never got created.
   if (currentSource.value.type === 'audio' && !audioObj) {
     playTrack(state.currentTrack);
     return;
   }
   if (currentSource.value.type === 'youtube' && !ytPlayer) {
-    playTrack(state.currentTrack);
+    initYT();
     return;
   }
   if (currentSource.value.type === 'peertube' && !ptPlayer) {
-    playTrack(state.currentTrack);
+    initPT();
     return;
   }
   if (currentSource.value.type === 'webtorrent' && !wtVideoEl) {

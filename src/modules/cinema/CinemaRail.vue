@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import type { AuthUser } from '../../types';
+import { ref, watch } from 'vue';
+import type { AuthUser, Post, Beneficiary } from '../../types';
 import type { NotificationItem } from '../notifications/types';
 import type { BFPlayerAPI } from '../player/types';
 import NotifBell from '../notifications/components/NotifBell.vue';
 import UserAvatar from '../../components/layout/UserAvatar.vue';
 import SettingsSelectors from '../../components/layout/SettingsSelectors.vue';
 import NotificationsList from '../notifications/components/NotificationsList.vue';
+import PayoutDetails from '../../components/PayoutDetails.vue';
 
 const props = defineProps<{
   auth: { user: AuthUser | null };
@@ -33,6 +34,16 @@ const props = defineProps<{
   timeAgo: (s: string) => string;
   getNotifIcon: (type: string) => string;
   isUnread: (item: NotificationItem) => boolean;
+  // Payout details (PayoutModal.vue's forum-mode equivalent) end up here
+  // instead of a modal for the same reason notifications do: the video
+  // underneath shouldn't get a dialog stacked on top of it just because
+  // someone clicked "payout" on the currently-playing track's actions.
+  payoutModal: {
+    show: boolean;
+    post: Partial<Post & { payoutDate?: string }>;
+    beneficiaries: Beneficiary[];
+  };
+  fmtDate: (s: string) => string;
 }>();
 
 const emit = defineEmits<{
@@ -47,6 +58,7 @@ const emit = defineEmits<{
   'update:rpcMenuOpen': [value: boolean];
   setCinemaMode: [value: boolean];
   togglePushNotifications: [];
+  closePayoutModal: [];
 }>();
 
 // Desktop: expand on hover/focus. Mobile: expand via swipe-from-edge, same
@@ -95,6 +107,7 @@ const showNotifPanel = ref(false);
 function onNotifClick(): void {
   showNotifPanel.value = !showNotifPanel.value;
 }
+watch(() => props.payoutModal.show, (open) => { if (open) showNotifPanel.value = false; });
 
 // Escape always collapses the rail (same rule as every other panel in the
 // app) and hands focus back off so a stray Escape doesn't leave it stuck
@@ -224,11 +237,11 @@ function onRailKeydown(e: KeyboardEvent): void {
 <!-- Notifications: a panel anchored next to the rail, not a modal window --
      stays part of cinema mode's own chrome instead of stacking a dialog on
      top of the video. Works the same whether or not anything is playing. -->
-<div class="cinema-notif-overlay" v-if="showNotifPanel" @click="showNotifPanel = false"></div>
-<div class="cinema-notif-panel" v-if="showNotifPanel" @keydown.esc="showNotifPanel = false">
-  <div class="cinema-notif-panel-header">
+<div class="cinema-side-panel-overlay" v-if="showNotifPanel" @click="showNotifPanel = false"></div>
+<div class="cinema-side-panel" v-if="showNotifPanel" @keydown.esc="showNotifPanel = false">
+  <div class="cinema-side-panel-header">
     <span>{{ t('notifications') || 'Powiadomienia' }}</span>
-    <button type="button" class="cinema-notif-close" @click="showNotifPanel = false" :aria-label="t('close') || 'Close'">✕</button>
+    <button type="button" class="cinema-side-panel-close" @click="showNotifPanel = false" :aria-label="t('close') || 'Close'">✕</button>
   </div>
   <NotificationsList
     :notif-modal="notifModal"
@@ -241,6 +254,26 @@ function onRailKeydown(e: KeyboardEvent): void {
     @open-profile="(u: string) => { emit('openProfile', u); showNotifPanel = false; }"
     @toggle-push-notifications="emit('togglePushNotifications')"
   />
+</div>
+
+<!-- Payout details: same reasoning as the notifications panel above. This
+     one has no rail icon of its own -- it opens whenever the "payout"
+     button in the currently-playing track's actions (bfp-cinema-track-actions,
+     see MediaPlayer.vue) is clicked, same trigger as the forum's PayoutModal. -->
+<div class="cinema-side-panel-overlay" v-if="payoutModal.show" @click="emit('closePayoutModal')"></div>
+<div class="cinema-side-panel" v-if="payoutModal.show" @keydown.esc="emit('closePayoutModal')">
+  <div class="cinema-side-panel-header">
+    <span>{{ t('payoutDetails') }}</span>
+    <button type="button" class="cinema-side-panel-close" @click="emit('closePayoutModal')" :aria-label="t('close') || 'Close'">✕</button>
+  </div>
+  <div class="cinema-side-panel-body">
+    <PayoutDetails
+      :payout-modal="payoutModal"
+      :t="t"
+      :fmt-date="fmtDate"
+      @open-profile="(u: string) => { emit('openProfile', u); emit('closePayoutModal'); }"
+    />
+  </div>
 </div>
 </template>
 
@@ -367,13 +400,13 @@ function onRailKeydown(e: KeyboardEvent): void {
 /* Notifications panel -- anchored right next to the rail, above it, not a
    centered modal dialog. Same overlay-to-dismiss convention as the rail's
    own mobile drawer. */
-.cinema-notif-overlay {
+.cinema-side-panel-overlay {
   position: fixed;
   inset: 0;
   z-index: 250;
   background: rgba(0,0,0,0.4);
 }
-.cinema-notif-panel {
+.cinema-side-panel {
   position: fixed;
   top: 0;
   left: 72px;
@@ -387,7 +420,7 @@ function onRailKeydown(e: KeyboardEvent): void {
   display: flex;
   flex-direction: column;
 }
-.cinema-notif-panel-header {
+.cinema-side-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -397,7 +430,7 @@ function onRailKeydown(e: KeyboardEvent): void {
   color: var(--text-strong);
   flex-shrink: 0;
 }
-.cinema-notif-close {
+.cinema-side-panel-close {
   background: none;
   border: none;
   color: var(--text-soft);
@@ -406,9 +439,10 @@ function onRailKeydown(e: KeyboardEvent): void {
   padding: 4px 8px;
   border-radius: var(--radius-sm);
 }
-.cinema-notif-close:hover, .cinema-notif-close:focus-visible { color: var(--brand); background: var(--surface-2); outline: none; }
+.cinema-side-panel-close:hover, .cinema-side-panel-close:focus-visible { color: var(--brand); background: var(--surface-2); outline: none; }
+.cinema-side-panel-body { flex: 1; overflow-y: auto; padding: 16px; }
 @media (max-width: 768px) {
-  .cinema-notif-panel { left: 0; width: 100vw; max-width: 100vw; }
+  .cinema-side-panel { left: 0; width: 100vw; max-width: 100vw; }
 }
 /* On desktop the rail only ever grows in place (no overlay needed behind it,
    matches the mock where hover-expand doesn't blur the page) -- the blur

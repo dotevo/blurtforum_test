@@ -15,10 +15,9 @@
  * reference would go stale and playback would silently break.
  */
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
-import { currentSource, playWebtorrentFile, wtActiveFileIndex, state as playerState, showCinemaControls as showSharedCinemaControls, togglePlay } from '../player';
+import { currentSource, wtActiveFileIndex, state as playerState, showCinemaControls as showSharedCinemaControls, togglePlay } from '../player';
 import * as WTPool from '../webtorrent-pool';
 import type { TorrentSnapshot } from '../webtorrent-pool';
-import WebtorrentInfoModal from './WebtorrentInfoModal.vue';
 import WebtorrentPieceMap from './WebtorrentPieceMap.vue';
 import WebtorrentAudioSubtitleMenu from './WebtorrentAudioSubtitleMenu.vue';
 
@@ -138,17 +137,6 @@ function seekToFraction(frac: number): void {
   if (!video || !video.duration || !isFinite(video.duration)) return;
   video.currentTime = frac * video.duration;
 }
-
-// ── Manual file selection (per user request: let them click Play on any
-// file in the list, the same sanity-check workflow the working PoC
-// supported) ────────────────────────────────────────────────────────────
-function onPlayFile(fileIndex: number): void {
-  console.log('[WebtorrentVideo] Manual file selection requested — file index', fileIndex);
-  playWebtorrentFile(fileIndex);
-}
-
-// ── Info modal ───────────────────────────────────────────────────────────
-const showInfo = ref(false);
 
 // ── Auto-hide overlay controls ─────────────────────────────────────────────
 // The browser's own <video controls> chrome fades out after a few idle
@@ -270,7 +258,7 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
 
       <Teleport to="#bfp-cinema-extra-controls" :disabled="!playerState.cinema">
         <div class="wtv-controls" v-if="isWebtorrent" :class="{ 'wtv-controls--hidden': !effectiveControlsVisible, 'wtv-controls--cinema': playerState.cinema }">
-          <button class="wtv-btn" @click="showInfo = true" :title="t('torrentInfo') || 'Torrent info'">
+          <button class="wtv-btn" @click="playerState.expanded = true; playerState.expandedTab = 'webtorrent-info'" :title="t('torrentInfo') || 'Torrent info'">
             <i class="fa-solid fa-circle-info"></i>
           </button>
           <button class="wtv-btn" :class="{ 'wtv-btn--active': fullDownload }" @click="toggleFullDownload"
@@ -322,8 +310,6 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
       :t="props.t"
       @seek="seekToFraction"
     />
-
-    <WebtorrentInfoModal :show="showInfo" :torrent="torrent" :t="props.t" @close="showInfo = false" @play-file="onPlayFile" />
   </div>
 </template>
 

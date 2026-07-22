@@ -22,7 +22,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { Blockchain } from '../blockchain';
 import { PostProcessor } from '../post-processor';
-import { state as playerState, playlistState, playTrack } from '../player/player';
+import { state as playerState, playlistState, playTrack, togglePlay } from '../player/player';
 import ForumMedia from '../player_blurt/components/ForumMedia.ce.vue';
 import type { MediaTrack } from '../player/types';
 
@@ -110,9 +110,27 @@ const rows = computed<CinemaRow[]>(() =>
 const currentCard = ref<CinemaCard | null>(null);
 const updateHero = (card: CinemaCard) => { currentCard.value = card; };
 
+// Same "is this card the one that's actually already loaded and playing"
+// check ForumMedia.ce.vue's own handlePlay() does for its card/micro modes.
+// Without it, clicking an already-playing card just re-ran playTrack() on
+// every click (harmless there since playTrack() dedupes identical sources
+// and no-ops -- but exactly this "click just re-issues playTrack() instead
+// of toggling" shape is what leaves a stuck source silently ignoring
+// pause/volume, see player.ts togglePlay()/initPT()). Toggling explicitly
+// here means a click on the active card always does the right thing.
+const isCardActive = (card: CinemaCard): boolean => {
+  const current = playerState.currentTrack;
+  if (!current) return false;
+  return current.author === card.track.author && current.permlink === card.track.permlink && current.subId === card.track.subId;
+};
+
 const playCard = async (card: CinemaCard): Promise<void> => {
   updateHero(card);
-  await playTrack(card.track, true);
+  if (isCardActive(card)) {
+    togglePlay();
+  } else {
+    await playTrack(card.track, true);
+  }
   // Set explicitly rather than relying only on the watcher below: if this is
   // the same track that's already current (e.g. user went back to the
   // library and picked the same video again), state.currentTrack doesn't

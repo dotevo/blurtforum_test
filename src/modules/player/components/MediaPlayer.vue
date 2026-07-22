@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import ScrollableTabs from '../../ui/ScrollableTabs.vue';
-import PlaylistModal from './PlaylistModal.vue';
 import WebtorrentVideo from './WebtorrentVideo.vue';
-import WebtorrentSettingsModal from './WebtorrentSettingsModal.vue';
+import WebtorrentStorage from './WebtorrentStorage.vue';
+import WebtorrentInfoTab from './WebtorrentInfoTab.vue';
 import type { MediaTrack, BFPlayerAPI, Playlist } from '../types';
 import { currentSource, CINEMA_HIDE_NATIVE_CONTROLS } from '../player';
 
@@ -42,17 +42,29 @@ defineSlots<{
 }>();
 
 // ── Playlists ───────────────────────────────────────────────────────────────
+// "New playlist" used to be a modal (PlaylistModal.vue). It's now an inline
+// form within the Playlists tab body itself -- see the pl-create-form
+// template below -- so all it needs is open/prefill state, no separate
+// component with its own show/close plumbing.
 const playlistModal = reactive({
   show: false,
-  track: null as MediaTrack | null
+  track: null as MediaTrack | null,
 });
+const newPlaylistName = ref('');
+const newPlaylistColor = ref('#1a9b78');
+const newPlaylistColors = ['#1a9b78', '#f5a623', '#e55353', '#5b8dd9', '#9b59b6', '#f39c12', '#7a8290'];
 
-// ── WebTorrent settings ──────────────────────────────────────────────────────
-const showWebtorrentSettings = ref(false);
+function openPlaylistCreateForm(track: MediaTrack | null): void {
+  playlistModal.track = track;
+  playlistModal.show = true;
+  newPlaylistName.value = '';
+  newPlaylistColor.value = newPlaylistColors[0];
+}
 
-const handlePlaylistConfirm = (name: string, color: string, track: MediaTrack | null) => {
-  const pl = props.player.createPlaylist(name, color);
-  if (pl && track) props.player.addTrackToPlaylist(pl.id, track);
+const handlePlaylistConfirm = () => {
+  if (!newPlaylistName.value.trim()) return;
+  const pl = props.player.createPlaylist(newPlaylistName.value.trim(), newPlaylistColor.value);
+  if (pl && playlistModal.track) props.player.addTrackToPlaylist(pl.id, playlistModal.track);
   playlistModal.show = false;
 };
 
@@ -123,6 +135,7 @@ const cinemaPanelTabs = computed(() => [
   { id: 'queue', label: props.t('queue') || 'Queue', icon: 'fa-solid fa-list-ul' },
   { id: 'playlists', label: props.t('playlists') || 'Playlists', icon: 'fa-solid fa-list' },
   { id: 'settings', label: props.t('settings') || 'Settings', icon: 'fa-solid fa-gear' },
+  ...(currentSource.value?.type === 'webtorrent' ? [{ id: 'webtorrent-info', label: props.t('torrentInfo') || 'Torrent info', icon: 'fa-solid fa-circle-info' }] : []),
   ...props.player.getExpandedTabs(),
 ]);
 
@@ -344,8 +357,9 @@ function addToPlaylistFromDropdown(playlistId: string): void {
 
 function createAndAddFromDropdown(): void {
   if (!dropdownTrack.value) return;
-  playlistModal.track = dropdownTrack.value;
-  playlistModal.show = true;
+  props.player.state.expanded = true;
+  props.player.state.expandedTab = 'playlists';
+  openPlaylistCreateForm(dropdownTrack.value);
   closePlaylistDropdown();
 }
 
@@ -713,6 +727,9 @@ onUnmounted(() => {
           <button class="bfp-tab" :class="{ active: player.state.expandedTab === 'settings' }" @click="player.state.expandedTab = 'settings'">
             <i class="fa-solid fa-gear"></i> <span>{{ t('settings') }}</span>
           </button>
+          <button v-if="currentSource?.type === 'webtorrent'" class="bfp-tab" :class="{ active: player.state.expandedTab === 'webtorrent-info' }" @click="player.state.expandedTab = 'webtorrent-info'">
+            <i class="fa-solid fa-circle-info"></i> <span>{{ t('torrentInfo') || 'Torrent info' }}</span>
+          </button>
           <button v-for="tab in player.getExpandedTabs()" :key="tab.id" class="bfp-tab"
                   :class="{ active: player.state.expandedTab === tab.id }" @click="player.state.expandedTab = tab.id">
             <i :class="tab.icon"></i> <span>{{ tab.label }}</span>
@@ -747,13 +764,12 @@ onUnmounted(() => {
           <strong>{{ t('webtorrent') || 'WebTorrent' }}</strong>
         </div>
         <div class="bfp-settings-body">
-          <p class="gs" style="margin-bottom:12px; font-size:11px; opacity:0.8;">
-            {{ t('webtorrentSettingsHint') || 'Manage storage, seeding, and see live download/upload stats.' }}
-          </p>
-          <button class="btn btn-ghost" @click="showWebtorrentSettings = true">
-            <i class="fa-solid fa-magnet"></i> {{ t('webtorrentSettings') || 'WebTorrent storage & stats' }}
-          </button>
+          <WebtorrentStorage :t="t" />
         </div>
+      </div>
+
+      <div class="bfp-panel-body" v-if="player.state.expandedTab === 'webtorrent-info'">
+        <WebtorrentInfoTab :t="t" />
       </div>
 
       <div class="bfp-panel-body queue-list" v-show="player.state.expandedTab === 'queue'">
@@ -885,9 +901,34 @@ onUnmounted(() => {
       <template v-if="!activePlaylistId">
         <div class="pl-header">
           <span class="pl-header-title"><i class="fa-solid fa-list"></i> {{ t('playlists') || 'Playlists' }}</span>
-          <button class="pl-new-btn" @click="playlistModal.track = player.state.currentTrack || null; playlistModal.show = true;">
+          <button class="pl-new-btn" @click="openPlaylistCreateForm(player.state.currentTrack || null)">
             <i class="fa-solid fa-plus"></i> {{ t('new') || 'New' }}
           </button>
+        </div>
+
+        <div v-if="playlistModal.show" class="pl-create-form">
+          <div v-if="playlistModal.track" class="gs" style="margin-bottom:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            🎵 {{ t('adding') || 'Adding' }}: {{ playlistModal.track.title }}
+          </div>
+          <label class="form-label">{{ t('playlistName') || 'Playlist Name' }}</label>
+          <input type="text" v-model="newPlaylistName" class="pl-create-input"
+                 style="width:100%; height:38px; margin-bottom:12px;"
+                 :placeholder="t('enterName') || 'Enter name...'"
+                 @keyup.enter="handlePlaylistConfirm" />
+
+          <label class="form-label">{{ t('color') || 'Color' }}</label>
+          <div class="pl-color-dots" style="margin-top:8px; margin-bottom:14px;">
+            <div v-for="c in newPlaylistColors" :key="c" class="pl-color-dot"
+                 :class="{ selected: newPlaylistColor === c }" :style="{ background: c }"
+                 @click="newPlaylistColor = c"></div>
+          </div>
+
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-primary" style="flex:1; padding:8px;" @click="handlePlaylistConfirm" :disabled="!newPlaylistName.trim()">
+              <i class="fa-solid fa-check"></i> {{ t('confirm') || 'Confirm' }}
+            </button>
+            <button class="btn btn-ghost" @click="playlistModal.show = false">{{ t('cancel') }}</button>
+          </div>
         </div>
 
         <div class="pl-list">
@@ -977,19 +1018,6 @@ onUnmounted(() => {
   </div>
 </div>
 
-<PlaylistModal
-  :show="playlistModal.show"
-  :track="playlistModal.track"
-  :t="t"
-  @close="playlistModal.show = false"
-  @confirm="handlePlaylistConfirm"
-/>
-
-<WebtorrentSettingsModal
-  :show="showWebtorrentSettings"
-  :t="t"
-  @close="showWebtorrentSettings = false"
-/>
 </template>
 
 <style>
@@ -1787,8 +1815,7 @@ onUnmounted(() => {
 .pl-new-btn:hover { opacity: 0.85; }
 
 .pl-create-form {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 14px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--bfp-border);
   background: rgba(255,255,255,0.03);
 }

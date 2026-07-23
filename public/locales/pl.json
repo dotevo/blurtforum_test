@@ -392,5 +392,15 @@
   "playStoredTorrent": "Odtwórz",
   "clearing": "Czyszczenie…",
   "fullscreen": "Pełny ekran",
-  "cinemaMode": "Kino"
+  "cinemaMode": "Kino",
+  "backToLibrary": "Powrót do biblioteki",
+  "categories": "Kategorie",
+  "emptyPlaylist": "Ta playlista jest pusta.",
+  "error": "Błąd",
+  "noPlaylists": "Nie masz jeszcze żadnej playlisty.",
+  "play": "Odtwórz",
+  "postsFetched": "postów pobranych",
+  "seedOnCellular": "Seeduj na danych mobilnych",
+  "seedOnCellularHint": "Domyślnie wyłączone, by chronić Twój pakiet danych — seedowanie na Wi-Fi działa normalnie",
+  "withDetectedMedia": "z wykrytym medium"
 }

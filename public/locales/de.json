@@ -389,5 +389,15 @@
   "playStoredTorrent": "Abspielen",
   "clearing": "Löschen…",
   "fullscreen": "Vollbild",
-  "cinemaMode": "Kino"
+  "cinemaMode": "Kino",
+  "backToLibrary": "Zurück zur Bibliothek",
+  "categories": "Kategorien",
+  "emptyPlaylist": "Diese Playlist ist leer.",
+  "error": "Fehler",
+  "noPlaylists": "Du hast noch keine Playlists.",
+  "play": "Abspielen",
+  "postsFetched": "Beiträge geladen",
+  "seedOnCellular": "Über Mobilfunk seeden",
+  "seedOnCellularHint": "Standardmäßig deaktiviert, um dein Datenvolumen zu schonen — Seeding über WLAN funktioniert normal",
+  "withDetectedMedia": "mit erkanntem Medium"
 }

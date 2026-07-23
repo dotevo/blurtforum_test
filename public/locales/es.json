@@ -389,5 +389,15 @@
   "playStoredTorrent": "Reproducir",
   "clearing": "Borrando…",
   "fullscreen": "Pantalla completa",
-  "cinemaMode": "Cine"
+  "cinemaMode": "Cine",
+  "backToLibrary": "Volver a la biblioteca",
+  "categories": "Categorías",
+  "emptyPlaylist": "Esta lista de reproducción está vacía.",
+  "error": "Error",
+  "noPlaylists": "Aún no tienes listas de reproducción.",
+  "play": "Reproducir",
+  "postsFetched": "publicaciones obtenidas",
+  "seedOnCellular": "Compartir con datos móviles",
+  "seedOnCellularHint": "Desactivado por defecto para proteger tu plan de datos — compartir por Wi-Fi funciona con normalidad",
+  "withDetectedMedia": "con medio detectado"
 }

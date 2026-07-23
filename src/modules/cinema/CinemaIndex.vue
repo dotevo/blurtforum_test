@@ -38,6 +38,16 @@ interface CinemaRow {
    *  (useful on mobile where there's no easy console) instead of just
    *  silently vanishing. Not used for playlist rows (nothing to fetch). */
   rawCount: number; error: string | null;
+  /** Pagination cursor (last raw post seen so far) for "load more" --
+   *  continues from here instead of re-fetching the same page. Only used
+   *  for category rows; undefined/unused for playlist rows. */
+  cursor?: { author: string; permlink: string } | null;
+  /** Set once a fetch page added zero new videos, or the feed itself ran
+   *  out of posts -- stops both the initial auto-fill and hides "load
+   *  more", since a category that just came up empty on the last page is
+   *  assumed to be tapped out rather than retried forever. */
+  exhausted?: boolean;
+  loadingMore?: boolean;
 }
 
 // Small badge so a thumbnail's source is identifiable at a glance in a grid
@@ -55,40 +65,94 @@ const cardSource = (card: CinemaCard) => {
 
 // Starter categories — real tags on the Blurt chain, not invented buckets.
 // Easy to extend/replace once real category conventions are decided.
+// 'video' leads the list (and so becomes the default hero background,
+// since the hero picks whichever category's first card loads first --
+// see updateHero() below) per the current primary-tag convention.
 const categories = ref<CinemaRow[]>([
-  { id: 'blurtmedia', label: 'Blurt Media', icon: 'fa-solid fa-fire',           cards: [], loading: true, rawCount: 0, error: null },
-  { id: 'sport',      label: 'Sport',       icon: 'fa-solid fa-futbol',        cards: [], loading: true, rawCount: 0, error: null },
-  { id: 'comedy',     label: 'Comedy',      icon: 'fa-solid fa-masks-theater', cards: [], loading: true, rawCount: 0, error: null },
-  { id: 'music',      label: 'Music',       icon: 'fa-solid fa-music',         cards: [], loading: true, rawCount: 0, error: null },
-  { id: 'gaming',     label: 'Gaming',      icon: 'fa-solid fa-gamepad',       cards: [], loading: true, rawCount: 0, error: null },
-  { id: 'crypto',     label: 'Crypto',      icon: 'fa-solid fa-coins',         cards: [], loading: true, rawCount: 0, error: null },
+  { id: 'video',      label: 'Video',       icon: 'fa-solid fa-film',          cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
+  { id: 'blurtmedia', label: 'Blurt Media', icon: 'fa-solid fa-fire',           cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
+  { id: 'sport',      label: 'Sport',       icon: 'fa-solid fa-futbol',        cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
+  { id: 'comedy',     label: 'Comedy',      icon: 'fa-solid fa-masks-theater', cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
+  { id: 'music',      label: 'Music',       icon: 'fa-solid fa-music',         cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
+  { id: 'gaming',     label: 'Gaming',      icon: 'fa-solid fa-gamepad',       cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
+  { id: 'crypto',     label: 'Crypto',      icon: 'fa-solid fa-coins',         cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
 ]);
 
-const loadCategory = async (cat: CinemaRow): Promise<void> => {
-  cat.loading = true;
-  cat.error = null;
-  try {
-    const raw = await Blockchain.getRankedPosts(props.client, 'trending', cat.id, 50);
-    cat.rawCount = raw.length;
-    const cards: CinemaCard[] = [];
+// Posts don't all contain a detectable video/audio embed, so a flat "give
+// me 10 posts" fetch would often surface a mostly-empty row. Page through
+// get_ranked_posts PAGE_SIZE posts at a time instead, keep whatever has a
+// track, and keep paging until `target` cards are collected -- unless a
+// page adds nothing at all, or the feed itself runs out, in which case
+// this tag is treated as tapped out (see `exhausted` above).
+const PAGE_SIZE = 10;
+const AUTO_FETCH_TARGET = 10;
+
+async function fetchMoreForCategory(cat: CinemaRow, target: number): Promise<void> {
+  while (cat.cards.length < target && !cat.exhausted) {
+    const before = cat.cards.length;
+    let raw: any[];
+    try {
+      raw = await Blockchain.getRankedPosts(props.client, 'trending', cat.id, PAGE_SIZE, cat.cursor?.author, cat.cursor?.permlink);
+    } catch (e) {
+      cat.error = e instanceof Error ? e.message : String(e);
+      cat.exhausted = true;
+      break;
+    }
+
+    // The bridge convention returns the cursor post itself again as the
+    // first result when start_author/start_permlink are given -- drop it,
+    // it was already counted on the previous page.
+    if (cat.cursor && raw.length && raw[0].author === cat.cursor.author && raw[0].permlink === cat.cursor.permlink) {
+      raw = raw.slice(1);
+    }
+    if (!raw.length) { cat.exhausted = true; break; }
+    cat.rawCount += raw.length;
+
+    // Advance the cursor to this page's last post regardless of whether it
+    // had video, so the next page continues from here either way.
+    const lastRaw = raw[raw.length - 1];
+    cat.cursor = { author: lastRaw.author, permlink: lastRaw.permlink };
+
     for (const r of raw) {
       const post = PostProcessor.normalizePost(r);
       // normalizePost already extracted + grouped mirrors into post.tracks —
       // no need to re-run media detection here.
       if (post.tracks && post.tracks.length) {
         const track = post.tracks[0] as unknown as MediaTrack;
-        cards.push({ post: { author: post.author, permlink: post.permlink, title: post.title }, track });
+        cat.cards.push({ post: { author: post.author, permlink: post.permlink, title: post.title }, track });
       }
     }
-    cat.cards = cards;
-    if (cards.length && !currentCard.value) updateHero(cards[0]);
-  } catch (e) {
-    cat.rawCount = 0;
-    cat.error = e instanceof Error ? e.message : String(e);
-    console.warn('[CinemaIndex] loadCategory failed for', cat.id, e);
+    if (cat.cards.length && !currentCard.value) updateHero(cat.cards[0]);
+
+    // Nothing new this page -- stop trying rather than keep paging a tag
+    // that's run dry on video content.
+    if (cat.cards.length === before) { cat.exhausted = true; break; }
+    // Fewer posts than requested means we've hit the actual end of this
+    // tag's feed, regardless of how many had video.
+    if (raw.length < PAGE_SIZE) { cat.exhausted = true; break; }
   }
+}
+
+const loadCategory = async (cat: CinemaRow): Promise<void> => {
+  cat.loading = true;
+  cat.error = null;
+  cat.cards = [];
+  cat.rawCount = 0;
+  cat.cursor = null;
+  cat.exhausted = false;
+  await fetchMoreForCategory(cat, AUTO_FETCH_TARGET);
   cat.loading = false;
 };
+
+async function loadMoreForCategory(cat: CinemaRow): Promise<void> {
+  if (cat.loadingMore || cat.exhausted) return;
+  cat.loadingMore = true;
+  try {
+    await fetchMoreForCategory(cat, cat.cards.length + AUTO_FETCH_TARGET);
+  } finally {
+    cat.loadingMore = false;
+  }
+}
 
 // Playlists view: rows = playlists, cards = each playlist's tracks. No
 // fetching -- playlistState is already fully loaded/reactive.
@@ -164,80 +228,25 @@ onUnmounted(() => {
   playerState.cinemaBrowseView = 'categories';
 });
 
-// ── Keyboard / remote (D-pad) navigation across the card grid ─────────────
+// ── Keyboard / remote (D-pad) initial focus ────────────────────────────────
+// Actual arrow-key/Enter/Escape navigation is handled globally, uniformly
+// across the whole cinema UI (grid + rail + player), by
+// modules/cinema/dpad-nav.ts — see its file comment for why that replaced
+// a bespoke per-zone handler here. All that's left for this view to own is
+// putting focus somewhere sensible once cards actually exist: nothing is
+// focused by default, and the global navigator only *moves* focus that
+// already exists, it doesn't invent a starting point.
 const gridEl = ref<HTMLElement | null>(null);
 
-const getRows = (): HTMLElement[][] => {
-  if (!gridEl.value) return [];
-  return Array.from(gridEl.value.querySelectorAll<HTMLElement>('.cinema-cards'))
-    .map(row => Array.from(row.querySelectorAll<HTMLElement>('.cinema-card')))
-    .filter(row => row.length);
-};
-
-const pos = ref({ row: 0, col: 0 });
-
-const focusCard = (r: number, c: number) => {
-  const rowEls = getRows();
-  const row = rowEls[r];
-  if (!row || !row.length) return;
-  c = Math.max(0, Math.min(row.length - 1, c));
-  pos.value = { row: r, col: c };
-  row[c].focus({ preventScroll: true });
-  row[c].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-};
-
-const onGridKeydown = (e: KeyboardEvent) => {
-  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return;
-  e.preventDefault();
-  if (e.key === 'Escape') {
-    focusRail();
-    return;
-  }
-  const rowEls = getRows();
-  if (!rowEls.length) return;
-  if (e.key === 'Enter') {
-    rowEls[pos.value.row]?.[pos.value.col]?.click();
-    return;
-  }
-  if (e.key === 'ArrowRight') focusCard(pos.value.row, pos.value.col + 1);
-  else if (e.key === 'ArrowLeft') {
-    if (pos.value.col <= 0) { focusRail(); return; }
-    focusCard(pos.value.row, pos.value.col - 1);
-  }
-  else if (e.key === 'ArrowDown') focusCard(Math.min(rowEls.length - 1, pos.value.row + 1), pos.value.col);
-  else if (e.key === 'ArrowUp') focusCard(Math.max(0, pos.value.row - 1), pos.value.col);
-};
-
-// Hands focus off to the left rail (CinemaRail.vue) -- its own focusin
-// handler expands it the moment focus actually lands inside it, so this
-// is the one thing that has to reach across component boundaries, and a
-// DOM query is simpler/more robust here than plumbing a ref/emit through
-// whatever wraps both components.
-function focusRail(): void {
-  const target = document.querySelector<HTMLElement>('.cinema-rail .rail-item, .cinema-rail .rail-logo, .rail-toggle-btn');
-  target?.focus();
-}
-
-function onRailEscape(): void {
-  focusCard(pos.value.row, pos.value.col);
-}
-onMounted(() => document.addEventListener('cinema-rail-escape', onRailEscape));
-onUnmounted(() => document.removeEventListener('cinema-rail-escape', onRailEscape));
-
-// Nothing is focused by default, so arrow keys would never reach
-// onGridKeydown at all (they'd just scroll the page). Auto-focus the first
-// card the moment any row actually has cards, once per view, so
-// remote/keyboard nav works immediately without stealing focus back later
-// if the user has since focused/clicked elsewhere.
 let hasAutoFocused = false;
 watch(rows, () => {
   if (hasAutoFocused) return;
   nextTick(() => {
     if (hasAutoFocused) return;
-    const rowEls = getRows();
-    if (rowEls.length) {
+    const first = gridEl.value?.querySelector<HTMLElement>('.cinema-card');
+    if (first) {
       hasAutoFocused = true;
-      focusCard(0, 0);
+      first.focus({ preventScroll: true });
     }
   });
 }, { deep: true, immediate: true });
@@ -248,7 +257,7 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
 </script>
 
 <template>
-  <div ref="gridEl" class="cinema-index" @keydown="onGridKeydown">
+  <div ref="gridEl" class="cinema-index">
 
     <section class="cinema-hero" v-if="currentCard">
       <div class="cinema-hero-backdrop"
@@ -316,6 +325,19 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
               <div class="cinema-card-meta gs">@{{ card.post.author }}</div>
             </div>
           </div>
+
+          <button
+            v-if="playerState.cinemaBrowseView === 'categories' && !row.exhausted"
+            class="cinema-card cinema-load-more-btn"
+            :disabled="row.loadingMore"
+            @click="loadMoreForCategory(row)"
+          >
+            <span v-if="row.loadingMore" class="spin"></span>
+            <template v-else>
+              <i class="fa-solid fa-plus"></i>
+              <span>{{ t('loadMore') || 'Ściągnij więcej' }}</span>
+            </template>
+          </button>
         </div>
       </section>
     </template>
@@ -347,6 +369,7 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
 @media (max-width: 768px) {
   .cinema-hero { left: 0; height: var(--cinema-hero-h-mobile, 32vh); min-height: var(--cinema-hero-h-min-mobile, 220px); }
   .cinema-index { padding-top: calc(var(--cinema-hero-h-mobile, 32vh) + 20px); }
+  .cinema-card { scroll-margin-top: calc(var(--cinema-hero-h-mobile, 32vh) + 20px); }
 }
 .cinema-hero-backdrop {
   position: absolute; inset: 0;
@@ -425,8 +448,21 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   border-radius: 6px;
   overflow: hidden;
   transition: transform 0.15s ease;
+  /* .cinema-hero is position:fixed, permanently covering the top
+     var(--cinema-hero-h) of the viewport regardless of scroll position.
+     scrollIntoView() has no idea that space is occupied -- without this,
+     navigating back up to the first row could scroll a card to the very
+     top of the viewport, which is exactly where the hero then covers it. */
+  scroll-margin-top: calc(var(--cinema-hero-h, 40vh) + 24px);
 }
-.cinema-card:hover, .cinema-card:focus { transform: scale(1.04); outline: none; }
+.cinema-card:hover { transform: scale(1.04); outline: none; }
+.cinema-card:focus-visible {
+  transform: scale(1.1);
+  outline: none;
+  z-index: 5;
+  position: relative;
+  box-shadow: 0 0 0 4px var(--brand), 0 8px 30px rgba(0,0,0,0.6);
+}
 
 /* ForumMedia's own card-mode styles already render a 16:9 thumbnail (cover
    art / mirror resolution / webtorrent live status) -- hideButtons strips
@@ -456,4 +492,24 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   overflow: hidden; line-height: 1.35; margin-bottom: 4px;
 }
 .cinema-card-meta { color: var(--card-muted-text); }
+
+/* Sits at the end of a category row, same footprint as a card so it reads
+   as "one more tile" rather than a stray control -- aspect-ratio keeps it
+   matching the 16:9 thumbnail + info block height without hardcoding it. */
+.cinema-load-more-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  aspect-ratio: 240 / 175;
+  background: var(--surface-2);
+  border: 1px dashed var(--card-border);
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+.cinema-load-more-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text-strong); border-color: var(--brand); }
+.cinema-load-more-btn i { font-size: 18px; }
+.cinema-load-more-btn:disabled { cursor: default; opacity: 0.7; }
 </style>

@@ -2,6 +2,7 @@
 import { defineAsyncComponent, watch } from 'vue';
 import { useApp } from './composables/useApp';
 import { useTitle } from './composables/useTitle';
+import { installCinemaDpadNav } from './modules/cinema/dpad-nav';
 
 // Layout
 import LangBar from './components/layout/LangBar.vue';
@@ -95,6 +96,8 @@ const {
 
   const { initTitleWatcher, setPageTitle } = useTitle();
   initTitleWatcher();
+
+  installCinemaDpadNav(() => cinemaMode.value);
 
   watch([view, activeForum, activeTopic, () => profileUser.username], () => {
     if (view.value === 'forum' && activeForum.value) {
@@ -262,6 +265,7 @@ const {
     @go-home="goHome"
     @open-login-modal="openLoginModal"
     @open-switch-account-modal="openSwitchAccountModal"
+    @open-notif-modal="openNotifModal"
     @open-notification="openNotification"
     @toggle-push-notifications="togglePushNotifications"
     @open-profile="openProfile"
@@ -558,7 +562,7 @@ const {
   />
 
   <NotifModal
-    v-if="notifModal.show"
+    v-if="notifModal.show && !player.state.cinema"
     :notif-modal="notifModal"
     :auth="auth"
     :t="t"

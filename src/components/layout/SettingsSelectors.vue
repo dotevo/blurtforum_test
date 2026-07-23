@@ -206,10 +206,18 @@ const emit = defineEmits<{
 .is-rail .selector-item select {
   flex: 1;
   border: none;
-  background: transparent;
+  /* Not transparent: most browsers render the native option-list popup
+     using the <select>'s own background-color. Leaving this transparent
+     let it fall through to the OS default (usually light), while the text
+     color here stays var(--text-strong) (light, for a dark theme) --
+     giving light-on-light and making the open dropdown unreadable in
+     cinema even though the closed box looked fine. The top-bar variant
+     (.lang-btn below) already sets a real background for this reason. */
+  background: var(--input-bg);
   color: var(--text-strong);
   font-size: 13px;
-  padding: 0;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
 }
 .is-rail .cinema-btn.active { background: var(--brand); color: #fff; border-radius: var(--radius-sm); }
 </style>

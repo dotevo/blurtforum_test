@@ -78,6 +78,21 @@ function handleProgressClick(e: MouseEvent): void {
   props.player.seek(pct);
 }
 
+// The seek bar is a plain div (role="slider" alone doesn't make anything
+// keyboard-focusable, an explicit tabindex is required) with its own
+// Left/Right handling -- standard slider semantics, and left untouched by
+// the global cinema D-pad navigator (see modules/cinema/dpad-nav.ts),
+// which only takes over arrow keys when they'd otherwise do nothing useful.
+function handleProgressKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const duration = props.player.state.duration || 0;
+  if (!duration) return;
+  const deltaPct = (5 / duration) * 100; // 5 seconds, same step as most players' arrow-key seek
+  const next = props.player.state.progress + (e.key === 'ArrowRight' ? deltaPct : -deltaPct);
+  props.player.seek(Math.min(100, Math.max(0, next)));
+}
+
 function handleProgressHover(e: MouseEvent): void {
   const el = e.currentTarget as HTMLElement;
   hoverProgressPct.value = (e.offsetX / el.offsetWidth) * 100;
@@ -164,44 +179,33 @@ const showOwnCinemaControls = computed(() =>
 // somewhere outside the iframe. `blur` on window fires reliably the instant
 // focus moves into an iframe (e.g. clicking its pause button), which is the
 // one cross-iframe signal we can actually observe.
-function onWindowBlur(): void { props.player.showCinemaControls(); }
+//
+// The same "focus moved into the iframe" moment also breaks D-pad/keyboard
+// nav *permanently*, not just once: our own onCinemaControlsKeydown only
+// ever runs for keydown events our document actually receives, and once an
+// iframe has focus, every subsequent arrow-key press goes to the iframe's
+// own document instead -- completely invisible to us, with nothing left to
+// preventDefault() the browser's default (scrolling the page). Since our
+// own overlay controls are always shown instead of the iframe's native ones
+// (CINEMA_HIDE_NATIVE_CONTROLS), there's nothing useful happening inside the
+// iframe that focus should stay on, so pulling it back onto our own play
+// button the instant this happens is what actually keeps the remote/keyboard
+// usable for the rest of the session instead of just for the first few
+// seconds before anything is clicked.
+function onWindowBlur(): void {
+  props.player.showCinemaControls();
+  if (props.player.state.cinema) focusCinemaPlayButton();
+}
 onMounted(() => window.addEventListener('blur', onWindowBlur));
 onUnmounted(() => window.removeEventListener('blur', onWindowBlur));
 
-// Left/right remote or keyboard navigation across every button in a given
-// cinema control zone (the side icon column, or the bottom controls row) --
-// plain native buttons don't get D-pad traversal for free. Up/down jumps
-// between those two zones instead, landing on the closest button by screen
-// position so a TV remote's vertical move feels spatially sensible rather
-// than always resetting to the first button.
-function onCinemaControlsKeydown(e: KeyboardEvent): void {
-  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-  const row = e.currentTarget as HTMLElement;
-  const buttons = Array.from(row.querySelectorAll<HTMLElement>('button:not(:disabled), [role="button"]:not([aria-disabled="true"])'));
-  const idx = buttons.indexOf(document.activeElement as HTMLElement);
-  if (idx === -1) return;
-  e.preventDefault();
-
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    const next = e.key === 'ArrowRight' ? Math.min(buttons.length - 1, idx + 1) : Math.max(0, idx - 1);
-    buttons[next]?.focus();
-    return;
-  }
-
-  // Up/down: jump to the other zone, landing on whichever of its buttons
-  // sits closest horizontally to the one we're leaving.
-  const panel = row.closest('.bfp-panel--cinema');
-  if (!panel) return;
-  const otherZoneSelector = row.classList.contains('bfp-cinema-side-actions') ? '.bfp-cinema-controls-row' : '.bfp-cinema-side-actions';
-  const otherZone = panel.querySelector<HTMLElement>(otherZoneSelector);
-  const otherButtons = otherZone ? Array.from(otherZone.querySelectorAll<HTMLElement>('button:not(:disabled), [role="button"]:not([aria-disabled="true"])')) : [];
-  if (!otherButtons.length) return;
-  const currentX = buttons[idx].getBoundingClientRect().left;
-  const closest = otherButtons.reduce((best, btn) =>
-    Math.abs(btn.getBoundingClientRect().left - currentX) < Math.abs(best.getBoundingClientRect().left - currentX) ? btn : best
-  );
-  closest.focus();
-}
+// Left/right/up/down D-pad and keyboard navigation across cinema mode's
+// controls (this zone, the rail, the browse grid) is handled globally and
+// uniformly by modules/cinema/dpad-nav.ts -- see its file comment for why
+// a bespoke per-zone handler here couldn't reach any of that (no hand-off
+// to/from the rail or grid, and any keydown while focus wasn't exactly one
+// of this zone's own buttons fell through to the browser's default page
+// scroll with no preventDefault() in sight).
 
 // The moment cinema fullscreen opens (or a new track starts while already
 // in cinema, e.g. picked from the queue), put focus on the play/pause
@@ -621,7 +625,7 @@ onUnmounted(() => {
              the left edge so they never collide with YouTube/PeerTube's own
              native controls (which tend to live bottom/top) or with our own
              playback bar below (audio/webtorrent only). -->
-        <div v-if="player.state.cinema" class="bfp-cinema-side-actions" @keydown="onCinemaControlsKeydown">
+        <div v-if="player.state.cinema" class="bfp-cinema-side-actions">
           <button v-for="tab in cinemaPanelTabs" :key="'ov-' + tab.id" class="bfp-cinema-overlay-btn"
                   :class="{ active: player.state.expandedTab === tab.id }"
                   @click="player.state.expandedTab = player.state.expandedTab === tab.id ? 'video' : tab.id"
@@ -640,7 +644,9 @@ onUnmounted(() => {
           <div
             v-if="showOwnCinemaControls"
             class="bfp-cinema-progress"
+            tabindex="0"
             @click="handleProgressClick"
+            @keydown="handleProgressKeydown"
             @mousemove="handleProgressHover"
             @mouseleave="hoverProgressPct = null"
             role="slider"
@@ -653,7 +659,7 @@ onUnmounted(() => {
                  :style="{ left: Math.min(Math.max(hoverProgressPct, 3), 97) + '%' }">{{ formatTime(hoverProgressTime) }}</div>
           </div>
 
-          <div class="bfp-cinema-controls-row" @keydown="onCinemaControlsKeydown">
+          <div class="bfp-cinema-controls-row">
             <div v-if="showOwnCinemaControls" class="bfp-cinema-controls-left">
               <button class="bfp-btn" @click="player.playPrev()" title="Previous"><i class="fa-solid fa-backward-step"></i></button>
               <button class="bfp-btn bfp-btn--play" @click="player.togglePlay()" :title="player.state.playing ? 'Pause' : 'Play'">
@@ -1446,6 +1452,15 @@ onUnmounted(() => {
 .bfp-cinema-time { color: #ddd; font-size: 12px; margin-left: 6px; }
 .bfp-cinema-controls .bfp-btn { color: #fff; }
 .bfp-cinema-controls .bfp-vol-slider { width: 80px; }
+/* D-pad/keyboard nav needs a focus indicator visible from across a room,
+   not the browser's faint default outline against a dark video backdrop. */
+.bfp-panel--cinema button:focus-visible,
+.bfp-panel--cinema [role="button"]:focus-visible,
+.bfp-panel--cinema select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--bfp-accent, var(--brand)), 0 0 12px 2px var(--bfp-accent, var(--brand));
+  border-radius: 6px;
+}
 
 .bfp-cinema-side-actions {
   position: absolute;

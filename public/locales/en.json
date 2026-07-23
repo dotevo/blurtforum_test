@@ -356,5 +356,15 @@
   "playStoredTorrent": "Play",
   "clearing": "Clearing…",
   "fullscreen": "Fullscreen",
-  "cinemaMode": "Cinema"
+  "cinemaMode": "Cinema",
+  "backToLibrary": "Back to library",
+  "categories": "Categories",
+  "emptyPlaylist": "This playlist is empty.",
+  "error": "Error",
+  "noPlaylists": "You don't have any playlists yet.",
+  "play": "Play",
+  "postsFetched": "posts fetched",
+  "seedOnCellular": "Seed on mobile data",
+  "seedOnCellularHint": "Off by default to protect your data plan — seeding still works normally on Wi-Fi",
+  "withDetectedMedia": "with detected media"
 }

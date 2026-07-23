@@ -389,5 +389,15 @@
   "playStoredTorrent": "Lire",
   "clearing": "Effacement…",
   "fullscreen": "Plein écran",
-  "cinemaMode": "Cinéma"
+  "cinemaMode": "Cinéma",
+  "backToLibrary": "Retour à la bibliothèque",
+  "categories": "Catégories",
+  "emptyPlaylist": "Cette playlist est vide.",
+  "error": "Erreur",
+  "noPlaylists": "Vous n'avez encore aucune playlist.",
+  "play": "Lire",
+  "postsFetched": "articles récupérés",
+  "seedOnCellular": "Partager sur données mobiles",
+  "seedOnCellularHint": "Désactivé par défaut pour préserver votre forfait — le partage fonctionne normalement en Wi-Fi",
+  "withDetectedMedia": "avec média détecté"
 }

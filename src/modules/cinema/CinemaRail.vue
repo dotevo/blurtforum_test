@@ -50,6 +50,7 @@ const emit = defineEmits<{
   goHome: [];
   openLoginModal: [];
   openSwitchAccountModal: [];
+  openNotifModal: [];
   openNotification: [notif: NotificationItem];
   openProfile: [username: string];
   logout: [];
@@ -103,49 +104,28 @@ function onRailFocusOut(e: FocusEvent): void {
 // modal window -- consistent with the rest of cinema mode's chrome
 // (everything lives in panels that expand/collapse, nothing pops a
 // centered dialog on top of the video).
+//
+// Bug this fixes: this used to only flip showNotifPanel, without ever
+// calling the composable's real openNotifModal() (== the notifications
+// engine's openList()). state.list is ONLY ever populated by that call --
+// the background poll (checkNew()) just tracks read/pushed watermarks and
+// deliberately never touches state.list -- so the panel rendered with
+// nothing in it on the very first open. SiteHeader.vue/MobileTopBar.vue's
+// bell already call it correctly; this was the one place that didn't.
 const showNotifPanel = ref(false);
 function onNotifClick(): void {
   showNotifPanel.value = !showNotifPanel.value;
+  if (showNotifPanel.value) emit('openNotifModal');
 }
 watch(() => props.payoutModal.show, (open) => { if (open) showNotifPanel.value = false; });
-
-// Escape always collapses the rail (same rule as every other panel in the
-// app) and hands focus back off so a stray Escape doesn't leave it stuck
-// focused-but-collapsed.
-function onRailKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') {
-    if (showNotifPanel.value) {
-      showNotifPanel.value = false;
-      return;
-    }
-    expanded.value = false;
-    (document.activeElement as HTMLElement | null)?.blur();
-    // Let whichever screen is behind the rail (the cinema grid, most of
-    // the time) restore focus to wherever the user actually was, instead
-    // of leaving focus stranded on <body> with nothing left to steer.
-    document.dispatchEvent(new CustomEvent('cinema-rail-escape'));
-    return;
-  }
-  // Plain focusable <div>s (footer actions) don't activate on Enter/Space
-  // for free the way <button>/<a href> do -- forward it to the same click
-  // handler already on the element.
-  if (e.key === 'Enter' || e.key === ' ') {
-    const target = e.target as HTMLElement;
-    const isPlainDiv = target.tagName === 'DIV';
-    if (isPlainDiv && (target.classList.contains('rail-item') || target.classList.contains('rail-toggle-btn') || target.classList.contains('rail-logo'))) {
-      e.preventDefault();
-      target.click();
-    }
-  }
-}
 </script>
 
 <template>
 <div
   class="rail-toggle-btn"
   tabindex="0"
+  role="button"
   @click="expanded = !expanded"
-  @keydown="onRailKeydown"
   :aria-label="expanded ? 'Close menu' : 'Open menu'"
 >
   <i class="fa-solid" :class="expanded ? 'fa-xmark' : 'fa-bars'"></i>
@@ -161,11 +141,10 @@ function onRailKeydown(e: KeyboardEvent): void {
   @mouseleave="expanded = false"
   @focusin="onRailFocusIn"
   @focusout="onRailFocusOut"
-  @keydown="onRailKeydown"
   @touchstart.passive="onTouchStart"
   @touchend.passive="onTouchEnd"
 >
-  <div class="rail-logo" tabindex="0" @click="emit('goHome')">
+  <div class="rail-logo" tabindex="0" role="button" @click="emit('goHome')">
     <i class="fa-solid fa-clapperboard"></i>
     <span class="rail-label">{{ t('siteTitle') || 'BlurtForum' }}</span>
   </div>
@@ -209,24 +188,24 @@ function onRailKeydown(e: KeyboardEvent): void {
       />
     </div>
 
-    <div class="rail-item" v-if="!auth.user" tabindex="0" @click="emit('openLoginModal')">
+    <div class="rail-item" v-if="!auth.user" tabindex="0" role="button" @click="emit('openLoginModal')">
       <i class="fa-solid fa-right-to-bracket"></i>
       <span class="rail-label">{{ t('login') }}</span>
     </div>
     <template v-else>
-      <div class="rail-item" tabindex="0" @click="onNotifClick" :class="{ active: showNotifPanel }">
+      <div class="rail-item" tabindex="0" role="button" @click="onNotifClick" :class="{ active: showNotifPanel }">
         <NotifBell :has-new="hasNewNotif" size="sm" />
         <span class="rail-label">{{ t('notifications') || 'Powiadomienia' }}</span>
       </div>
-      <div class="rail-item" tabindex="0" @click="emit('openProfile', auth.user.username)">
+      <div class="rail-item" tabindex="0" role="button" @click="emit('openProfile', auth.user.username)">
         <UserAvatar :username="auth.user.username" size="xs" round />
         <span class="rail-label">@{{ auth.user.username }}</span>
       </div>
-      <div class="rail-item" tabindex="0" @click="emit('openSwitchAccountModal')" :title="t('switchAccount')">
+      <div class="rail-item" tabindex="0" role="button" @click="emit('openSwitchAccountModal')" :title="t('switchAccount')">
         <i class="fa-solid fa-users-viewfinder"></i>
         <span class="rail-label">{{ t('switchAccount') }}</span>
       </div>
-      <div class="rail-item" tabindex="0" @click="emit('logout')">
+      <div class="rail-item" tabindex="0" role="button" @click="emit('logout')">
         <i class="fa-solid fa-right-from-bracket"></i>
         <span class="rail-label">{{ t('logout') }}</span>
       </div>
@@ -278,6 +257,15 @@ function onRailKeydown(e: KeyboardEvent): void {
 </template>
 
 <style scoped>
+/* The rail's *base* z-index sits below MediaPlayer.vue's .bfp-panel
+   (z-index:1000, the fullscreen cinema video view) on purpose: collapsed,
+   it should stay out of the way behind the video exactly like a mouse
+   pointer can't interact with it either right then. It only needs to come
+   forward while actually engaged (hover or keyboard focus already flip
+   `expanded` via onRailFocusIn/mouseenter) -- see .cinema-rail.expanded
+   below. Side panels (notifications/payout) are a separate, always-on-top
+   concern since opening one is an explicit action regardless of whether
+   the rail itself is expanded. */
 .cinema-rail {
   position: fixed;
   top: 0;
@@ -297,6 +285,7 @@ function onRailKeydown(e: KeyboardEvent): void {
 }
 .cinema-rail.expanded {
   width: 230px;
+  z-index: 1101;
   box-shadow: 10px 0 30px rgba(0, 0, 0, 0.25);
 }
 
@@ -385,7 +374,7 @@ function onRailKeydown(e: KeyboardEvent): void {
 .cinema-rail-overlay {
   position: fixed;
   inset: 0;
-  z-index: 199;
+  z-index: 1100;
   background: rgba(0,0,0,0.5);
   backdrop-filter: blur(4px);
   opacity: 0;
@@ -403,7 +392,7 @@ function onRailKeydown(e: KeyboardEvent): void {
 .cinema-side-panel-overlay {
   position: fixed;
   inset: 0;
-  z-index: 250;
+  z-index: 1102;
   background: rgba(0,0,0,0.4);
 }
 .cinema-side-panel {
@@ -416,7 +405,7 @@ function onRailKeydown(e: KeyboardEvent): void {
   background: var(--surface-1);
   border-right: 1px solid var(--surface-border);
   box-shadow: 10px 0 30px rgba(0,0,0,0.35);
-  z-index: 251;
+  z-index: 1103;
   display: flex;
   flex-direction: column;
 }
@@ -466,7 +455,7 @@ function onRailKeydown(e: KeyboardEvent): void {
     backdrop-filter: blur(4px);
     color: #fff;
     font-size: 16px;
-    z-index: 201;
+    z-index: 1104;
     cursor: pointer;
   }
   .cinema-rail { transform: translateX(-100%); transition: transform 0.28s cubic-bezier(0.4,0,0.2,1); width: 230px; }

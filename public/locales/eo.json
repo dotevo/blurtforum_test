@@ -386,5 +386,15 @@
   "playStoredTorrent": "Ludi",
   "clearing": "Forigante…",
   "fullscreen": "Plenekrano",
-  "cinemaMode": "Kinejo"
+  "cinemaMode": "Kinejo",
+  "backToLibrary": "Reen al biblioteko",
+  "categories": "Kategorioj",
+  "emptyPlaylist": "Ĉi tiu ludlisto estas malplena.",
+  "error": "Eraro",
+  "noPlaylists": "Vi ankoraŭ ne havas ludlistojn.",
+  "play": "Ludi",
+  "postsFetched": "afiŝoj prenitaj",
+  "seedOnCellular": "Semu per poŝtelefona datumaro",
+  "seedOnCellularHint": "Defaŭlte malŝaltita por ŝpari vian datumplanon — semado per Wi-Fi funkcias normale",
+  "withDetectedMedia": "kun detektita aŭdvidaĵo"
 }

@@ -290,6 +290,13 @@ export const registerWireExtension = (factory: (wire: any) => any): void => WTPo
 let audioObj: HTMLAudioElement | null = null;
 let ytPlayer: YTPlayer | null = null;
 let ptPlayer: PTPlayer | null = null;
+// Bumped every time playback is torn down (stopAll()). initPT()'s retry
+// loop and its .ready callback both capture this at the start and check it
+// again before doing anything that affects playback state -- see stopAll()
+// below and initPT() further down for why: without this, an initPT() retry
+// chain still in flight when the user closes/switches away survives past
+// stopAll(), and later forces .play() on a track the user already left.
+let ptGeneration = 0;
 let client: any = null;
 let lastLoadedSourceId: string | null = null;
 
@@ -877,13 +884,16 @@ const initYT = async (): Promise<void> => {
 // null — which silently breaks every transport control (play/pause/seek/
 // volume all guard on `if (ptPlayer)` and just no-op). Retry briefly
 // instead of giving up after one shot.
-const initPT = (retriesLeft = 15): void => {
+const initPT = (retriesLeft = 15, generation = ptGeneration): void => {
+  // Superseded (stopAll() ran, e.g. the user closed/switched away) while
+  // this retry chain was waiting -- stop, there's nothing left to attach to.
+  if (generation !== ptGeneration) return;
   if (!currentSource.value || currentSource.value.type !== 'peertube') return;
 
   const iframe = document.getElementById('bf-pt-player-iframe') as HTMLIFrameElement;
   if (!iframe || !window.PeerTubePlayer) {
     if (retriesLeft > 0) {
-      setTimeout(() => initPT(retriesLeft - 1), 200);
+      setTimeout(() => initPT(retriesLeft - 1, generation), 200);
     } else {
       console.warn('[BFPlayer] initPT: gave up waiting for PT iframe/SDK', { hasIframe: !!iframe, hasSdk: !!window.PeerTubePlayer });
     }
@@ -901,6 +911,13 @@ const initPT = (retriesLeft = 15): void => {
     // inside the iframe), so it's safe to trust from then on.
     let ptVolumeSynced = false;
     ptPlayer!.ready.then(() => {
+       // Checked again here, not just before construction: this can resolve
+       // a while later (it's the iframe's own postMessage handshake), and
+       // stopAll() may well have run in the meantime -- forcing .play() on
+       // whatever the user has since closed/paused/switched away from is
+       // exactly the "content unpauses itself a moment after leaving" bug
+       // this whole generation counter exists to prevent.
+       if (generation !== ptGeneration) return;
        state.loading = false;
        ptPlayer!.setVolume(state.volume);
        ptPlayer!.play(); // Auto-play via API as in legacy
@@ -940,6 +957,7 @@ const startYTProgress = (): void => {
 const stopYTProgress = (): void => { if (progressTimer) clearInterval(progressTimer); };
 
 const stopAll = (): void => {
+  ptGeneration++;
   if (errorTimer) { clearTimeout(errorTimer); errorTimer = null; }
   if (audioObj) { audioObj.pause(); audioObj.src = ''; }
   if (ytPlayer?.stopVideo) { try { ytPlayer.stopVideo(); } catch { /* ignore */ } }

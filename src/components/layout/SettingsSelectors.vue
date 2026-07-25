@@ -203,6 +203,10 @@ const emit = defineEmits<{
 .is-rail .rpc-btn i { font-size: 16px; width: 20px; text-align: center; }
 .is-rail .selector-item:hover,
 .is-rail .rpc-btn:hover { background: var(--surface-2); }
+.is-rail .selector-item select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--brand);
+}
 .is-rail .selector-item select {
   flex: 1;
   border: none;

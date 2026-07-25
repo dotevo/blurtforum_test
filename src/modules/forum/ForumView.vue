@@ -122,6 +122,8 @@ onUpdated(triggerScan);
               <VoteButton 
                 :voted="hasVoted(post)" 
                 :count="post.vote_count" 
+                :pending="!!post._pendingVote"
+                :t="t"
                 @vote="$emit('submitVote', post)" 
               />
             </td>

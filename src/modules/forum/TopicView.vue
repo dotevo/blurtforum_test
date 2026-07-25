@@ -207,6 +207,8 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
                   <VoteButton 
                     :voted="hasVoted(activeTopic)" 
                     :count="activeTopic.vote_count" 
+                    :pending="!!activeTopic._pendingVote"
+                    :t="t"
                     @vote="emit('submitVote', activeTopic)" 
                     style="font-size: 16px;"
                   />

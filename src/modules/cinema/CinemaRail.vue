@@ -326,7 +326,17 @@ watch(() => props.payoutModal.show, (open) => { if (open) showNotifPanel.value =
   font-size: 14px;
   font-weight: 500;
 }
-.rail-item:hover, .rail-item.active, .rail-item:focus-visible, .rail-logo:focus-visible, .rail-toggle-btn:focus-visible { color: var(--brand); background: var(--surface-2); outline: none; }
+.rail-item:hover, .rail-item.active { color: var(--brand); background: var(--surface-2); outline: none; }
+/* D-pad/keyboard focus needs to look clearly different from hover/active,
+   not just the same background tint -- otherwise moving focus through the
+   rail with arrow keys is invisible (which item, if any, actually has it?
+   hover and "this panel is open" looked identical to "focused"). */
+.rail-item:focus-visible, .rail-logo:focus-visible, .rail-toggle-btn:focus-visible {
+  color: var(--brand);
+  background: var(--surface-2);
+  outline: none;
+  box-shadow: inset 3px 0 0 var(--brand), 0 0 12px 1px var(--brand);
+}
 .rail-item i { font-size: 18px; min-width: 20px; text-align: center; }
 .rail-badge {
   margin-left: auto;

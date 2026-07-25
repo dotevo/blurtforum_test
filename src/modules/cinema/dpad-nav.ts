@@ -31,7 +31,7 @@
  *                across cards; Left at the first column opens the rail;
  *                Escape also opens the rail.
  */
-import { state as playerState } from '../player/player';
+import { state as playerState, stopAll } from '../player/player';
 
 let installed = false;
 let isActive: () => boolean = () => false;
@@ -66,13 +66,29 @@ function isTypingTarget(el: HTMLElement | null): boolean {
   return false;
 }
 
+/** Native range inputs and custom sliders (role="slider", e.g. the cinema
+ *  seek bar) respond to Left/Right themselves by default -- which means
+ *  Left/Right can never move focus PAST one once it's focused. Instead,
+ *  Left/Right normally treat it as just another stop in the sequence
+ *  (moving on, like any button); only once Enter/Space explicitly "opens"
+ *  it does Left/Right start adjusting its value, and Enter/Space/Escape
+ *  closes it again. */
+let sliderEditMode = false;
+let editingSlider: HTMLElement | null = null;
+
 /** Elements that already do something sensible with Left/Right themselves:
- *  native range inputs, and custom sliders (role="slider", e.g. the cinema
- *  seek bar) with their own local Left/Right handler. */
+ *  - the seek bar (role="slider") always owns them -- it's a standalone
+ *    full-width control with no sibling buttons to navigate past, so
+ *    there's no ambiguity to resolve.
+ *  - the volume range input only owns them once explicitly opened for
+ *    editing (see sliderEditMode above) -- it sits inline among sibling
+ *    buttons in the controls row, where Left/Right is genuinely ambiguous
+ *    between "adjust the value" and "move to the next button". */
 function ownsHorizontalArrows(el: HTMLElement | null): boolean {
   if (!el) return false;
-  if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return true;
-  return el.getAttribute('role') === 'slider';
+  if (el.getAttribute('role') === 'slider') return true;
+  if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return sliderEditMode;
+  return false;
 }
 
 /** Forwards Enter/Space to whatever's focused, IF it wouldn't already
@@ -165,7 +181,13 @@ function handlePanelZone(e: KeyboardEvent, panel: HTMLElement): void {
 // ── RAIL zone ────────────────────────────────────────────────────────────
 function focusRailFirstItem(): void {
   const rail = document.querySelector<HTMLElement>('.cinema-rail');
-  if (rail) focusFirst(navigableWithin(rail));
+  if (!rail) return;
+  // The logo is the first item in DOM order but isn't a useful place to
+  // land by default -- skip straight to whatever's next (the "Videos"
+  // home link, in practice) and let logo remain reachable by navigating
+  // there deliberately instead of being the default entry point.
+  const items = navigableWithin(rail).filter(el => !el.classList.contains('rail-logo'));
+  focusFirst(items.length ? items : navigableWithin(rail));
 }
 
 function handleRailZone(e: KeyboardEvent, rail: HTMLElement): void {
@@ -200,6 +222,15 @@ function handlePlayerZone(e: KeyboardEvent): void {
 
   if (key === 'Escape') {
     e.preventDefault();
+    // The browse grid has no playback controls of any kind -- leaving
+    // fullscreen with something still playing (or, worse, an async init
+    // still in flight that's about to force .play() once it resolves, see
+    // mediaGeneration in player.ts) means there'd be nothing on screen to
+    // stop it with until fullscreen is reopened. Hard-stopping on the way
+    // out closes that gap entirely rather than trying to track every path
+    // that could leave something running unattended.
+    stopAll();
+    playerState.expanded = false;
     playerState.cinema = false;
     return;
   }
@@ -207,37 +238,70 @@ function handlePlayerZone(e: KeyboardEvent): void {
   const ae = document.activeElement as HTMLElement | null;
   if ((key === 'ArrowLeft' || key === 'ArrowRight') && ownsHorizontalArrows(ae)) return;
   if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return;
-  e.preventDefault();
 
   const sideActions = panelEl.querySelector<HTMLElement>('.bfp-cinema-side-actions');
   const controlsRow = panelEl.querySelector<HTMLElement>('.bfp-cinema-controls-row');
-  const zones = [sideActions, controlsRow].filter((z): z is HTMLElement => !!z);
-  if (!zones.length) return;
+  // Sits between the two above in the Up/Down chain -- visually it's the
+  // row directly above controls-row. A single focusable element (not a
+  // "zone" with its own Left/Right list), so it's just one more stop.
+  const progressBar = panelEl.querySelector<HTMLElement>('.bfp-cinema-progress');
+  const progressVisible = !!(progressBar && isVisible(progressBar));
 
-  const currentZone = ae ? zones.find(z => z.contains(ae)) : null;
-  if (!currentZone) { focusFirst(navigableWithin(zones[0])); return; }
-  const items = navigableWithin(currentZone);
-  const idx = ae ? items.indexOf(ae) : -1;
+  const inSideActions = !!(ae && sideActions?.contains(ae));
+  const inControlsRow = !!(ae && controlsRow?.contains(ae));
+  const onProgressBar = ae === progressBar;
 
-  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+  // Each zone's own axis matches its actual visual layout: the icon column
+  // is vertical (Up/Down), the bottom row is horizontal (Left/Right) --
+  // unlike the previous version, which used Left/Right for both and only
+  // Up/Down to switch zones, that didn't match how either zone actually
+  // looks on screen.
+  if (inSideActions) {
+    if (key === 'ArrowLeft' || key === 'ArrowRight') return; // not this zone's axis
+    e.preventDefault();
+    const items = navigableWithin(sideActions!);
+    const idx = items.indexOf(ae!);
+    if (idx === -1) { focusFirst(items); return; }
+    if (key === 'ArrowDown' && idx === items.length - 1) {
+      if (progressVisible) { progressBar!.focus({ preventScroll: true }); return; }
+      if (controlsRow) { focusFirst(navigableWithin(controlsRow)); return; }
+    }
+    const next = items[Math.max(0, Math.min(items.length - 1, idx + (key === 'ArrowDown' ? 1 : -1)))];
+    next.focus({ preventScroll: true });
+    return;
+  }
+
+  if (onProgressBar) {
+    if (key === 'ArrowLeft' || key === 'ArrowRight') return; // owned by handleProgressKeydown (seeking)
+    e.preventDefault();
+    if (key === 'ArrowUp' && sideActions) { focusFirst(navigableWithin(sideActions)); return; }
+    if (key === 'ArrowDown' && controlsRow) { focusFirst(navigableWithin(controlsRow)); return; }
+    return;
+  }
+
+  if (inControlsRow) {
+    if (key === 'ArrowUp') {
+      e.preventDefault();
+      if (progressVisible) { progressBar!.focus({ preventScroll: true }); return; }
+      if (sideActions) { focusFirst(navigableWithin(sideActions)); return; }
+      return;
+    }
+    if (key === 'ArrowDown') return; // nothing below the bottom row
+    e.preventDefault();
+    const items = navigableWithin(controlsRow!);
+    const idx = items.indexOf(ae!);
     if (idx === -1) { focusFirst(items); return; }
     const next = items[Math.max(0, Math.min(items.length - 1, idx + (key === 'ArrowRight' ? 1 : -1)))];
     next.focus({ preventScroll: true });
     return;
   }
 
-  // Up/Down: switch to the other zone, landing on whichever of its items
-  // sits closest horizontally to the one being left.
-  const otherZone = zones.find(z => z !== currentZone);
-  if (!otherZone) return;
-  const otherItems = navigableWithin(otherZone);
-  if (!otherItems.length) return;
-  if (idx === -1) { focusFirst(otherItems); return; }
-  const currentX = items[idx].getBoundingClientRect().left;
-  const closest = otherItems.reduce((best, el) =>
-    Math.abs(el.getBoundingClientRect().left - currentX) < Math.abs(best.getBoundingClientRect().left - currentX) ? el : best
-  );
-  closest.focus({ preventScroll: true });
+  // Focus isn't in any of the three yet (e.g. just entered the player) --
+  // land somewhere sensible regardless of which key was pressed.
+  e.preventDefault();
+  if (progressVisible) { progressBar!.focus({ preventScroll: true }); return; }
+  const firstZone = sideActions || controlsRow;
+  if (firstZone) focusFirst(navigableWithin(firstZone));
 }
 
 // ── GRID zone (CinemaIndex browse grid) ───────────────────────────────────
@@ -298,6 +362,30 @@ function handleKeydown(e: KeyboardEvent): void {
   const ae = document.activeElement as HTMLElement | null;
   if (key !== 'Escape' && isTypingTarget(ae)) return;
 
+  // Slider edit-mode toggle takes priority over everything else: while
+  // editing, Escape closes edit-mode (not whatever the current zone would
+  // otherwise do with Escape), and Enter/Space always toggles rather than
+  // being treated as "activate this button". Only the volume range input
+  // needs this -- the seek bar (role="slider") already owns Left/Right
+  // unconditionally (see ownsHorizontalArrows), nothing to toggle there.
+  const isVolumeSlider = ae?.tagName === 'INPUT' && (ae as HTMLInputElement).type === 'range';
+  if (isVolumeSlider) {
+    if (key === 'Enter' || key === ' ') {
+      e.preventDefault();
+      sliderEditMode = !sliderEditMode;
+      ae!.classList.toggle('dpad-editing', sliderEditMode);
+      editingSlider = sliderEditMode ? ae : null;
+      return;
+    }
+    if (key === 'Escape' && sliderEditMode) {
+      e.preventDefault();
+      sliderEditMode = false;
+      ae!.classList.remove('dpad-editing');
+      editingSlider = null;
+      return;
+    }
+  }
+
   const modal = getOpenModal();
   if (modal) { handleModalZone(e, modal); return; }
 
@@ -316,6 +404,14 @@ function handleKeydown(e: KeyboardEvent): void {
 function handleFocusIn(e: FocusEvent): void {
   if (!isActive()) return;
   const t = e.target as HTMLElement;
+  // Leaving the slider (by any means -- not just the explicit toggle-off)
+  // always drops edit-mode; it should never survive onto whatever's
+  // focused next.
+  if (editingSlider && t !== editingSlider) {
+    editingSlider.classList.remove('dpad-editing');
+    sliderEditMode = false;
+    editingSlider = null;
+  }
   if (!t.closest('.cinema-rail') && !t.closest('.cinema-side-panel')) {
     lastContentFocus = t;
   }

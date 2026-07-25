@@ -260,8 +260,26 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   <div ref="gridEl" class="cinema-index">
 
     <section class="cinema-hero" v-if="currentCard">
-      <div class="cinema-hero-backdrop"
-           :style="currentCard.track.cover ? { backgroundImage: `url(${currentCard.track.cover})` } : {}"></div>
+      <!-- Reuses the exact same component (and thus the exact same
+           thumbnail-resolution logic) as the card grid below, rather than
+           reading currentCard.track.cover directly. That field is only
+           ever populated synchronously for sources with a predictable
+           thumbnail URL pattern (YouTube); PeerTube's real thumbnail comes
+           from an async, proxied API call that ForumMedia.ce.vue makes and
+           keeps in its own internal state -- never written back to the
+           plain track object CinemaIndex builds -- so the hero showed
+           nothing for PeerTube even though the card right below it did. -->
+      <ForumMedia
+        :key="currentCard.post.author + '/' + currentCard.post.permlink"
+        class="cinema-hero-backdrop"
+        :media="currentCard.track"
+        mode="card"
+        hide-buttons
+        :author="currentCard.post.author"
+        :permlink="currentCard.post.permlink"
+        :title="currentCard.post.title"
+        :t="t"
+      />
       <div class="cinema-hero-content">
         <h1 class="cinema-hero-title">{{ currentCard.post.title }}</h1>
         <div class="cinema-hero-meta">
@@ -373,7 +391,7 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
 }
 .cinema-hero-backdrop {
   position: absolute; inset: 0;
-  background: var(--surface-2) center / cover no-repeat;
+  display: block;
   filter: brightness(0.6);
   /* Real alpha transparency, not a solid-color fade -- this is what
      actually lets whatever's behind (the fixed hero sits on top of the
@@ -381,6 +399,18 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
      flat color that only works if it happens to match exactly. */
   -webkit-mask-image: linear-gradient(to top, transparent 0, black 100px, black 100%);
   mask-image: linear-gradient(to top, transparent 0, black 100px, black 100%);
+}
+/* ForumMedia's own .media-placeholder is sized for a small 16:9 grid tile
+   (width:100% + aspect-ratio, so its height is derived from its own width,
+   not from its container). Reused here as a full-bleed hero banner instead,
+   it needs to actually fill the fixed-height hero section — hence the
+   :deep() override, scoped to just this usage via the wrapping class. */
+.cinema-hero-backdrop :deep(.media-placeholder) {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: unset;
+  border-radius: 0;
+  border: none;
 }
 .cinema-hero::after {
   /* Separate dark tint (not a mask) purely for text legibility where the
@@ -435,7 +465,10 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   gap: 14px;
   overflow-x: auto;
   overflow-y: visible;
-  padding: 10px 10px 10px 6px;
+  /* Enough room on every side for the focus/hover scale-up (1.1x/1.04x
+     transform, growing from center) to not visually clip against this
+     row's own edges. */
+  padding: 24px 20px;
 }
 .cinema-cards::-webkit-scrollbar { height: 6px; }
 .cinema-cards::-webkit-scrollbar-thumb { background: var(--surface-border); border-radius: 3px; }

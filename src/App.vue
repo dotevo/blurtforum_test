@@ -552,8 +552,16 @@ const {
     @open-login-modal="openLoginModal(); showSwitchAccountModal = false"
   />
 
+  <!-- Both of these render inside CinemaRail's side panel instead when
+       cinemaMode is on (see CinemaRail.vue) -- gated on cinemaMode itself,
+       not player.state.cinema (fullscreen video playing), since CinemaRail
+       is mounted whenever cinemaMode is on regardless of whether anything
+       is actually playing. Gating on player.state.cinema here left both
+       the modal AND the panel showing at once whenever a panel was opened
+       while just browsing (not watching), since player.state.cinema was
+       false in that case and this guard let the modal through too. -->
   <PayoutModal
-    v-if="payoutModal.show && !player.state.cinema"
+    v-if="payoutModal.show && !cinemaMode"
     :payout-modal="payoutModal"
     :t="t"
     :fmt-date="fmtDate"
@@ -562,7 +570,7 @@ const {
   />
 
   <NotifModal
-    v-if="notifModal.show && !player.state.cinema"
+    v-if="notifModal.show && !cinemaMode"
     :notif-modal="notifModal"
     :auth="auth"
     :t="t"

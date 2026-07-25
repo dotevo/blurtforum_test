@@ -290,13 +290,14 @@ export const registerWireExtension = (factory: (wire: any) => any): void => WTPo
 let audioObj: HTMLAudioElement | null = null;
 let ytPlayer: YTPlayer | null = null;
 let ptPlayer: PTPlayer | null = null;
-// Bumped every time playback is torn down (stopAll()). initPT()'s retry
-// loop and its .ready callback both capture this at the start and check it
-// again before doing anything that affects playback state -- see stopAll()
-// below and initPT() further down for why: without this, an initPT() retry
-// chain still in flight when the user closes/switches away survives past
-// stopAll(), and later forces .play() on a track the user already left.
-let ptGeneration = 0;
+// Bumped every time playback is torn down (stopAll()). Any async
+// initialization/ready callback that could eventually call .play() on its
+// own (initPT()'s retry loop + its .ready callback, initYT()'s onReady)
+// captures this at the start and checks it again right before doing so --
+// see stopAll() below for why: without this, one of those chains still in
+// flight when the user closes/switches away survives past stopAll(), and
+// later forces playback to resume on a track the user already left.
+let mediaGeneration = 0;
 let client: any = null;
 let lastLoadedSourceId: string | null = null;
 
@@ -842,12 +843,17 @@ const loadYTAPI = (): Promise<void> => {
 };
 
 const initYT = async (): Promise<void> => {
+  const generation = mediaGeneration;
   await loadYTAPI();
   ytPlayer = new window.YT!.Player('bf-yt-player-target', {
     height: '100%', width: '100%',
     playerVars: { autoplay: 1, controls: (CINEMA_HIDE_NATIVE_CONTROLS && state.cinema) ? 0 : 1, disablekb: (CINEMA_HIDE_NATIVE_CONTROLS && state.cinema) ? 1 : 0, modestbranding: 1, rel: 0 },
     events: {
       onReady: (event: { target: YTPlayer }) => {
+        // loadYTAPI() and the YT.Player constructor are both async (script
+        // load + the iframe's own handshake) -- stopAll() may well have run
+        // in the meantime, same reasoning as initPT()'s generation check.
+        if (generation !== mediaGeneration) return;
         event.target.setVolume(state.volume * 100);
         if (currentSource.value?.type === 'youtube') event.target.loadVideoById(currentSource.value.id);
       },
@@ -884,10 +890,10 @@ const initYT = async (): Promise<void> => {
 // null — which silently breaks every transport control (play/pause/seek/
 // volume all guard on `if (ptPlayer)` and just no-op). Retry briefly
 // instead of giving up after one shot.
-const initPT = (retriesLeft = 15, generation = ptGeneration): void => {
+const initPT = (retriesLeft = 15, generation = mediaGeneration): void => {
   // Superseded (stopAll() ran, e.g. the user closed/switched away) while
   // this retry chain was waiting -- stop, there's nothing left to attach to.
-  if (generation !== ptGeneration) return;
+  if (generation !== mediaGeneration) return;
   if (!currentSource.value || currentSource.value.type !== 'peertube') return;
 
   const iframe = document.getElementById('bf-pt-player-iframe') as HTMLIFrameElement;
@@ -917,7 +923,7 @@ const initPT = (retriesLeft = 15, generation = ptGeneration): void => {
        // whatever the user has since closed/paused/switched away from is
        // exactly the "content unpauses itself a moment after leaving" bug
        // this whole generation counter exists to prevent.
-       if (generation !== ptGeneration) return;
+       if (generation !== mediaGeneration) return;
        state.loading = false;
        ptPlayer!.setVolume(state.volume);
        ptPlayer!.play(); // Auto-play via API as in legacy
@@ -956,8 +962,8 @@ const startYTProgress = (): void => {
 
 const stopYTProgress = (): void => { if (progressTimer) clearInterval(progressTimer); };
 
-const stopAll = (): void => {
-  ptGeneration++;
+export const stopAll = (): void => {
+  mediaGeneration++;
   if (errorTimer) { clearTimeout(errorTimer); errorTimer = null; }
   if (audioObj) { audioObj.pause(); audioObj.src = ''; }
   if (ytPlayer?.stopVideo) { try { ytPlayer.stopVideo(); } catch { /* ignore */ } }

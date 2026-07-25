@@ -5,7 +5,7 @@ import WebtorrentVideo from './WebtorrentVideo.vue';
 import WebtorrentStorage from './WebtorrentStorage.vue';
 import WebtorrentInfoTab from './WebtorrentInfoTab.vue';
 import type { MediaTrack, BFPlayerAPI, Playlist } from '../types';
-import { currentSource, CINEMA_HIDE_NATIVE_CONTROLS } from '../player';
+import { currentSource, CINEMA_HIDE_NATIVE_CONTROLS, stopAll } from '../player';
 
 const props = defineProps<{
   player: BFPlayerAPI;
@@ -25,9 +25,14 @@ watch(() => props.player.state.expanded, (isExpanded) => {
 const handleResize = () => { vw.value = window.innerWidth; };
 
 function exitCinema(): void {
-  // No PiP yet -- leaving fullscreen shouldn't leave something playing
-  // invisibly in the background, so pause first.
-  if (props.player.state.playing) props.player.togglePlay();
+  // No PiP yet -- leaving fullscreen shouldn't leave something playing (or
+  // about to start -- see mediaGeneration in player.ts) invisibly in the
+  // background with nothing on screen able to stop it. A straight
+  // togglePlay() isn't enough here: it only actually pauses once the
+  // type-specific player object exists, and while that's still
+  // initializing it just kicks off another init attempt instead -- stopAll()
+  // is a real, unconditional stop.
+  stopAll();
   props.player.state.expanded = false;
   props.player.state.cinema = false;
 }
@@ -636,11 +641,14 @@ onUnmounted(() => {
 
         <!-- Bottom chrome: always present in cinema mode as a scaffold, even
              for sources that don't use our own play/pause/progress (e.g.
-             WebTorrent) -- #bfp-cinema-extra-controls is a stable Teleport
-             target a source-specific component can render its own controls
+             WebTorrent) -- #bfp-cinema-extra-controls and
+             #bfp-cinema-extra-progress are stable Teleport targets a
+             source-specific component can render its own controls/bars
              into (see WebtorrentVideo.vue) instead of reimplementing an
              overlay + auto-hide timer of its own. -->
         <div v-if="player.state.cinema" class="bfp-cinema-controls">
+          <div id="bfp-cinema-extra-progress" class="bfp-cinema-extra-progress"></div>
+
           <div
             v-if="showOwnCinemaControls"
             class="bfp-cinema-progress"
@@ -1321,6 +1329,17 @@ onUnmounted(() => {
   width: 12px; height: 12px;
   background: var(--bfp-accent); border-radius: 50%; border: none;
 }
+/* D-pad focus on a plain range input looks identical to unfocused
+   otherwise -- and "editing" (Enter pressed, Left/Right now adjusts the
+   value instead of moving focus elsewhere, see dpad-nav.ts) needs its own
+   distinct, unmissable state so it's obvious arrows won't move on. */
+.bfp-vol-slider:focus-visible { box-shadow: 0 0 0 3px var(--bfp-accent); border-radius: 4px; }
+.bfp-vol-slider.dpad-editing {
+  background: rgba(255,255,255,0.3);
+  box-shadow: 0 0 0 3px var(--bfp-accent), 0 0 14px 2px var(--bfp-accent);
+}
+.bfp-vol-slider.dpad-editing::-webkit-slider-thumb { width: 16px; height: 16px; }
+.bfp-vol-slider.dpad-editing::-moz-range-thumb { width: 16px; height: 16px; }
 .bfp-expand-btn { font-size: 13px; padding: 6px 7px; }
 .bfp-expand-btn.active { color: var(--bfp-accent); }
 
@@ -1449,6 +1468,11 @@ onUnmounted(() => {
   gap: 10px;
   margin-left: auto;
 }
+/* Sits above the main progress bar -- e.g. WebTorrent's piece map (see
+   WebtorrentVideo.vue), a full-width supplementary bar, not more buttons in
+   a row, hence its own target rather than sharing bfp-cinema-extra-controls. */
+.bfp-cinema-extra-progress:empty { display: none; }
+.bfp-cinema-extra-progress { width: 100%; margin-bottom: 8px; }
 .bfp-cinema-time { color: #ddd; font-size: 12px; margin-left: 6px; }
 .bfp-cinema-controls .bfp-btn { color: #fff; }
 .bfp-cinema-controls .bfp-vol-slider { width: 80px; }

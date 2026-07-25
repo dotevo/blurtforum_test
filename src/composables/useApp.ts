@@ -764,6 +764,23 @@ export function useApp() {
   const bcQueueExpanded = ref(false);
   let _bcId = 0;
 
+  // Safety net: no matter what happens inside waitAndReload (thrown errors,
+  // unawaited calls, future bugs...), a queue entry should never be able to
+  // survive forever and force the user to refresh the page. This watchdog
+  // sweeps anything older than STALE_MS every SWEEP_MS, independent of the
+  // normal completion path below.
+  const BC_QUEUE_STALE_MS = 130000; // a bit above the 90s + 10s worst case in waitAndReload
+  const BC_QUEUE_SWEEP_MS = 15000;
+  setInterval(() => {
+    if (bcWaitQueue.value.length === 0) return;
+    const now = Date.now();
+    const fresh = bcWaitQueue.value.filter(e => now - e.createdAt < BC_QUEUE_STALE_MS);
+    if (fresh.length !== bcWaitQueue.value.length) {
+      bcWaitQueue.value = fresh;
+      if (bcWaitQueue.value.length === 0) bcQueueExpanded.value = false;
+    }
+  }, BC_QUEUE_SWEEP_MS);
+
   const refreshUser = async (): Promise<void> => {
     if (!auth.user) return;
     try {
@@ -781,82 +798,104 @@ export function useApp() {
 
   const waitAndReload = async (isTopic: boolean, author: string | null = null, permlink: string | null = null, pollFn: ((c: RawPost) => boolean) | null = null, label: string | null = null): Promise<void> => {
     const id = ++_bcId;
-    const entry = reactive<BcQueueEntry>({ id, label: label || t('waitingForBlock'), progress: 0 });
+    const entry = reactive<BcQueueEntry>({ id, label: label || t('waitingForBlock'), progress: 0, createdAt: Date.now() });
     bcWaitQueue.value.push(entry);
 
-    const maxMs = 90000; const pollMs = 3000; const start = Date.now();
-    let lastContent: RawPost | null = null; let found = false;
-    const isReal = (c: RawPost | null): c is RawPost => !!(c?.author && c.body?.trim().length && c.created !== '1970-01-01T00:00:00');
-    const isWaitingForReply = !!(author && permlink && isTopic && activeTopic.value && !(author === activeTopic.value.author && permlink === activeTopic.value.permlink));
+    // Whatever happens below (success, RPC never catching up, or an
+    // unexpected exception), this entry must disappear from the queue.
+    // The watchdog above is only a last-resort backstop — this `finally`
+    // is the primary guarantee and runs immediately instead of waiting
+    // for the sweep interval.
+    try {
+      const maxMs = 90000; const pollMs = 3000; const start = Date.now();
+      let lastContent: RawPost | null = null; let found = false;
+      const isReal = (c: RawPost | null): c is RawPost => !!(c?.author && c.body?.trim().length && c.created !== '1970-01-01T00:00:00');
+      const isWaitingForReply = !!(author && permlink && isTopic && activeTopic.value && !(author === activeTopic.value.author && permlink === activeTopic.value.permlink));
 
-    if (author && permlink) {
-      const opt = replies.value.find(r => r._pending && r.author === author && r.permlink === permlink);
-      if (opt) opt._pending = 'syncing';
-      while (Date.now() - start < maxMs) {
-        entry.progress = Math.min(((Date.now() - start) / maxMs) * 85, 85);
-        await new Promise(r => setTimeout(r, pollMs));
+      if (author && permlink) {
+        const opt = replies.value.find(r => r._pending && r.author === author && r.permlink === permlink);
+        if (opt) opt._pending = 'syncing';
+        while (Date.now() - start < maxMs) {
+          entry.progress = Math.min(((Date.now() - start) / maxMs) * 85, 85);
+          await new Promise(r => setTimeout(r, pollMs));
+          try {
+            const c = await Blockchain.getContent(rpc.dataClient.value, author, permlink);
+            if (isReal(c)) { lastContent = c; if (!pollFn || pollFn(c)) { found = true; break; } }
+          } catch { /* ignore */ }
+          if (!found) entry.label = t('syncingWithBlockchain') || 'Waiting for data node synchronization…';
+        }
+        if (found && opt) opt._pending = 'indexing';
+        if (!found) {
+          entry.progress = 88; entry.label = 'Still syncing… final attempt';
+          await new Promise(r => setTimeout(r, 10000));
+          try { const c = await Blockchain.getContent(rpc.dataClient.value, author, permlink); if (isReal(c)) { lastContent = c; found = true; } } catch { /* ignore */ }
+        }
+      } else {
+        while (Date.now() - start < 4000) { entry.progress = Math.min(((Date.now() - start) / 4000) * 85, 85); await new Promise(r => setTimeout(r, 300)); }
+      }
+
+      entry.progress = 92;
+      if (isTopic && activeTopic.value) {
+        const maxReplyRetries = isWaitingForReply ? 15 : 1;
+        let retries = 0;
+        while (retries < maxReplyRetries) {
+          await loadReplies(activeTopic.value.author, activeTopic.value.permlink, true);
+          entry.progress = 92 + Math.min((retries / maxReplyRetries) * 6, 6);
+          if (isWaitingForReply) {
+            const targetId = ((author ?? '') + '/' + (permlink ?? '')).toLowerCase();
+            const existsOnServer = replies.value.some(r => !r._pending && (r.author + '/' + r.permlink).toLowerCase() === targetId);
+            if (existsOnServer) break;
+            if (retries < maxReplyRetries - 1) entry.label = `${t('indexing') || 'Indexing…'} (${retries + 1}/${maxReplyRetries})`;
+            retries++; await new Promise(r => setTimeout(r, 4000));
+          } else break;
+        }
+        const finalCheckId = ((author ?? '') + '/' + (permlink ?? '')).toLowerCase();
+        const pendingRef = replies.value.find(r => r._pending && (r.author + '/' + r.permlink).toLowerCase() === finalCheckId);
+        if (pendingRef) delete pendingRef._pending;
+      }
+
+      if (lastContent) {
+        const normalized = normalizePost(lastContent);
+        if (activeTopic.value?.author === normalized.author && activeTopic.value?.permlink === normalized.permlink) {
+          activeTopic.value = { ...activeTopic.value, ...normalized, _pendingVote: false };
+          markTopicAsRead(activeTopic.value);
+        }
+        // Also update in profileUser.posts if we are in profile view
+        if (view.value === 'profile' && profileUser.username === normalized.author) {
+          const idx = profileUser.posts.findIndex(p => p.permlink === normalized.permlink);
+          if (idx >= 0) {
+            profileUser.posts[idx] = { ...normalized, _pendingVote: false };
+          }
+        }
+      } else if (activeTopic.value) {
         try {
-          const c = await Blockchain.getContent(rpc.dataClient.value, author, permlink);
-          if (isReal(c)) { lastContent = c; if (!pollFn || pollFn(c)) { found = true; break; } }
+          const fresh = await rpc.dataClient.value.condenser.getContent(activeTopic.value.author, activeTopic.value.permlink);
+          if (isReal(fresh)) { activeTopic.value = { ...activeTopic.value, ...normalizePost(fresh), _pendingVote: false }; markTopicAsRead(activeTopic.value); }
         } catch { /* ignore */ }
-        if (!found) entry.label = t('syncingWithBlockchain') || 'Waiting for data node synchronization…';
       }
-      if (found && opt) opt._pending = 'indexing';
-      if (!found) {
-        entry.progress = 88; entry.label = 'Still syncing… final attempt';
-        await new Promise(r => setTimeout(r, 10000));
-        try { const c = await Blockchain.getContent(rpc.dataClient.value, author, permlink); if (isReal(c)) { lastContent = c; found = true; } } catch { /* ignore */ }
-      }
-    } else {
-      while (Date.now() - start < 4000) { entry.progress = Math.min(((Date.now() - start) / 4000) * 85, 85); await new Promise(r => setTimeout(r, 300)); }
-    }
 
-    entry.progress = 92;
-    if (isTopic && activeTopic.value) {
-      const maxReplyRetries = isWaitingForReply ? 15 : 1;
-      let retries = 0;
-      while (retries < maxReplyRetries) {
-        await loadReplies(activeTopic.value.author, activeTopic.value.permlink, true);
-        entry.progress = 92 + Math.min((retries / maxReplyRetries) * 6, 6);
-        if (isWaitingForReply) {
-          const targetId = ((author ?? '') + '/' + (permlink ?? '')).toLowerCase();
-          const existsOnServer = replies.value.some(r => !r._pending && (r.author + '/' + r.permlink).toLowerCase() === targetId);
-          if (existsOnServer) break;
-          if (retries < maxReplyRetries - 1) entry.label = `${t('indexing') || 'Indexing…'} (${retries + 1}/${maxReplyRetries})`;
-          retries++; await new Promise(r => setTimeout(r, 4000));
-        } else break;
-      }
-      const finalCheckId = ((author ?? '') + '/' + (permlink ?? '')).toLowerCase();
-      const pendingRef = replies.value.find(r => r._pending && (r.author + '/' + r.permlink).toLowerCase() === finalCheckId);
-      if (pendingRef) delete pendingRef._pending;
-    }
-
-    if (lastContent) {
-      const normalized = normalizePost(lastContent);
-      if (activeTopic.value?.author === normalized.author && activeTopic.value?.permlink === normalized.permlink) {
-        activeTopic.value = { ...activeTopic.value, ...normalized };
-        markTopicAsRead(activeTopic.value);
-      }
-      // Also update in profileUser.posts if we are in profile view
-      if (view.value === 'profile' && profileUser.username === normalized.author) {
-        const idx = profileUser.posts.findIndex(p => p.permlink === normalized.permlink);
-        if (idx >= 0) {
-          profileUser.posts[idx] = normalized;
+      entry.progress = 100;
+      await refreshUser();
+      await new Promise(r => setTimeout(r, 800));
+    } finally {
+      // Clear any leftover optimistic-vote flag for the author/permlink this
+      // call was waiting on, regardless of whether it was ever confirmed —
+      // otherwise a vote on content the RPC never caught up on would leave
+      // the vote button spinning forever (same class of bug as the queue
+      // panel getting stuck).
+      if (author && permlink) {
+        if (activeTopic.value?.author === author && activeTopic.value?.permlink === permlink) activeTopic.value._pendingVote = false;
+        const r = replies.value.find(x => x.author === author && x.permlink === permlink);
+        if (r) r._pendingVote = false;
+        if (view.value === 'profile' && profileUser.username === author) {
+          const p = profileUser.posts.find(x => x.permlink === permlink);
+          if (p) p._pendingVote = false;
         }
       }
-    } else if (activeTopic.value) {
-      try {
-        const fresh = await rpc.dataClient.value.condenser.getContent(activeTopic.value.author, activeTopic.value.permlink);
-        if (isReal(fresh)) { activeTopic.value = { ...activeTopic.value, ...normalizePost(fresh) }; markTopicAsRead(activeTopic.value); }
-      } catch { /* ignore */ }
+      const idx = bcWaitQueue.value.findIndex(e => e.id === id);
+      if (idx >= 0) bcWaitQueue.value.splice(idx, 1);
+      if (bcWaitQueue.value.length === 0) bcQueueExpanded.value = false;
     }
-
-    entry.progress = 100;
-    await refreshUser();
-    await new Promise(r => setTimeout(r, 800));
-    const idx = bcWaitQueue.value.findIndex(e => e.id === id);
-    if (idx >= 0) bcWaitQueue.value.splice(idx, 1);
-    if (bcWaitQueue.value.length === 0) bcQueueExpanded.value = false;
   };
 
   // ── Beneficiaries ───────────────────────────────────────────────────────── (now in usePostForm)

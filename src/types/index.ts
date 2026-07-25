@@ -91,6 +91,7 @@ export interface Post {
   depth?: number;
   _qOpen?: boolean;
   _pending?: string | boolean;
+  _pendingVote?: boolean;
   lastActivityTs?: number;
 }
 
@@ -185,6 +186,7 @@ export interface BcQueueEntry {
   id: number;
   label: string;
   progress: number;
+  createdAt: number;
 }
 
 // Community returned from bridge list_communities — has many optional fields

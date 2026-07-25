@@ -300,16 +300,23 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
     </div>
 
     <!-- Downloaded/to-download piece map — the bar the user liked from the
-         standalone PoC, now wired into the real player's UI. Fixed-height
-         sibling of .wtv-video-area (not stacked on top of it), so it's
-         always visible under the video instead of overflowing off-screen. -->
-    <WebtorrentPieceMap
-      v-if="isWebtorrent && infoHash != null && activeFileIndex != null"
-      :info-hash="infoHash"
-      :file-index="activeFileIndex"
-      :t="props.t"
-      @seek="seekToFraction"
-    />
+         standalone PoC, now wired into the real player's UI. In the docked
+         (non-cinema) layout it's a fixed-height sibling of .wtv-video-area,
+         always visible under the video. In cinema mode that layout doesn't
+         apply (the video area fills the screen, leaving no room for a
+         sibling below it) -- so it teleports into the same
+         #bfp-cinema-extra-progress slot the main progress bar sits next to,
+         same reasoning as .wtv-controls teleporting into
+         #bfp-cinema-extra-controls above. -->
+    <Teleport to="#bfp-cinema-extra-progress" :disabled="!playerState.cinema">
+      <WebtorrentPieceMap
+        v-if="isWebtorrent && infoHash != null && activeFileIndex != null"
+        :info-hash="infoHash"
+        :file-index="activeFileIndex"
+        :t="props.t"
+        @seek="seekToFraction"
+      />
+    </Teleport>
   </div>
 </template>
 

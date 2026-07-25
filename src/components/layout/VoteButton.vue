@@ -1,7 +1,9 @@
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   voted: boolean;
   count: number;
+  pending?: boolean;
+  t?: (k: string) => string;
 }>();
 
 const emit = defineEmits<{
@@ -10,15 +12,17 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <span 
-    class="vote-btn" 
-    :class="{ active: voted }" 
+  <span
+    class="vote-btn"
+    :class="{ active: voted, pending: pending }"
     role="button"
     tabindex="0"
+    :title="pending ? (props.t ? props.t('syncing') : 'blockchain…') : undefined"
     @click.stop="emit('vote')"
     @keydown.enter.space.stop.prevent="emit('vote')"
   >
-    <i class="fa-solid fa-caret-up"></i>
+    <i v-if="pending" class="fa-solid fa-circle-notch fa-spin vote-pending-icon"></i>
+    <i v-else class="fa-solid fa-caret-up"></i>
     <span class="vote-count">{{ count }}</span>
   </span>
 </template>
@@ -40,7 +44,9 @@ const emit = defineEmits<{
 }
 .vote-btn:hover { color: var(--brand); transform: scale(1.1); background: var(--surface-4); }
 .vote-btn.active { color: var(--state-active); filter: drop-shadow(0 0 3px var(--state-active)); transform: scale(1.1); font-weight: bold; }
+.vote-btn.pending { opacity: 0.75; }
 .vote-btn i { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2)); }
+.vote-pending-icon { color: var(--state-active); }
 
 .vote-count {
   font-size: 10px;

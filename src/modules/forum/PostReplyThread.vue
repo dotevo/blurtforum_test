@@ -224,6 +224,8 @@ const handleLinkClick = (event: MouseEvent) => {
                   <VoteButton
                     :voted="hasVoted(r)"
                     :count="r.vote_count"
+                    :pending="!!r._pendingVote"
+                    :t="t"
                     @vote="emit('submitVote', r)"
                   />
                 </div>

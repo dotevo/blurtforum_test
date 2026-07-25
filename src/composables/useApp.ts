@@ -1460,22 +1460,31 @@ export function useApp() {
       }
     }
 
-    loadData().then(() => {
-      if (!comm && (!viewParam || viewParam === 'index') && !forumParam) {
-        const lastForumId = localStorage.getItem('bf_last_forum_id');
-        if (lastForumId) {
-          for (const cat of forumStructure.value) {
-            const f = cat.forums.find(forum => forum.id === lastForumId);
-            if (f) { openForum(f); break; }
+    if (cinemaMode.value) {
+      // CinemaIndex.vue fetches its own content independently and never
+      // reads forumStructure/the topic listing loadData() populates -- in
+      // cinema mode this call (and the "loading community" state visible
+      // while it runs) was pure waste, and the last-viewed-forum
+      // restoration right after it is a classic-mode-only concept anyway.
+      handleUrlChange();
+    } else {
+      loadData().then(() => {
+        if (!comm && (!viewParam || viewParam === 'index') && !forumParam) {
+          const lastForumId = localStorage.getItem('bf_last_forum_id');
+          if (lastForumId) {
+            for (const cat of forumStructure.value) {
+              const f = cat.forums.find(forum => forum.id === lastForumId);
+              if (f) { openForum(f); break; }
+            }
           }
         }
-      }
-      handleUrlChange();
-      // NOTE: global activity polling is started/stopped by <GlobalActivity>'s
-      // own onMounted/onUnmounted (see components/layout/GlobalActivity.vue).
-      // Not triggered here so that simply not rendering the component (as in
-      // cinema mode) is enough to stop the RPC calls, no cinemaMode checks needed.
-    });
+        handleUrlChange();
+        // NOTE: global activity polling is started/stopped by <GlobalActivity>'s
+        // own onMounted/onUnmounted (see components/layout/GlobalActivity.vue).
+        // Not triggered here so that simply not rendering the component (as in
+        // cinema mode) is enough to stop the RPC calls, no cinemaMode checks needed.
+      });
+    }
 
     setInterval(() => {
       if (auth.user) {

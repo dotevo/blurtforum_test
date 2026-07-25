@@ -31,7 +31,7 @@
  *                across cards; Left at the first column opens the rail;
  *                Escape also opens the rail.
  */
-import { state as playerState, stopAll } from '../player/player';
+import { state as playerState, stopAll, showCinemaControls } from '../player/player';
 
 let installed = false;
 let isActive: () => boolean = () => false;
@@ -91,11 +91,19 @@ function ownsHorizontalArrows(el: HTMLElement | null): boolean {
   return false;
 }
 
-/** Forwards Enter/Space to whatever's focused, IF it wouldn't already
- *  activate on its own (native button/link/range do; a div or span made
- *  focusable via tabindex for something like a card or list row doesn't). */
+/** Activates whatever's focused on Enter/Space. Explicit and unconditional
+ *  (always calls click()/showPicker()) rather than relying on the browser's
+ *  own "Enter activates a focused button" behavior firing through on its
+ *  own -- that depends on nothing upstream having called preventDefault(),
+ *  which isn't a safe assumption with a capture-phase listener in the mix,
+ *  and doesn't apply at all to <select> (Enter doesn't open a native
+ *  dropdown in most browsers; showPicker() is the actual API for that). */
 function activateFocused(el: HTMLElement): void {
-  if (el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'INPUT') return;
+  if (el.tagName === 'SELECT') {
+    (el as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+    return;
+  }
+  if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return;
   el.click();
 }
 
@@ -235,6 +243,12 @@ function handlePlayerZone(e: KeyboardEvent): void {
     return;
   }
 
+  if (key === 'Enter' || key === ' ') {
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && panelEl.contains(ae)) { e.preventDefault(); activateFocused(ae); }
+    return;
+  }
+
   const ae = document.activeElement as HTMLElement | null;
   if ((key === 'ArrowLeft' || key === 'ArrowRight') && ownsHorizontalArrows(ae)) return;
   if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return;
@@ -361,6 +375,14 @@ function handleKeydown(e: KeyboardEvent): void {
 
   const ae = document.activeElement as HTMLElement | null;
   if (key !== 'Escape' && isTypingTarget(ae)) return;
+
+  // Auto-hidden cinema controls only ever came back via mousemove -- D-pad/
+  // keyboard activity is just as much "the user is doing something" and
+  // needs to reset the same timer, or arrows/Enter/Escape on a
+  // faded-out-but-still-technically-focused button (opacity:0 doesn't blur
+  // it) look like they do nothing at all with no way to bring anything back
+  // on-screen short of grabbing a mouse.
+  if (playerState.cinema) showCinemaControls();
 
   // Slider edit-mode toggle takes priority over everything else: while
   // editing, Escape closes edit-mode (not whatever the current zone would

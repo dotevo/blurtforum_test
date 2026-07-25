@@ -387,7 +387,7 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
 @media (max-width: 768px) {
   .cinema-hero { left: 0; height: var(--cinema-hero-h-mobile, 32vh); min-height: var(--cinema-hero-h-min-mobile, 220px); }
   .cinema-index { padding-top: calc(var(--cinema-hero-h-mobile, 32vh) + 20px); }
-  .cinema-card { scroll-margin-top: calc(var(--cinema-hero-h-mobile, 32vh) + 20px); }
+  .cinema-card { scroll-margin-top: calc(var(--cinema-hero-h-mobile, 32vh) + 20px + 50px); }
 }
 .cinema-hero-backdrop {
   position: absolute; inset: 0;
@@ -485,8 +485,11 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
      var(--cinema-hero-h) of the viewport regardless of scroll position.
      scrollIntoView() has no idea that space is occupied -- without this,
      navigating back up to the first row could scroll a card to the very
-     top of the viewport, which is exactly where the hero then covers it. */
-  scroll-margin-top: calc(var(--cinema-hero-h, 40vh) + 24px);
+     top of the viewport, which is exactly where the hero then covers it.
+     The extra +50px accounts for the row's own title (h2 + margin) sitting
+     above the card, which would otherwise still end up hidden even though
+     the card itself was correctly visible. */
+  scroll-margin-top: calc(var(--cinema-hero-h, 40vh) + 24px + 50px);
 }
 .cinema-card:hover { transform: scale(1.04); outline: none; }
 .cinema-card:focus-visible {

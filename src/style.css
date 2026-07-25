@@ -1482,6 +1482,16 @@ a:hover { color: var(--link-hover-color); text-decoration: underline; }
   border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
+/* Cinema mode is a full-bleed, edge-to-edge experience -- the classic
+   layout's centered "card on a page" treatment doesn't apply once the rail
+   replaces normal site chrome. */
+#app.cinema-active {
+  max-width: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
  
 /* ===== CONTENT AREA ===== */
 .content { padding: 15px; }

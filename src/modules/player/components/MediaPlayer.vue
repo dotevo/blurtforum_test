@@ -646,7 +646,7 @@ onUnmounted(() => {
              source-specific component can render its own controls/bars
              into (see WebtorrentVideo.vue) instead of reimplementing an
              overlay + auto-hide timer of its own. -->
-        <div v-if="player.state.cinema" class="bfp-cinema-controls">
+        <div v-show="player.state.cinema" class="bfp-cinema-controls">
           <div id="bfp-cinema-extra-progress" class="bfp-cinema-extra-progress"></div>
 
           <div

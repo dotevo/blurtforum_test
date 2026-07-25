@@ -118,7 +118,8 @@ const {
 <div
   :class="{
     'has-player-active': player.state.active && !player.state.minimized,
-    'has-player-expanded': player.state.active && player.state.expanded && !player.state.minimized
+    'has-player-expanded': player.state.active && player.state.expanded && !player.state.minimized,
+    'cinema-active': cinemaMode
   }"
   :style="{ paddingBottom: (player.state.active && !player.state.minimized) ? (player.state.expanded ? (player.state.expandedHeight + 20) + 'px' : '120px') : '' }"
 >

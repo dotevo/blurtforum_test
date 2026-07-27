@@ -987,7 +987,17 @@ export const stopAll = (): void => {
     console.log('[BFPlayer] stopAll: pausing download for', wtActiveInfoHash, '(torrent stays in the pool and keeps seeding)');
     // Stop pulling new pieces for whatever we were just watching — but
     // leave it in the pool so it keeps seeding whatever's already down.
-    WTPool.pauseDownload(wtActiveInfoHash);
+    // Wrapped: torrent-lib.js's own streamURL access is now guarded at the
+    // source (see _safeStreamURL there), but this call crosses into a
+    // third-party library (webtorrent) we don't fully control — if
+    // anything else in there ever throws, stopAll() should still finish
+    // resetting player state below rather than abort mid-cleanup and leave
+    // the UI stuck thinking something is still playing.
+    try {
+      WTPool.pauseDownload(wtActiveInfoHash);
+    } catch (e) {
+      console.warn('[BFPlayer] stopAll: pauseDownload threw, continuing cleanup anyway —', e);
+    }
     wtActiveInfoHash = null;
     wtActiveFileIndex.value = null;
     resetWtAudioTrackState();

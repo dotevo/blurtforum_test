@@ -621,13 +621,44 @@ export class TorrentLibrary extends Emitter {
 
   // Registers/unregisters a file's streamURL so incoming SW telemetry can be
   // mapped back to (infoHash, fileIndex, pieces). Called from attach/detach.
+  //
+  // IMPORTANT: webtorrent's `file.streamURL` is not a plain property that's
+  // simply undefined when unset — it's a GETTER that THROWS ("No server
+  // created") if the client's internal HTTP server was never created (e.g.
+  // no Service Worker support, SW registration failed, or — as seen in
+  // practice — plain http://localhost without a trusted cert, where SW
+  // registration can silently fail). `file?.streamURL` below still crashes
+  // in that case: optional chaining only protects against `file` itself
+  // being null/undefined, not against a getter on a valid object throwing.
+  // That crash used to escape from here, through detachPlayback() ->
+  // pauseDownload() -> player.ts's stopAll(), straight into whatever Vue
+  // reactive effect triggered it (a watcher, a keydown handler, exitCinema,
+  // ...) as an uncaught exception — which left Vue's patch/vnode tracking
+  // in a corrupted state (`Cannot set properties of null (setting
+  // '__vnode')`) that then repeated on every subsequent render tick,
+  // freezing the whole page rather than just failing this one torrent.
+  // safeStreamURL() below is the single choke point that prevents that.
   _registerStreamURL(file, torrent, infoHash, fileIndex) {
-    if (!file?.streamURL) return;
-    this._streamRegistry.set(file.streamURL, { infoHash, fileIndex, file, torrent });
+    const url = this._safeStreamURL(file);
+    if (!url) return;
+    this._streamRegistry.set(url, { infoHash, fileIndex, file, torrent });
   }
   _unregisterStreamURL(file) {
-    if (!file?.streamURL) return;
-    this._streamRegistry.delete(file.streamURL);
+    const url = this._safeStreamURL(file);
+    if (!url) return;
+    this._streamRegistry.delete(url);
+  }
+  // Returns file.streamURL, or null if it's unset OR if reading it throws
+  // (see the long comment above for why the latter is the real-world case
+  // this exists for). Every other read of `.streamURL` in this file goes
+  // through here too, for the same reason.
+  _safeStreamURL(file) {
+    if (!file) return null;
+    try {
+      return file.streamURL || null;
+    } catch (e) {
+      return null;
+    }
   }
 
   // Handles a "wtp-range-requested" message from the Service Worker: this is
@@ -1086,8 +1117,9 @@ export class TorrentLibrary extends Emitter {
     this._activeFile = file;
     this.quota.touch(infoHash, t.name);
 
-    if (this.serverReady) {
-      videoEl.src = file.streamURL;
+    const videoStreamURL = this.serverReady ? this._safeStreamURL(file) : null;
+    if (videoStreamURL) {
+      videoEl.src = videoStreamURL;
       this._registerStreamURL(file, t, infoHash, fileIndex);
     } else if (t.done) {
       file.blob().then(blob => { videoEl.src = URL.createObjectURL(blob); }).catch(err => this.emit('error', err));
@@ -1172,8 +1204,9 @@ export class TorrentLibrary extends Emitter {
     // like any other small file, no windowing needed.
     try { file.select(); } catch (e) {}
 
-    if (this.serverReady) {
-      audioEl.src = file.streamURL;
+    const audioStreamURL = this.serverReady ? this._safeStreamURL(file) : null;
+    if (audioStreamURL) {
+      audioEl.src = audioStreamURL;
       this._registerStreamURL(file, t, infoHash, fileIndex);
     } else if (t.done) {
       file.blob().then(blob => { audioEl.src = URL.createObjectURL(blob); }).catch(err => this.emit('error', err));

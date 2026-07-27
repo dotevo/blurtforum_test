@@ -3,6 +3,7 @@ import { defineAsyncComponent, watch } from 'vue';
 import { useApp } from './composables/useApp';
 import { useTitle } from './composables/useTitle';
 import { installCinemaDpadNav } from './modules/cinema/dpad-nav';
+import type { Post } from './types';
 
 // Layout
 import LangBar from './components/layout/LangBar.vue';
@@ -24,6 +25,9 @@ const ProfileView = defineAsyncComponent(() => import('./components/profile/Prof
 
 // Player
 const MediaPlayer = defineAsyncComponent(() => import('./modules/player_blurt/components/ForumMediaPlayer.vue'));
+
+// Shoutbox (backend-free WebRTC presence chat — see modules/shoutbox/README.md)
+const ShoutboxWidget = defineAsyncComponent(() => import('./modules/shoutbox/components/ShoutboxWidget.vue'));
 
 // Modals (Async)
 const LoginModal = defineAsyncComponent(() => import('./components/modals/LoginModal.vue'));
@@ -98,6 +102,23 @@ const {
   initTitleWatcher();
 
   installCinemaDpadNav(() => cinemaMode.value);
+
+  // Bridges the shoutbox's minimal (author, permlink) post references —
+  // see modules/shoutbox/render.ts — onto the app's real navigation.
+  // openTopic() fetches the full post itself whenever payout/body are
+  // falsy, which this stub always is, so it always ends up fully hydrated
+  // (via Blockchain.getContent + normalizePost) before rendering.
+  const openPostRef = (author: string, permlink: string): void => {
+    const stub: Post = {
+      author, permlink, media: null, title: '', body: '', created: '', url: '',
+      category: '', lastActivity: '', lastAuthor: '', isUnread: false, isRead: false,
+      isFollowing: false, isMuted: false, isPaid: false, isCollapsed: false,
+      replyCount: 0, parent_author: '', parent_permlink: '', pendingPayout: 0,
+      totalPayout: 0, payout: 0, vote_count: 0, active_votes: [], net_rshares: 0,
+      beneficiaries: [], tags: [],
+    };
+    void openTopic(stub);
+  };
 
   watch([view, activeForum, activeTopic, () => profileUser.username], () => {
     if (view.value === 'forum' && activeForum.value) {
@@ -232,6 +253,16 @@ const {
     @update:activity-expanded="activityExpanded = $event"
     @update:activity-full-list="activityFullList = $event"
     @open-activity="openActivity"
+  />
+
+  <ShoutboxWidget
+    v-if="!cinemaMode"
+    :auth="auth"
+    :get-client="() => client"
+    :check-lock="checkLock"
+    :community-id="config.communityAccount"
+    :current-post="view === 'topic' && activeTopic ? { author: activeTopic.author, permlink: activeTopic.permlink, title: activeTopic.title } : null"
+    :open-post-ref="openPostRef"
   />
 
   <NavBar

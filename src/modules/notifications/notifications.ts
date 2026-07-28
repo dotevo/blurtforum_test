@@ -121,7 +121,7 @@ export function createNotificationsEngine(
 
             toPush.forEach((item) => {
               const push = formatPush(item);
-              if (push) new Notification(push.title, { body: push.body, icon: '/favicon.svg' });
+              if (push) new Notification(push.title, { body: push.body, icon: './favicon.svg' });
             });
           }
         }

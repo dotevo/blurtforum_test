@@ -5,6 +5,17 @@ import UserAvatar from './UserAvatar.vue';
 import ActivityFeed from './ActivityFeed.vue';
 import LangBar from './LangBar.vue';
 
+// public/favicon.svg is a Vite "public dir" asset: it must be referenced
+// by a root-relative runtime string, never imported/resolved at build
+// time. import.meta.env.BASE_URL (= Vite's `base` config, "./" here)
+// keeps this correct under both the root domain (forum.blurt.pl) and a
+// GitHub Pages *project* subpath like /blurtforum_test/ — a literal
+// src="/favicon.svg" only works at a domain root, and a literal
+// src="./favicon.svg" fails the production build outright (Vite tries to
+// import it as a module). Has to be a dynamic :src binding, not a static
+// src=, for the same reason.
+const faviconSrc = `${import.meta.env.BASE_URL}favicon.svg`;
+
 const props = defineProps<{
   auth: { user: AuthUser | null };
   globalActivity: ActivityItem[];
@@ -51,7 +62,7 @@ const getLatestActivities = () => {
     <!-- TOP LINE: Logo, User, Notifs -->
     <div class="mtb-main">
       <a :href="'?community=' + communityAccount" class="mtb-logo" @click.prevent="emit('goHome')" style="text-decoration: none; display: block;">
-        <img src="/favicon.svg" alt="" class="mtb-logo-icon" />
+        <img :src="faviconSrc" alt="" class="mtb-logo-icon" />
       </a>
 
       <div class="mtb-ticker" v-if="!expanded" @click="emit('update:expanded', true)">

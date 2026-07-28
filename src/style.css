@@ -1546,8 +1546,20 @@ a:hover { color: var(--link-hover-color); text-decoration: underline; }
 .row1 { background: var(--table-row-bg-1); padding: 10px; border-top: 1px solid var(--table-row-border); color: var(--table-row-text); }
 .row2 { background: var(--table-row-bg-2); padding: 10px; border-top: 1px solid var(--table-row-border); color: var(--table-row-text); }
 .row3 { background: var(--table-row-bg-3); padding: 10px; border-top: 1px solid var(--table-row-border); color: var(--table-row-text); }
-.forumline tr:first-child .row3:first-child { border-top-left-radius: var(--radius-md); }
-.forumline tr:first-child .row3:last-child { border-top-right-radius: var(--radius-md); }
+/* Rounding the 4 outer table corners this way (instead of relying on
+   `.forumline { border-radius; overflow:hidden }` alone) is deliberate:
+   overflow:hidden clipping of border-radius on a <table> element is
+   inconsistently applied across browsers (notably Firefox, including
+   Firefox mobile), so the visual rounding is applied directly to the
+   corner cells themselves — this works identically everywhere.
+   Selecting the outer cell by position (`> :first-child` / `:last-child`)
+   rather than by row class (`.row3`) also fixes cases where the actual
+   first/last row is styled `.row1`/`.row2` instead of `.row3`, which
+   previously got left square. */
+.forumline tr:first-child > :first-child { border-top-left-radius: var(--radius-md); }
+.forumline tr:first-child > :last-child { border-top-right-radius: var(--radius-md); }
+.forumline tr:last-child > :first-child { border-bottom-left-radius: var(--radius-md); }
+.forumline tr:last-child > :last-child { border-bottom-right-radius: var(--radius-md); }
 .row-hover { cursor: pointer; }
 .row-hover:hover td { background-color: var(--table-row-hover-bg) !important; opacity: 0.9; }
  

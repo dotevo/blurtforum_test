@@ -29,6 +29,7 @@ import { Parser } from '../modules/parser';
 import { PostProcessor } from '../modules/post-processor';
 
 import { TR, loadLanguage, type Lang, LANGS as langs } from '../modules/translations';
+import { syncSeoTags } from '../modules/seo';
 import { isSeedingEnabled, initWebtorrent } from '../modules/player/webtorrent-pool';
 import '../modules/whalevault';
 import { Capacitor } from '@capacitor/core';
@@ -43,11 +44,35 @@ import type { NotificationItem } from '../modules/notifications/types';
 
 export function useApp() {
   const urlParams = new URLSearchParams(window.location.search);
+  // Language resolution order: explicit ?lang= (a shared/indexed link, or
+  // one of the hreflang variant URLs Google itself crawls — see
+  // modules/seo.ts) > a previously-saved user choice > the visitor's own
+  // browser language > 'en'.
+  //
+  // We used to only have the browser-language step, which is the right
+  // call for a real visitor but meant Googlebot (which reports its own
+  // fixed browser language during rendering, same on every crawl) always
+  // saw one single language regardless of who'd actually be searching.
+  // Rather than pin the default to one fixed language for everyone
+  // (which would take away the auto-detection real visitors want), we
+  // keep browser-detection for people, and separately hand Google an
+  // explicit `<link rel="alternate" hreflang="xx">` for every language
+  // variant of the current page (see syncSeoTags below) — that's the
+  // mechanism Google actually uses to discover and serve the right
+  // language version per searcher, rather than guessing from one crawl.
   const browserLang = navigator.language.slice(0, 2).toLowerCase() as Lang;
-  const lang = ref<Lang>(langs.includes(browserLang) ? browserLang : 'en');
+  const urlLang = urlParams.get('lang');
+  const savedLang = localStorage.getItem('bf-lang');
+  const initialLang: Lang =
+    (urlLang && langs.includes(urlLang as Lang) ? urlLang as Lang
+      : (savedLang && langs.includes(savedLang as Lang) ? savedLang as Lang
+        : (langs.includes(browserLang) ? browserLang : 'en')));
+  const lang = ref<Lang>(initialLang);
+  document.documentElement.lang = initialLang;
   const setLang = (l: Lang) => {
     lang.value = l;
     document.documentElement.lang = l;
+    localStorage.setItem('bf-lang', l);
     loadLanguage(l);
   };
   const t = (k: string): string => {
@@ -571,6 +596,7 @@ export function useApp() {
     }
     const fullPath = window.location.pathname + '?' + params.toString();
     window.history.pushState({ path: fullPath }, '', fullPath);
+    syncSeoTags(langs);
 
     // Google Analytics Virtual Page View
     let gaTitle = 'BlurtForum';
@@ -1059,6 +1085,7 @@ export function useApp() {
   };
 
   const handleUrlChange = (): void => {
+    syncSeoTags(langs);
     const params = new URLSearchParams(window.location.search);
     const requestedView = params.get('view') || 'index';
     const requestedTag = params.get('tag') || '';

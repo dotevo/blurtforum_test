@@ -84,7 +84,7 @@ export function createBlurtNotifications(client: any, auth: AuthLike, t: (key: s
     onUnsupported: () => alert(t('notifUnsupported')),
     onInsecure: () => alert(t('notifInsecureContext')),
     onDenied: () => alert(t('notifPermissionDenied')),
-    onEnabled: () => new Notification('BlurtForum', { body: t('notifEnabledBody'), icon: '/favicon.svg' }),
+    onEnabled: () => new Notification('BlurtForum', { body: t('notifEnabledBody'), icon: './favicon.svg' }),
   });
 
   // Resolves a clicked notification into an in-app navigation: switch to

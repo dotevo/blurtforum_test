@@ -50,6 +50,21 @@ const ROOM_ID = 'blurtforum-shoutbox-v1';
 const HOST_RETRY_MIN_MS = 400;
 const HOST_RETRY_MAX_MS = 2000;
 
+// How long to wait for the broker (0.peerjs.com) to actually answer before
+// giving up on this attempt and retrying. Without this, a request that
+// never fires either 'open' or 'error' (silently dropped/blocked — ad
+// blockers and some corporate/mobile networks do this to arbitrary
+// third-party WebSocket handshakes) left the whole transport stuck at
+// 'connecting' forever, with nothing ever retried. See "Known limitations"
+// in this file's header comment.
+const CONNECT_ATTEMPT_TIMEOUT_MS = 8_000;
+// Initial-connection retries (before any peer has ever successfully
+// connected) back off further than the post-connection host-election
+// retry above, since a broker outage is more likely to last seconds than
+// milliseconds and we don't want to hammer it.
+const INITIAL_RETRY_MIN_MS = 1_500;
+const INITIAL_RETRY_MAX_MS = 4_000;
+
 export class PeerJsTransport implements SignalingTransport {
   private peer: Peer | null = null;
   private hostConn: DataConnection | null = null; // set when we are a client
@@ -57,6 +72,7 @@ export class PeerJsTransport implements SignalingTransport {
   private _isHost = false;
   private _peerId: string | null = null;
   private destroyed = false;
+  private initialRetryAttempt = 0;
 
   private messageCbs = new Set<(msg: WireMessage, fromPeerId: string) => void>();
   private statusCbs = new Set<(status: TransportStatus) => void>();
@@ -116,26 +132,39 @@ export class PeerJsTransport implements SignalingTransport {
     const peer = new Peer(ROOM_ID);
     this.peer = peer;
 
-    const claimedHost = await new Promise<boolean>((resolve) => {
-      peer.once('open', (id) => { log('claimed host id', id); resolve(true); });
+    // 'timeout' added alongside PeerJS's own 'open'/'error' events: a
+    // request that the browser/network silently drops (rather than
+    // actively erroring) would otherwise never resolve this promise at
+    // all, and this attempt would hang forever instead of retrying.
+    const outcome = await new Promise<'claimed' | 'unavailable' | 'error' | 'timeout'>((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), CONNECT_ATTEMPT_TIMEOUT_MS);
+      peer.once('open', (id) => { clearTimeout(timer); log('claimed host id', id); resolve('claimed'); });
       peer.once('error', (err: any) => {
-        if (err?.type === 'unavailable-id') resolve(false);
-        else { warn('host claim attempt errored', err); resolve(false); }
+        clearTimeout(timer);
+        if (err?.type === 'unavailable-id') resolve('unavailable');
+        else { warn('host claim attempt errored', err); resolve('error'); }
       });
     });
 
     if (this.destroyed) { peer.destroy(); return; }
 
-    if (claimedHost) {
+    if (outcome === 'claimed') {
+      this.initialRetryAttempt = 0;
       this._isHost = true;
       this._peerId = peer.id;
       peer.on('connection', (conn) => this.attachClientConnection(conn));
       peer.on('disconnected', () => this.peer?.reconnect()); // broker session dropped, not our peers
       peer.on('error', (err) => warn('host peer error', err));
       this.emitStatus('connected');
-    } else {
+    } else if (outcome === 'unavailable') {
       peer.destroy();
       await this.connectAsClient();
+    } else {
+      // Broker unreachable / request silently dropped — don't fall through
+      // to connectAsClient() (it would almost certainly hit the exact same
+      // wall); retry the whole attempt from scratch after a backoff.
+      peer.destroy();
+      this.retryInitialConnect(outcome);
     }
   }
 
@@ -144,20 +173,42 @@ export class PeerJsTransport implements SignalingTransport {
     const peer = new Peer();
     this.peer = peer;
 
-    await new Promise<void>((resolve) => {
-      peer.once('open', (id) => { this._peerId = id; resolve(); });
-      peer.once('error', (err) => { warn('client peer open error', err); resolve(); });
+    const opened = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), CONNECT_ATTEMPT_TIMEOUT_MS);
+      peer.once('open', (id) => { clearTimeout(timer); this._peerId = id; resolve(true); });
+      peer.once('error', (err) => { clearTimeout(timer); warn('client peer open error', err); resolve(false); });
     });
-    if (this.destroyed || !this._peerId) return;
+    if (this.destroyed) return;
+    if (!opened || !this._peerId) {
+      peer.destroy();
+      this.retryInitialConnect('client-open-failed');
+      return;
+    }
 
     const conn = peer.connect(ROOM_ID, { reliable: true });
     this.hostConn = conn;
     this._isHost = false;
 
-    conn.on('open', () => { log('connected to host'); this.emitStatus('connected'); });
+    conn.on('open', () => { log('connected to host'); this.initialRetryAttempt = 0; this.emitStatus('connected'); });
     conn.on('data', (data) => this.deliverLocal(data as WireMessage, ROOM_ID));
     conn.on('close', () => this.handleHostLost());
     conn.on('error', (err) => { warn('connection to host errored', err); this.handleHostLost(); });
+  }
+
+  /** Retries the very first connection attempt (before we've ever
+   * successfully reached the broker at all). Kept separate from
+   * handleHostLost()'s retry — that one re-elects a host after a
+   * previously-working connection dropped; this one is for "never
+   * connected yet", which needs its own (longer) backoff and its own
+   * unbounded retry loop, since giving up here means the shoutbox never
+   * comes up at all for this page load. */
+  private retryInitialConnect(reason: string): void {
+    if (this.destroyed) return;
+    this.emitStatus('connecting');
+    this.initialRetryAttempt += 1;
+    const jitter = INITIAL_RETRY_MIN_MS + Math.random() * (INITIAL_RETRY_MAX_MS - INITIAL_RETRY_MIN_MS);
+    warn(`initial connect attempt #${this.initialRetryAttempt} failed (${reason}) — retrying in`, Math.round(jitter), 'ms');
+    setTimeout(() => { if (!this.destroyed) this.tryBecomeHost(); }, jitter);
   }
 
   private attachClientConnection(conn: DataConnection): void {

@@ -361,7 +361,7 @@ const {
     <template v-if="!loading">
 
       <!-- Tag filter bar -->
-      <div v-if="!cinemaMode && ((view==='index' && currentTagFilter) || (view==='forum'))" class="tag-filter-bar forumline">
+      <div v-if="!cinemaMode && ((view==='index' && currentTagFilter) || (view==='forum'))" class="tag-filter-bar forumline forumline-wrap">
         <div style="display:flex; align-items:center; gap:10px; width: 100%;">
           <i class="fa-solid fa-filter" style="color:var(--brand); opacity:0.7;"></i>
           <div style="position:relative; flex:1; max-width: 300px;">

@@ -125,8 +125,8 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
         <button class="btn btn-sm btn-hdr" @click="emit('loadTopicContext')">{{ t('loadFullThread') }}</button>
       </div>
 
-      <table :id="'post-' + activeTopic.permlink" class="forumline topic-table" style="margin-bottom:5px"
-             :style="{ opacity: activeTopic.isMuted ? 0.5 : 1 }">
+      <div class="forumline-wrap" style="margin-bottom:5px" :style="{ opacity: activeTopic.isMuted ? 0.5 : 1 }">
+      <table :id="'post-' + activeTopic.permlink" class="forumline topic-table">
         <thead>
           <tr class="hide-mobile">
             <td class="row3 post-profile"></td>
@@ -243,6 +243,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
           </tr>
         </tbody>
       </table>
+      </div>
  
       <!-- COMMENTS SECTION -->
       <PostReplyThread
@@ -281,7 +282,7 @@ watch(() => [props.activeTopic.permlink, props.replies.length], () => {
  
       <!-- QUICK REPLY (ALWAYS VISIBLE AT BOTTOM) -->
       <div v-if="auth.user" class="quick-reply-area" style="margin-top: 20px;">
-        <div class="forumline" style="padding: 0;">
+        <div class="forumline forumline-wrap" style="padding: 0;">
           <PostEditor
             mode="reply"
             :parent="activeTopic"

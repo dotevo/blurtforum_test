@@ -43,7 +43,8 @@ const emit = defineEmits<{
         <button class="btn btn-sm btn-ghost" @click="emit('update:showStructureDocs', true)">ℹ️ {{ t('structureDocs') }}</button>
       </div>
 
-      <table class="forumline index-table" v-for="cat in forumStructure" :key="cat.name">
+      <div class="forumline-wrap" v-for="cat in forumStructure" :key="cat.name">
+      <table class="forumline index-table">
         <thead>
           <tr><td colspan="4" class="catHead">{{ cat.name }}</td></tr>
           <tr>
@@ -77,6 +78,7 @@ const emit = defineEmits<{
           </tr>
         </tbody>
       </table>
+      </div>
 
       <!-- MODERATORS SECTION -->
       <div v-if="moderators.length>0" class="mods-section">
@@ -104,7 +106,8 @@ const emit = defineEmits<{
       </div>
 
       <!-- EXPLORATION SECTION -->
-      <table class="forumline index-table" style="margin-top: 20px;">
+      <div class="forumline-wrap" style="margin-top: 20px;">
+      <table class="forumline index-table">
         <thead>
           <tr>
             <td colspan="3" class="catHead">
@@ -142,6 +145,7 @@ const emit = defineEmits<{
           </tr>
         </tbody>
       </table>
+      </div>
 
     
 

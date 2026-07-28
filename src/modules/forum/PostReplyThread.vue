@@ -121,8 +121,8 @@ const handleLinkClick = (event: MouseEvent) => {
         <span class="expand-btn">[{{ t('show') }}]</span>
       </div>
 
-      <table v-else :id="'post-' + r.permlink" class="forumline topic-table" style="margin-bottom:5px"
-             :style="{ opacity: r.isMuted ? 0.5 : 1 }">
+      <div v-else class="forumline-wrap" style="margin-bottom:5px" :style="{ opacity: r.isMuted ? 0.5 : 1 }">
+      <table :id="'post-' + r.permlink" class="forumline topic-table">
         <thead>
           <tr class="hide-mobile">
             <td class="row3 post-profile"><b><a :href="'?view=profile&user=' + r.author" @click.prevent="emit('openProfile', r.author)">@{{ r.author }}</a></b></td>
@@ -259,6 +259,7 @@ const handleLinkClick = (event: MouseEvent) => {
           </tr>
         </tbody>
       </table>
+      </div>
     </template>
   </template>
   </div>

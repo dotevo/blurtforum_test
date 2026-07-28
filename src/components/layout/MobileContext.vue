@@ -17,7 +17,7 @@ const emit = defineEmits<{
 <template>
   <div class="mobile-context">
     <!-- Breadcrumb (Topic Title only) -->
-    <div class="mc-title-box forumline" v-if="view === 'topic' && activeTopic">
+    <div class="mc-title-box forumline forumline-wrap" v-if="view === 'topic' && activeTopic">
       <div class="mc-breadcrumb">
         <span class="active-topic-title">{{ activeTopic.title }}</span>
       </div>

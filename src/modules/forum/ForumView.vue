@@ -101,6 +101,7 @@ onUpdated(triggerScan);
         />
       </div>
  
+      <div class="forumline-wrap">
       <table class="forumline post-list-table">
         <thead>
           <tr>
@@ -165,6 +166,7 @@ onUpdated(triggerScan);
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div  style="display: flex; justify-content: center; gap: 20px; margin-top: 20px; align-items: center;">
         <button class="btn btn-primary" v-if="activeForum.pageHistory.length" @click="emit('changePage', 'prev')" :disabled="loading">

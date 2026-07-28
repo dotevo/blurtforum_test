@@ -115,7 +115,7 @@ const barSeries = computed(() => {
 
 <template>
     
-      <div class="forumline" style="padding: 20px;">
+      <div class="forumline forumline-wrap" style="padding: 20px;">
         <div style="display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;">
           <UserAvatar :username="profileUser.username" size="lg" style="width: 120px; height: 120px;" />
           <div style="flex: 1; min-width: 250px;">
@@ -182,7 +182,7 @@ const barSeries = computed(() => {
 
       <!-- WALLET TAB -->
       <div v-if="profileTab==='wallet'" class="wallet-tab">
-        <div class="forumline" style="padding: 20px;">
+        <div class="forumline forumline-wrap" style="padding: 20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
              <h3 style="margin: 0; color: var(--brand);">💳 {{ t('walletBalances') }}</h3>
              <div v-if="profileUser.wallet.loading" class="gs"><i class="fa-solid fa-sync fa-spin"></i> {{ t('loading') }}</div>
@@ -190,7 +190,7 @@ const barSeries = computed(() => {
           
           <div class="wallet-grid">
             <!-- TOTAL VALUE -->
-            <div class="wallet-card forumline total-card">
+            <div class="wallet-card forumline forumline-wrap total-card">
                <div class="stat-label">{{ t('estimatedAccountValue') || 'Estimated Account Value' }}</div>
                <div class="stat-val main-amt highlight">~{{ (profileUser.data as any)?.walletValue }} <span class="unit">{{ t('blurt') || 'BLURT' }}</span></div>
                <div class="gs" style="font-size:10px; margin-top:5px; opacity:0.8">
@@ -199,7 +199,7 @@ const barSeries = computed(() => {
             </div>
 
             <!-- BLURT -->
-            <div class="wallet-card forumline highlight-card">
+            <div class="wallet-card forumline forumline-wrap highlight-card">
               <div class="wallet-card-header">
                 <div class="stat-label">{{ t('blurt') || 'BLURT' }} ({{ t('liquid') }})</div>
                 <div class="stat-val main-amt">{{ (profileUser.data as any)?.balance || '0.000 BLURT' }}</div>
@@ -223,7 +223,7 @@ const barSeries = computed(() => {
             </div>
 
             <!-- BLURT POWER -->
-            <div class="wallet-card forumline highlight-card-bp">
+            <div class="wallet-card forumline forumline-wrap highlight-card-bp">
               <div class="wallet-card-header">
                 <div class="stat-label">{{ t('blurtPower') || 'BLURT POWER' }}</div>
                 <div class="stat-val main-amt">{{ (profileUser.data as any)?.totalBP }} {{ t('bp') || 'BP' }}</div>
@@ -263,7 +263,7 @@ const barSeries = computed(() => {
           </div>
 
           <!-- Power Down Monitor -->
-          <div v-if="profileUser.wallet.powerDown.rate !== '0.000'" class="forumline pd-monitor">
+          <div v-if="profileUser.wallet.powerDown.rate !== '0.000'" class="forumline forumline-wrap pd-monitor">
             <div style="font-weight: bold; color: var(--brand); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
               <i class="fa-solid fa-clock-rotate-left"></i> {{ t('powerDownActive') }}
             </div>
@@ -289,6 +289,7 @@ const barSeries = computed(() => {
               <h4 style="color: var(--brand); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
                 <i class="fa-solid fa-arrow-up-right-from-square"></i> {{ t('outgoingDelegations') }}
               </h4>
+              <div class="forumline-wrap">
               <table class="forumline profile-list-table tight">
                 <thead>
                   <tr>
@@ -314,12 +315,14 @@ const barSeries = computed(() => {
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div class="delegation-half">
               <h4 style="color: var(--brand); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
                 <i class="fa-solid fa-arrow-down-left-and-arrow-up-right-to-center"></i> {{ t('incomingDelegations') }}
               </h4>
+              <div class="forumline-wrap">
               <table class="forumline profile-list-table tight">
                 <thead>
                   <tr>
@@ -339,6 +342,7 @@ const barSeries = computed(() => {
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
             </div>
 
@@ -350,7 +354,7 @@ const barSeries = computed(() => {
               </h4>
               <div class="gs" style="font-size:10px;">{{ t('last') }} 500</div>
             </div>
-            <div class="forumline" style="overflow: hidden; border-radius: 4px;">
+            <div class="forumline forumline-wrap" style="overflow: hidden; border-radius: 4px;">
               <table class="profile-list-table tight-history">
                 <thead>
                   <tr style="background: var(--surface-4);">
@@ -435,7 +439,7 @@ const barSeries = computed(() => {
         <div class="earnings-visuals">
           <div class="chart-row">
             <!-- Distribution Donut -->
-            <div class="chart-container forumline donut-section">
+            <div class="chart-container forumline forumline-wrap donut-section">
               <h4>{{ t('distribution') }}</h4>
               <div v-if="profileUser.earnings.stats.total !== 0" style="min-height: 200px;">
                 <MiniDonutChart :series="donutSeries" :labels="donutLabels" :colors="donutColorsArr" :total-label="t('total') || 'RAZEM'" />
@@ -444,7 +448,7 @@ const barSeries = computed(() => {
             </div>
 
             <!-- Stacked Bar Trend -->
-            <div class="chart-container forumline trend-section">
+            <div class="chart-container forumline forumline-wrap trend-section">
               <h4>{{ t('dailyTrend') }}</h4>
               <div v-if="profileUser.earnings.chartData.daily.length" style="min-height: 200px;">
                 <MiniBarChart :categories="barCategories" :series="barSeries" :stacked="true" :zoomable="true" :height="200" />
@@ -471,6 +475,7 @@ const barSeries = computed(() => {
         </div>
 
         <div v-if="showHistoryTable" style="margin-top: 20px;">
+          <div class="forumline-wrap">
           <table class="forumline profile-list-table">
             <thead>
               <tr>
@@ -497,11 +502,13 @@ const barSeries = computed(() => {
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
 
       </div>
 
       <div v-if="profileTab==='posts'">
+        <div class="forumline-wrap">
         <table class="forumline profile-list-table">
           <thead>
             <tr>
@@ -540,6 +547,7 @@ const barSeries = computed(() => {
             <tr v-if="profileUser.posts.length===0"><td colspan="4" class="row1" style="text-align:center; padding: 20px;">{{ t('noPosts') }}</td></tr>
           </tbody>
         </table>
+        </div>
         <div v-if="profileUser.postsHasMore" style="text-align:center; margin-top: 10px;">
           <button class="btn btn-primary" @click="$emit('loadMoreProfileContent', 'posts')" :disabled="profileUser.loading">
             <span v-if="profileUser.loading" class="spin"></span> {{ t('loadMore') }}
@@ -548,6 +556,7 @@ const barSeries = computed(() => {
       </div>
 
       <div v-if="profileTab==='comments'">
+        <div class="forumline-wrap">
         <table class="forumline profile-list-table">
           <thead>
             <tr>
@@ -578,6 +587,7 @@ const barSeries = computed(() => {
             <tr v-if="profileUser.comments.length===0"><td colspan="4" class="row1" style="text-align:center; padding: 20px;">{{ t('noComments') }}</td></tr>
           </tbody>
         </table>
+        </div>
         <div v-if="profileUser.commentsHasMore" style="text-align:center; margin-top: 10px;">
           <button class="btn btn-primary" @click="$emit('loadMoreProfileContent', 'comments')" :disabled="profileUser.loading">
             <span v-if="profileUser.loading" class="spin"></span> {{ t('loadMore') }}
@@ -587,6 +597,7 @@ const barSeries = computed(() => {
 
       <!-- REPLIES TAB -->
       <div v-if="profileTab==='replies'">
+        <div class="forumline-wrap">
         <table class="forumline profile-list-table">
           <thead>
             <tr>
@@ -622,6 +633,7 @@ const barSeries = computed(() => {
             <tr v-if="profileUser.replies.length===0"><td colspan="5" class="row1" style="text-align:center; padding: 20px;">{{ t('noComments') }}</td></tr>
           </tbody>
         </table>
+        </div>
         <div v-if="profileUser.repliesHasMore" style="text-align:center; margin-top: 10px;">
           <button class="btn btn-primary" @click="$emit('loadMoreProfileContent', 'replies')" :disabled="profileUser.loading">
             <span v-if="profileUser.loading" class="spin"></span> {{ t('loadMore') }}

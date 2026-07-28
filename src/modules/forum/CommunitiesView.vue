@@ -21,7 +21,7 @@ const emit = defineEmits<{
 
 <template>
     
-      <div class="forumline" style="margin-bottom: 20px; padding: 15px;">
+      <div class="forumline forumline-wrap" style="margin-bottom: 20px; padding: 15px;">
         <div style="display: flex; gap: 10px; align-items: center;">
           <input type="text" :value="communityQuery" @input="emit('update:communityQuery', ($event.target as HTMLInputElement).value)" :placeholder="t('searchCommunities')" 
                  @keyup.enter="emit('fetchMore')" style="flex: 1; padding: 8px;">
@@ -32,7 +32,7 @@ const emit = defineEmits<{
       </div>
 
       <div class="community-grid">
-        <div v-for="c in communityList" :key="c.name" class="forumline community-card">
+        <div v-for="c in communityList" :key="c.name" class="forumline forumline-wrap community-card">
           <div class="community-card-header">
             <div class="avatar-sm" :style="{backgroundImage: 'url(' + (c.avatar_url || 'https://imgp.blurt.blog/profileimage/' + c.name + '/64x64') + ')'}"></div>
             <div class="community-card-info">

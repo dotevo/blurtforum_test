@@ -8,6 +8,18 @@
  * info modal. MediaPlayer.vue just mounts this unconditionally and knows
  * nothing about torrents.
  *
+ * Cinema mode: this component never needs to know cinema mode exists.
+ * Instead of reimplementing (or Teleporting) its own overlay into
+ * MediaPlayer.vue's DOM, it registers plain descriptions of its controls —
+ * two simple buttons (info/download) and two widgets (peers/speed +
+ * subtitle picker, and the piece-map bar) — with the player's generic
+ * cinema-contribution registry (registerPlayerButton/registerPlayerWidget in
+ * player.ts). The player decides where/how those render; this file only
+ * ever renders its OWN inline `.wtv-controls` bar for the non-cinema (docked/
+ * expanded) view. See types.ts's PlayerButtonContribution/
+ * PlayerWidgetContribution doc comments for the full reasoning, including
+ * why this replaced an earlier Teleport-based approach.
+ *
  * IMPORTANT: this component must stay mounted for the lifetime of the player
  * (toggled via CSS, not v-if) — player.ts caches a single reference to
  * #bf-wt-player-video via getElementById and calls WTPool.attachPlayback()
@@ -15,11 +27,16 @@
  * reference would go stale and playback would silently break.
  */
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
-import { currentSource, wtActiveFileIndex, state as playerState, showCinemaControls as showSharedCinemaControls, togglePlay } from '../player';
+import {
+  currentSource, wtActiveFileIndex, state as playerState,
+  showCinemaControls as showSharedCinemaControls, togglePlay,
+  registerPlayerButton, unregisterPlayerButton,
+  registerPlayerWidget, unregisterPlayerWidget,
+} from '../player';
 import * as WTPool from '../webtorrent-pool';
 import type { TorrentSnapshot } from '../webtorrent-pool';
 import WebtorrentPieceMap from './WebtorrentPieceMap.vue';
-import WebtorrentAudioSubtitleMenu from './WebtorrentAudioSubtitleMenu.vue';
+import WebtorrentExtras from './WebtorrentExtras.vue';
 
 const props = defineProps<{
   t: (k: string) => string;
@@ -130,6 +147,84 @@ function toggleFullDownload(): void {
     fullDownload.value = true;
   }
 }
+
+// ── Cinema-mode contributions ───────────────────────────────────────────
+// The generic mechanism (see registerPlayerButton/registerPlayerWidget in
+// player.ts) that replaced Teleporting `.wtv-controls`/WebtorrentPieceMap
+// into MediaPlayer.vue's DOM. Registered once, unconditionally, right here
+// -- the player itself only ever shows these while a webtorrent source is
+// actually playing (each contribution's `sourceTypes: ['webtorrent']` is
+// matched against whatever's current), so nothing in this component has to
+// check `playerState.cinema`, or even know cinema mode exists, to make that
+// happen.
+registerPlayerButton({
+  id: 'webtorrent-info',
+  sourceTypes: ['webtorrent'],
+  zone: 'cinema',
+  icon: 'fa-solid fa-circle-info',
+  label: 'Torrent info',
+  onClick: () => { playerState.expanded = true; playerState.expandedTab = 'webtorrent-info'; },
+});
+registerPlayerButton({
+  id: 'webtorrent-download',
+  sourceTypes: ['webtorrent'],
+  zone: 'cinema',
+  icon: 'fa-solid fa-download',
+  label: 'Download entire torrent for offline playback later',
+  onClick: toggleFullDownload,
+  active: () => fullDownload.value,
+  badge: () => (fullDownload.value && torrent.value && !torrent.value.done)
+    ? `${Math.round((torrent.value.progress || 0) * 100)}%`
+    : null,
+});
+registerPlayerWidget({
+  id: 'webtorrent-extras',
+  sourceTypes: ['webtorrent'],
+  zone: 'cinema-bar',
+  component: WebtorrentExtras,
+  props: () => ({
+    t: props.t,
+    torrent: torrent.value,
+    infoHash: infoHash.value,
+    files: stableFiles.value,
+    activeFileIndex: activeFileIndex.value,
+    visible: effectiveControlsVisible.value,
+  }),
+});
+
+// The piece-map widget needs a resolved infoHash + attached file index to
+// render anything meaningful (WebtorrentPieceMap's own props are both
+// required, non-nullable) -- registered/unregistered as those become
+// available/unavailable instead of unconditionally, mirroring the `v-if`
+// this used to be gated behind before it was a Teleport target.
+let pieceMapRegistered = false;
+watch([infoHash, activeFileIndex], ([ih, fi]) => {
+  const ready = ih != null && fi != null;
+  if (ready && !pieceMapRegistered) {
+    registerPlayerWidget({
+      id: 'webtorrent-piece-map',
+      sourceTypes: ['webtorrent'],
+      zone: 'cinema-progress',
+      component: WebtorrentPieceMap,
+      props: () => ({
+        infoHash: infoHash.value,
+        fileIndex: activeFileIndex.value,
+        t: props.t,
+      }),
+    });
+    pieceMapRegistered = true;
+  } else if (!ready && pieceMapRegistered) {
+    unregisterPlayerWidget('webtorrent-piece-map');
+    pieceMapRegistered = false;
+  }
+}, { immediate: true });
+
+onUnmounted(() => {
+  unregisterPlayerButton('webtorrent-info');
+  unregisterPlayerButton('webtorrent-download');
+  unregisterPlayerWidget('webtorrent-extras');
+  if (pieceMapRegistered) unregisterPlayerWidget('webtorrent-piece-map');
+});
 
 // ── Seek-by-clicking-the-piece-map ─────────────────────────────────────────
 function seekToFraction(frac: number): void {
@@ -256,67 +351,46 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
       -->
       <video id="bf-wt-player-video" class="bfp-video-iframe" controls playsinline controls-list="nodownload nofullscreen"></video>
 
-      <Teleport to="#bfp-cinema-extra-controls" :disabled="!playerState.cinema">
-        <div class="wtv-controls" v-if="isWebtorrent" :class="{ 'wtv-controls--hidden': !effectiveControlsVisible, 'wtv-controls--cinema': playerState.cinema }">
-          <button class="wtv-btn" @click="playerState.expanded = true; playerState.expandedTab = 'webtorrent-info'" :title="t('torrentInfo') || 'Torrent info'">
-            <i class="fa-solid fa-circle-info"></i>
-          </button>
-          <button class="wtv-btn" :class="{ 'wtv-btn--active': fullDownload }" @click="toggleFullDownload"
-                  :title="t('downloadWholeTorrent') || 'Download entire torrent for offline playback later'">
-            <i v-if="fullDownload && torrent?.done" class="fa-solid fa-check"></i>
-            <i v-else class="fa-solid fa-download"></i>
-            <span v-if="fullDownload && torrent && !torrent.done" class="wtv-dl-pct">{{ Math.round((torrent.progress || 0) * 100) }}%</span>
-          </button>
-          <span v-if="torrent" class="wtv-peers" :title="t('peers') || 'Peers'">
-            <i class="fa-solid fa-users"></i> {{ torrent.numPeers }}
-          </span>
-          <span v-if="torrent" class="wtv-speed" :title="t('downloadSpeed') || 'Download speed'">
-            <i class="fa-solid fa-arrow-down"></i> {{ (torrent.downloadSpeed / 1024).toFixed(0) }} KB/s
-          </span>
-          <button v-if="!playerState.cinema" class="wtv-btn" @click="toggleFullscreen"
-                  :title="t('fullscreen') || 'Fullscreen'">
-            <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand'"></i>
-          </button>
-          <!--
-            Subtitles + alternate audio track, entirely self-contained — see
-            WebtorrentAudioSubtitleMenu.vue's own top-of-file comment for why
-            this had to be its own component rather than inline markup here:
-            it must have ZERO reactive dependency on `torrent` (updated every
-            second above) so a stats poll tick can never touch it, even
-            indirectly through a shared render pass. `files`/`activeFileIndex`
-            only actually change when the file list or the attached file index
-            change — not every second — so this only re-renders when something
-            real changes.
-          -->
-          <WebtorrentAudioSubtitleMenu
-            :t="t"
-            :info-hash="infoHash"
-            :files="stableFiles"
-            :active-file-index="activeFileIndex"
-            :visible="effectiveControlsVisible"
-          />
-        </div>
-      </Teleport>
+      <div class="wtv-controls" v-if="isWebtorrent && !playerState.cinema" :class="{ 'wtv-controls--hidden': !effectiveControlsVisible }">
+        <button class="wtv-btn" @click="playerState.expanded = true; playerState.expandedTab = 'webtorrent-info'" :title="t('torrentInfo') || 'Torrent info'">
+          <i class="fa-solid fa-circle-info"></i>
+        </button>
+        <button class="wtv-btn" :class="{ 'wtv-btn--active': fullDownload }" @click="toggleFullDownload"
+                :title="t('downloadWholeTorrent') || 'Download entire torrent for offline playback later'">
+          <i v-if="fullDownload && torrent?.done" class="fa-solid fa-check"></i>
+          <i v-else class="fa-solid fa-download"></i>
+          <span v-if="fullDownload && torrent && !torrent.done" class="wtv-dl-pct">{{ Math.round((torrent.progress || 0) * 100) }}%</span>
+        </button>
+        <WebtorrentExtras
+          :t="t"
+          :torrent="torrent"
+          :info-hash="infoHash"
+          :files="stableFiles"
+          :active-file-index="activeFileIndex"
+          :visible="effectiveControlsVisible"
+        />
+        <button class="wtv-btn" @click="toggleFullscreen" :title="t('fullscreen') || 'Fullscreen'">
+          <i class="fa-solid" :class="isFullscreen ? 'fa-compress' : 'fa-expand'"></i>
+        </button>
+      </div>
     </div>
 
     <!-- Downloaded/to-download piece map — the bar the user liked from the
-         standalone PoC, now wired into the real player's UI. In the docked
-         (non-cinema) layout it's a fixed-height sibling of .wtv-video-area,
-         always visible under the video. In cinema mode that layout doesn't
-         apply (the video area fills the screen, leaving no room for a
-         sibling below it) -- so it teleports into the same
-         #bfp-cinema-extra-progress slot the main progress bar sits next to,
-         same reasoning as .wtv-controls teleporting into
-         #bfp-cinema-extra-controls above. -->
-    <Teleport to="#bfp-cinema-extra-progress" :disabled="!playerState.cinema">
-      <WebtorrentPieceMap
-        v-if="isWebtorrent && infoHash != null && activeFileIndex != null"
-        :info-hash="infoHash"
-        :file-index="activeFileIndex"
-        :t="props.t"
-        @seek="seekToFraction"
-      />
-    </Teleport>
+         standalone PoC, now wired into the real player's UI. Only rendered
+         inline here for the docked/expanded (non-cinema) layout, where it's
+         a fixed-height sibling of .wtv-video-area; cinema mode gets the same
+         component mounted by MediaPlayer.vue itself via the
+         'webtorrent-piece-map' widget contribution registered above (cinema
+         mode's video fills the whole screen, leaving no room for a sibling
+         bar below it — same reason .wtv-controls above doesn't render there
+         either). -->
+    <WebtorrentPieceMap
+      v-if="isWebtorrent && !playerState.cinema && infoHash != null && activeFileIndex != null"
+      :info-hash="infoHash"
+      :file-index="activeFileIndex"
+      :t="props.t"
+      @seek="seekToFraction"
+    />
   </div>
 </template>
 
@@ -351,10 +425,6 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
   opacity: 0;
   pointer-events: none;
 }
-.wtv-controls--cinema {
-  position: static;
-  top: auto; left: auto; right: auto;
-}
 .wtv-btn {
   position: relative;
   background: rgba(0,0,0,.55);
@@ -386,25 +456,4 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
   line-height: 1;
   padding: 2px 4px;
 }
-.wtv-sub-select {
-  background: rgba(0,0,0,.55);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,.15);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 11px;
-  max-width: 160px;
-}
-.wtv-peers, .wtv-speed {
-  background: rgba(0,0,0,.55);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,.15);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.wtv-speed { color: #7ee8c9; }
 </style>

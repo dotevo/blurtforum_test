@@ -3,10 +3,10 @@
  * Handles audio/video playback, queuing, playlists, event emitter and plugin API.
  */
 import { reactive, watch, nextTick, ref, computed } from 'vue';
-import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution, PeerActionContribution, PlayerTabContribution, RailItemContribution } from './types';
+import type { MediaTrack, MediaEntryMirror, PlayerState, Playlist, PlaylistState, PlayerEvent, PlayerPlugin, BFPlayerAPI, PlayMode, TrackActionZone, TrackActionContribution, PeerActionContribution, PlayerTabContribution, RailItemContribution, PlayerButtonContribution, PlayerWidgetContribution } from './types';
 import { trackEvent } from '../analytics';
 import * as WTPool from './webtorrent-pool';
-import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
+import type { WebtorrentStats, SeedManifestEntry, TorrentSnapshot } from './webtorrent-pool';
 
 
 // Minimal YouTube IFrame API typings
@@ -220,6 +220,57 @@ const registerRailItem = (contribution: RailItemContribution): void => {
 };
 
 const getRailItems = (): RailItemContribution[] => _railItems;
+
+// ── Cinema-mode button/widget registry ──────────────────────────────────
+// The generic mechanism a source (WebTorrent today, potentially others
+// later) uses to add its own controls to the player's cinema-mode chrome —
+// see PlayerButtonContribution/PlayerWidgetContribution in types.ts for the
+// full reasoning. Two ideas kept deliberately separate:
+//   - "buttons" are cheap, stateless (icon/label/onClick/badge) — fine to
+//     re-render on every tick, safe to have described once and rendered
+//     wherever the matching zone happens to be in the template.
+//   - "widgets" are a whole component with its own state/side effects
+//     (e.g. the subtitle picker actually attaches <track> elements to the
+//     video) — the player mounts `component` directly, exactly once, at
+//     whichever single template location the requested zone corresponds
+//     to. Nothing here ever moves a widget's DOM around (no Teleport): the
+//     source hands the player a description, the player owns the one place
+//     it actually renders.
+//
+// Filtering happens in one place (here), against whatever's actually
+// playing right now (`currentSource`) — a contribution only has to declare
+// which source type(s) it's for; it never needs to check `state.cinema` or
+// any other display-mode flag itself, and the template call sites never
+// need to filter by source type either.
+const _playerButtons: PlayerButtonContribution[] = [];
+const _playerWidgets: PlayerWidgetContribution[] = [];
+
+const _matchesCurrentSource = (sourceTypes: ('audio' | 'youtube' | 'peertube' | 'webtorrent')[] | 'all'): boolean =>
+  sourceTypes === 'all' || (!!currentSource.value && sourceTypes.includes(currentSource.value.type));
+
+export const registerPlayerButton = (contribution: PlayerButtonContribution): void => {
+  if (!contribution?.id) { console.warn('BFPlayer.registerPlayerButton: contribution must have an id'); return; }
+  if (_playerButtons.find(b => b.id === contribution.id)) { console.warn(`BFPlayer: player button "${contribution.id}" already registered`); return; }
+  _playerButtons.push(contribution);
+};
+export const unregisterPlayerButton = (id: string): void => {
+  const idx = _playerButtons.findIndex(b => b.id === id);
+  if (idx !== -1) _playerButtons.splice(idx, 1);
+};
+export const getPlayerButtons = (zone: PlayerButtonContribution['zone']): PlayerButtonContribution[] =>
+  _playerButtons.filter(b => b.zone === zone && _matchesCurrentSource(b.sourceTypes));
+
+export const registerPlayerWidget = (contribution: PlayerWidgetContribution): void => {
+  if (!contribution?.id) { console.warn('BFPlayer.registerPlayerWidget: contribution must have an id'); return; }
+  if (_playerWidgets.find(w => w.id === contribution.id)) { console.warn(`BFPlayer: player widget "${contribution.id}" already registered`); return; }
+  _playerWidgets.push(contribution);
+};
+export const unregisterPlayerWidget = (id: string): void => {
+  const idx = _playerWidgets.findIndex(w => w.id === id);
+  if (idx !== -1) _playerWidgets.splice(idx, 1);
+};
+export const getPlayerWidgets = (zone: PlayerWidgetContribution['zone']): PlayerWidgetContribution[] =>
+  _playerWidgets.filter(w => w.zone === zone && _matchesCurrentSource(w.sourceTypes));
 
 // Built-in: surface Playlists in cinema mode's left rail, opening the same
 // playlists tab the bottom control bar's icon opens. Only shown once the
@@ -572,6 +623,89 @@ export const setWebtorrentAudioTrackVolume = (v: number): void => {
   saveWtAudioSettings(wtActiveInfoHash);
 };
 
+// ── Subtitles (delegates entirely to torrent-lib.js's format conversion) ───
+// Lives at module level for the same reason the audio-track state above
+// does: the actual <track> elements are attached directly to wtVideoEl (this
+// module's own persistent video element), so their lifetime has to survive
+// whichever UI happens to be rendering the subtitle/audio picker at any
+// given moment being unmounted and remounted elsewhere -- e.g. toggling
+// cinema mode, which swaps which zone the picker renders into (see the
+// player-button/widget contribution registry further down). None of that
+// should mean re-fetching subtitle files from the torrent or losing the
+// user's current selection, which is exactly what would happen if this
+// lived in component-local state instead.
+//
+// IMPORTANT: once mounted, a <track> element is never removed and recreated
+// individually -- only ever all-at-once via clearWtSubtitleTracks(), same
+// restriction as before this was hoisted out of the component: removing/
+// recreating a single <track> broke the browser's native CC menu in
+// Chrome/Firefox.
+export const wtSubtitleTrackIndex = ref<number | null>(null); // null = subtitles off
+export const wtSubtitleLoading = ref<boolean>(false);
+
+const _wtSubTrackEls = new Map<number, HTMLTrackElement>();
+const _wtSubUrls = new Map<number, string>();
+
+const setActiveWtSubtitleTrackEl = (fileIndex: number | null): void => {
+  _wtSubTrackEls.forEach((el, idx) => { el.track.mode = idx === fileIndex ? 'showing' : 'disabled'; });
+};
+
+/** Picks (or clears, with fileIndex = null) which already-prefetched subtitle file is showing right now. */
+export const selectWebtorrentSubtitleTrack = (fileIndex: number | null): void => {
+  wtSubtitleTrackIndex.value = fileIndex;
+  setActiveWtSubtitleTrackEl(fileIndex);
+};
+
+/** Removes every mounted <track> element and revokes its blob URL — called when leaving the current torrent entirely (a new one loading, or stopAll()). */
+const clearWtSubtitleTracks = (): void => {
+  _wtSubTrackEls.forEach(el => el.remove());
+  _wtSubTrackEls.clear();
+  _wtSubUrls.forEach(url => URL.revokeObjectURL(url));
+  _wtSubUrls.clear();
+  wtSubtitleTrackIndex.value = null;
+};
+
+/**
+ * Fetches and mounts every subtitle file in `files` up front — subtitle
+ * files are tiny (typically tens of KB, nothing like the video itself), so
+ * doing this eagerly rather than "only the one the user picks" is cheap and
+ * means the browser's own native CC/subtitles button (which only ever lists
+ * <track> elements already mounted on the video) shows the complete list
+ * immediately too, without needing our own picker opened first.
+ */
+export const prefetchWtSubtitleTracks = async (infoHash: string, files: TorrentSnapshot['files']): Promise<void> => {
+  if (!wtVideoEl) return;
+  const subFiles = files.filter(f => f.isSub);
+  const toFetch = subFiles.filter(f => !_wtSubTrackEls.has(f.index));
+  if (!toFetch.length) return;
+
+  wtSubtitleLoading.value = true;
+  await Promise.all(toFetch.map(async (f) => {
+    try {
+      const track = await WTPool.getSubtitleTrack(infoHash, f.index);
+      // The torrent could have changed (or this file could have stopped
+      // being a subtitle file — shouldn't happen, but cheap to guard)
+      // while this particular fetch was in flight.
+      if (wtActiveInfoHash !== infoHash || !subFiles.some(sf => sf.index === f.index)) {
+        URL.revokeObjectURL(track.url);
+        return;
+      }
+      _wtSubUrls.set(f.index, track.url);
+      const el = document.createElement('track');
+      el.kind = 'subtitles';
+      el.label = track.name;
+      el.srclang = track.srclang;
+      el.src = track.url;
+      wtVideoEl!.appendChild(el);
+      el.track.mode = 'disabled'; // mounted (so it's listed) but off until explicitly picked
+      _wtSubTrackEls.set(f.index, el);
+    } catch (err) {
+      console.warn('[BFPlayer] prefetchWtSubtitleTracks: failed to prefetch subtitle', f.name, err);
+    }
+  }));
+  wtSubtitleLoading.value = false;
+};
+
 const initWT = (): void => {
   if (wtVideoEl) return;
   wtVideoEl = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
@@ -606,6 +740,15 @@ const initWT = (): void => {
   wtVideoEl.addEventListener('stalled', () => { if (isWTTrack()) console.warn('[BFPlayer] WebTorrent video: stalled — browser is trying to fetch data but nothing is arriving'); });
   wtVideoEl.addEventListener('suspend', () => { if (isWTTrack()) console.log('[BFPlayer] WebTorrent video: suspend (browser paused fetching, often normal once buffered)'); });
   wtVideoEl.addEventListener('abort', () => { if (isWTTrack()) console.log('[BFPlayer] WebTorrent video: abort (fetch aborted — normal during stopAll()/track switch)'); });
+  // Keep our own subtitle-track state in sync when the user picks a
+  // subtitle from the browser's OWN native CC menu instead of ours —
+  // video.textTracks fires 'change' whenever ANY track's mode changes,
+  // regardless of which UI did it.
+  wtVideoEl.textTracks.addEventListener('change', () => {
+    let found: number | null = null;
+    _wtSubTrackEls.forEach((el, idx) => { if (el.track.mode === 'showing') found = idx; });
+    wtSubtitleTrackIndex.value = found;
+  });
 };
 
 // Interrupting a <video> element's in-flight network fetch by clearing its
@@ -659,6 +802,7 @@ const loadWebtorrentSource = async (activeSource: MediaEntryMirror, track: Media
     }
 
     WTPool.markActive(snap.infoHash);
+    if (wtActiveInfoHash !== snap.infoHash) clearWtSubtitleTracks();
     wtActiveInfoHash = snap.infoHash;
 
     // Prefer the torrent's own metadata name over the forum post title —
@@ -732,6 +876,7 @@ const loadWebtorrentSource = async (activeSource: MediaEntryMirror, track: Media
     if (savedAudio && snap.files.some(f => f.index === savedAudio.fileIndex && f.isAudio)) {
       selectWebtorrentAudioTrack(savedAudio.fileIndex);
     }
+    void prefetchWtSubtitleTracks(snap.infoHash, snap.files);
 
     // Watchdog: if we're still "loading" and duration is still 0 a few
     // seconds after attaching, something is silently stuck (SW not actually
@@ -1001,6 +1146,7 @@ export const stopAll = (): void => {
     wtActiveInfoHash = null;
     wtActiveFileIndex.value = null;
     resetWtAudioTrackState();
+    clearWtSubtitleTracks();
   }
   state.playing = false; 
   state.progress = 0;
@@ -1581,6 +1727,8 @@ export const BFPlayer: BFPlayerAPI = {
   registerTrackAction, getTrackActions,
   registerExpandedTab, getExpandedTabs,
   registerRailItem, getRailItems,
+  registerPlayerButton, unregisterPlayerButton, getPlayerButtons,
+  registerPlayerWidget, unregisterPlayerWidget, getPlayerWidgets,
   showCinemaControls,
   createPlaylist, deletePlaylist, renamePlaylist,
   addTrackToPlaylist, removeTrackFromPlaylist, playPlaylist,

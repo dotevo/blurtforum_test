@@ -21,13 +21,13 @@
  * picker still flickering/misbehaving while open even after de-duplicating
  * the file list.
  */
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import {
+  wtSubtitleTrackIndex, wtSubtitleLoading, selectWebtorrentSubtitleTrack, prefetchWtSubtitleTracks,
   wtAudioTrackIndex, wtAudioMode, wtAudioOffsetMs, wtAudioOrigVolume, wtAudioTrackVolume,
   selectWebtorrentAudioTrack, setWebtorrentAudioMode, setWebtorrentAudioOffsetMs,
   setWebtorrentAudioOrigVolume, setWebtorrentAudioTrackVolume,
 } from '../player';
-import * as WTPool from '../webtorrent-pool';
 import type { TorrentSnapshot } from '../webtorrent-pool';
 
 const props = defineProps<{
@@ -38,109 +38,32 @@ const props = defineProps<{
   visible: boolean; // mirrors WebtorrentVideo.vue's auto-hide controlsVisible
 }>();
 
-// ── Subtitles (delegates entirely to torrent-lib.js's format conversion) ──
-// IMPORTANT: we never remove <track> elements once added — see the original
-// comment history in WebtorrentVideo.vue; removing/recreating a single
-// <track> broke the browser's native CC menu in Chrome/Firefox. Same
-// approach here, unchanged.
+// ── Subtitles ────────────────────────────────────────────────────────────
+// The actual <track>-element bookkeeping (fetch, mount, native-CC-menu sync)
+// lives in player.ts now, at module level — see its own "Subtitles" section
+// for the full reasoning. This component just reads that shared state and
+// renders a picker for it; it owns none of the state itself, which is
+// exactly what makes it safe to mount here, or as a cinema-mode widget (see
+// WebtorrentExtras.vue), or both at different times, without ever losing
+// the current selection or double-fetching/double-mounting anything.
 const subFiles = computed(() => props.files.filter(f => f.isSub));
-const activeSubIdx = ref<string>('');
-const subLoading = ref(false);
-const subTrackEls = new Map<number, HTMLTrackElement>();
-const subUrls = new Map<number, string>();
+const activeSubIdx = computed<string>(() => wtSubtitleTrackIndex.value == null ? '' : String(wtSubtitleTrackIndex.value));
+const subLoading = wtSubtitleLoading;
 
-function setActiveSubtitleTrack(fileIdx: number | null): void {
-  subTrackEls.forEach((el, idx) => {
-    el.track.mode = idx === fileIdx ? 'showing' : 'disabled';
-  });
+function selectSubtitle(e: Event): void {
+  const val = (e.target as HTMLSelectElement).value;
+  selectWebtorrentSubtitleTrack(val === '' ? null : Number(val));
 }
 
-function clearSubtitleTracks(): void {
-  subTrackEls.forEach(el => el.remove());
-  subTrackEls.clear();
-  subUrls.forEach(url => URL.revokeObjectURL(url));
-  subUrls.clear();
-  activeSubIdx.value = '';
-}
-
-function selectSubtitle(): void {
-  setActiveSubtitleTrack(activeSubIdx.value ? Number(activeSubIdx.value) : null);
-}
-
-/**
- * Real bug this fixes: <track> elements used to be fetched and mounted ONE
- * AT A TIME, only when picked from OUR OWN <select>. But the browser's
- * native CC/subtitles button (part of the <video controls> chrome) only
- * ever lists whichever <track> elements are ALREADY mounted on the video —
- * so on a browser/session where the user hadn't yet opened our dropdown,
- * the native CC button showed as unavailable or offered only "Off" plus
- * whichever single language had been picked before. Subtitle files are tiny
- * (typically tens of KB — nothing like the video itself), so fetching every
- * one of them up front is cheap and makes BOTH menus — ours and the native
- * one — show the complete list immediately, no "pick it once through our
- * UI first" workaround needed.
- */
-async function prefetchAllSubtitles(): Promise<void> {
-  const video = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
-  const hash = props.infoHash;
-  if (!video || !hash) return;
-  const toFetch = subFiles.value.filter(f => !subTrackEls.has(f.index));
-  if (!toFetch.length) return;
-
-  subLoading.value = true;
-  await Promise.all(toFetch.map(async (f) => {
-    try {
-      const track = await WTPool.getSubtitleTrack(hash, f.index);
-      // The torrent/track could have changed while this particular fetch
-      // was in flight — don't attach a track for a file that's no longer
-      // relevant, and don't leak its blob URL.
-      if (props.infoHash !== hash || !subFiles.value.some(sf => sf.index === f.index)) {
-        URL.revokeObjectURL(track.url);
-        return;
-      }
-      subUrls.set(f.index, track.url);
-      const el = document.createElement('track');
-      el.kind = 'subtitles';
-      el.label = track.name;
-      el.srclang = track.srclang;
-      el.src = track.url;
-      video.appendChild(el);
-      el.track.mode = 'disabled'; // mounted (so it's listed) but off until explicitly picked
-      subTrackEls.set(f.index, el);
-    } catch (err) {
-      console.warn('[WebtorrentAudioSubtitleMenu] failed to prefetch subtitle', f.name, err);
-    }
-  }));
-  subLoading.value = false;
-}
-
-// Keep OUR <select> in sync when the user picks a subtitle from the
-// browser's OWN native CC menu instead of ours — video.textTracks fires
-// 'change' whenever ANY track's mode changes, regardless of which UI did it.
-function onNativeTextTracksChange(): void {
-  let found: number | null = null;
-  subTrackEls.forEach((el, idx) => { if (el.track.mode === 'showing') found = idx; });
-  activeSubIdx.value = found == null ? '' : String(found);
-}
-
-let ttVideoEl: HTMLVideoElement | null = null;
-onMounted(() => {
-  ttVideoEl = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
-  ttVideoEl?.textTracks.addEventListener('change', onNativeTextTracksChange);
-});
-onUnmounted(() => {
-  ttVideoEl?.textTracks.removeEventListener('change', onNativeTextTracksChange);
-  clearSubtitleTracks();
-});
-
-// A new torrent means the previous subtitle files no longer apply; either
-// way, (re)prefetch whatever subtitle files exist right now. Combined into
-// one watcher (rather than two separate ones) so clearing always runs
-// before prefetching for the same change, instead of relying on Vue's
-// watcher-ordering to get that right.
-watch([() => props.infoHash, subFiles], ([hash], [prevHash]) => {
-  if (hash !== prevHash) clearSubtitleTracks();
-  void prefetchAllSubtitles();
+// Prefetching already happens once in player.ts as soon as a torrent's
+// infoHash resolves — this just makes sure it's also covered if this
+// component ends up mounting later than that (e.g. cinema mode toggling
+// which zone renders the picker after the torrent was already playing).
+// prefetchWtSubtitleTracks() only ever fetches files it hasn't already
+// mounted a <track> for, so calling it again here is a cheap no-op in the
+// common case, not a duplicate fetch.
+watch([() => props.infoHash, () => props.files], ([hash, files]) => {
+  if (hash) void prefetchWtSubtitleTracks(hash, files);
 }, { immediate: true });
 
 // ── Alternate audio track (lektor/dub) ─────────────────────────────────────
@@ -194,6 +117,23 @@ watch(() => props.visible, (v) => { if (!v) { showMenu.value = false; showAudioA
 // (viewport-relative, no containing-block ambiguity at all) to match it.
 // That's also literally the requested behavior — bounded to the video
 // element's height, with internal scroll for whatever doesn't fit.
+//
+// One more containing-block gotcha this ran into, specifically in cinema
+// mode: `position: fixed` only resolves against the real viewport as long
+// as NO ancestor sets `transform`/`filter`/`backdrop-filter`/`will-change`
+// -- any of those creates a containing block of its own for fixed
+// descendants (same rule as above, just a different CSS property tripping
+// it). In cinema mode this component (via WebtorrentExtras.vue, registered
+// as a cinema-bar widget by WebtorrentVideo.vue -- see player.ts's
+// registerPlayerWidget) ends up mounted inside MediaPlayer.vue's
+// `.bfp-cinema-controls`, which has `backdrop-filter: blur(...)` for its
+// glassy look. That silently turned this menu's "fixed" position back into
+// "fixed relative to that ~130px bottom bar" instead of the viewport, so
+// the whole panel rendered squashed into/behind that strip — present in the
+// DOM, effectively unreachable. Teleporting just the dropdown itself
+// straight to `<body>` (see the <template> below) sidesteps this the same
+// way `position: fixed` was meant to in the first place, regardless of
+// where its trigger button lives or what any future ancestor styling does.
 const menuStyle = ref<Record<string, string>>({});
 function updateMenuStyle(): void {
   const video = document.getElementById('bf-wt-player-video') as HTMLVideoElement | null;
@@ -230,53 +170,55 @@ onUnmounted(() => {
       <i class="fa-solid fa-closed-captioning"></i>
     </button>
 
-    <div v-if="showMenu" class="wasm-menu" :style="menuStyle" @click.stop @mousemove.stop>
-      <div class="wasm-row">
-        <label>{{ t('subtitles') || 'Subtitles' }}</label>
-        <select v-if="subFiles.length" v-model="activeSubIdx" @change="selectSubtitle" class="wtv-sub-select"
-                :disabled="subLoading">
-          <option value="">{{ t('subtitlesOff') || 'No subtitles' }}</option>
-          <option v-for="f in subFiles" :key="f.index" :value="f.index">{{ f.name }}</option>
-        </select>
-        <div v-else class="wasm-empty">{{ t('subtitlesNone') || 'No subtitle files in this torrent' }}</div>
-      </div>
-
-      <div class="wasm-row">
-        <label>{{ t('audioTrack') || 'Audio track' }}</label>
-        <select v-if="audioFiles.length" :value="activeAudioIdx" @change="selectAudioTrack" class="wtv-sub-select">
-          <option value="">{{ t('audioTrackOriginal') || 'Original audio' }}</option>
-          <option v-for="f in audioFiles" :key="f.index" :value="f.index">{{ f.name }}</option>
-        </select>
-        <div v-else class="wasm-empty">{{ t('audioTrackNone') || 'No alternate audio files in this torrent' }}</div>
-      </div>
-
-      <button v-if="activeAudioIdx" class="wtv-btn wasm-gear-btn" :class="{ 'wtv-btn--active': showAudioAdvanced }"
-              @click="showAudioAdvanced = !showAudioAdvanced">
-        <i class="fa-solid fa-sliders"></i> {{ t('audioTrackSettings') || 'Audio track settings (sync, volume)' }}
-      </button>
-
-      <div v-if="showAudioAdvanced && activeAudioIdx" class="wasm-advanced">
+    <Teleport to="body">
+      <div v-if="showMenu" class="wasm-menu" :style="menuStyle" @click.stop @mousemove.stop>
         <div class="wasm-row">
-          <label>{{ t('audioTrackMode') || 'Mode' }}</label>
-          <select :value="wtAudioMode" @change="onAudioModeChange">
-            <option value="dub">{{ t('audioTrackModeDub') || 'Replace original (dubbing)' }}</option>
-            <option value="lektor">{{ t('audioTrackModeLektor') || 'Alongside original (lektor)' }}</option>
+          <label>{{ t('subtitles') || 'Subtitles' }}</label>
+          <select v-if="subFiles.length" :value="activeSubIdx" @change="selectSubtitle" class="wtv-sub-select"
+                  :disabled="subLoading">
+            <option value="">{{ t('subtitlesOff') || 'No subtitles' }}</option>
+            <option v-for="f in subFiles" :key="f.index" :value="f.index">{{ f.name }}</option>
           </select>
+          <div v-else class="wasm-empty">{{ t('subtitlesNone') || 'No subtitle files in this torrent' }}</div>
         </div>
+
         <div class="wasm-row">
-          <label>{{ t('audioTrackOffset') || 'Sync offset' }} ({{ offsetSecDisplay }}s)</label>
-          <input type="range" min="-10000" max="10000" step="100" :value="wtAudioOffsetMs" @input="onOffsetInput" />
+          <label>{{ t('audioTrack') || 'Audio track' }}</label>
+          <select v-if="audioFiles.length" :value="activeAudioIdx" @change="selectAudioTrack" class="wtv-sub-select">
+            <option value="">{{ t('audioTrackOriginal') || 'Original audio' }}</option>
+            <option v-for="f in audioFiles" :key="f.index" :value="f.index">{{ f.name }}</option>
+          </select>
+          <div v-else class="wasm-empty">{{ t('audioTrackNone') || 'No alternate audio files in this torrent' }}</div>
         </div>
-        <div class="wasm-row">
-          <label>{{ t('audioTrackOrigVolume') || 'Original volume' }}</label>
-          <input type="range" min="0" max="1" step="0.05" :value="wtAudioOrigVolume" @input="onOrigVolumeInput" />
-        </div>
-        <div class="wasm-row">
-          <label>{{ t('audioTrackVolume') || 'Track volume' }}</label>
-          <input type="range" min="0" max="1" step="0.05" :value="wtAudioTrackVolume" @input="onTrackVolumeInput" />
+
+        <button v-if="activeAudioIdx" class="wtv-btn wasm-gear-btn" :class="{ 'wtv-btn--active': showAudioAdvanced }"
+                @click="showAudioAdvanced = !showAudioAdvanced">
+          <i class="fa-solid fa-sliders"></i> {{ t('audioTrackSettings') || 'Audio track settings (sync, volume)' }}
+        </button>
+
+        <div v-if="showAudioAdvanced && activeAudioIdx" class="wasm-advanced">
+          <div class="wasm-row">
+            <label>{{ t('audioTrackMode') || 'Mode' }}</label>
+            <select :value="wtAudioMode" @change="onAudioModeChange">
+              <option value="dub">{{ t('audioTrackModeDub') || 'Replace original (dubbing)' }}</option>
+              <option value="lektor">{{ t('audioTrackModeLektor') || 'Alongside original (lektor)' }}</option>
+            </select>
+          </div>
+          <div class="wasm-row">
+            <label>{{ t('audioTrackOffset') || 'Sync offset' }} ({{ offsetSecDisplay }}s)</label>
+            <input type="range" min="-10000" max="10000" step="100" :value="wtAudioOffsetMs" @input="onOffsetInput" />
+          </div>
+          <div class="wasm-row">
+            <label>{{ t('audioTrackOrigVolume') || 'Original volume' }}</label>
+            <input type="range" min="0" max="1" step="0.05" :value="wtAudioOrigVolume" @input="onOrigVolumeInput" />
+          </div>
+          <div class="wasm-row">
+            <label>{{ t('audioTrackVolume') || 'Track volume' }}</label>
+            <input type="range" min="0" max="1" step="0.05" :value="wtAudioTrackVolume" @input="onTrackVolumeInput" />
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 

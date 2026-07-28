@@ -5,6 +5,7 @@
  * belongs in a plugin's own metadata, attached via MediaTrack.meta / MediaTrack.badge.
  */
 
+import type { Component } from 'vue';
 import type { WebtorrentStats, SeedManifestEntry } from './webtorrent-pool';
 
 export interface MediaEntryMirror {
@@ -168,6 +169,67 @@ export interface RailItemContribution {
 }
 
 /**
+ * A single source's contribution of a simple, stateless button to the
+ * player's own cinema-mode chrome — e.g. WebTorrent's "torrent info" /
+ * "download whole torrent" buttons. Deliberately narrow: just an icon,
+ * label, click handler, and optional live active/badge state. Anything
+ * richer (a dropdown, a custom progress bar) is a PlayerWidgetContribution
+ * instead (see below).
+ *
+ * The contributing source only declares *which* source type(s) it applies
+ * to (`sourceTypes`) — never anything about display mode. `getPlayerButtons()`
+ * does the filtering against both the zone asked for AND whatever's actually
+ * playing right now, so a source never has to check `state.cinema` (or any
+ * other display-mode flag) itself, and never has to know where in the DOM
+ * its button ends up or how it's styled — that's entirely the player's call.
+ */
+export interface PlayerButtonContribution {
+  id: string;
+  /** Which MediaEntryMirror['type'] value(s) this button applies to, or 'all' sources. */
+  sourceTypes: MediaEntryMirror['type'][] | 'all';
+  /** Where this is allowed to render. Currently only cinema mode's bottom bar contributes buttons this way — the docked/expanded views are source-specific enough (see module/player/sources/) that they render their own controls directly instead. */
+  zone: 'cinema';
+  icon: string;
+  label: string;
+  onClick: () => void;
+  /** Re-evaluated by the player on every render (e.g. "full download in progress" highlight). */
+  active?: () => boolean;
+  /** Re-evaluated by the player on every render (e.g. a live download percentage). Return null/'' to hide the badge for now. */
+  badge?: () => string | null;
+}
+
+/**
+ * A single source's contribution of a whole Vue component into the player's
+ * own cinema-mode chrome — for anything a plain icon/button can't express
+ * (e.g. WebTorrent's piece-map bar, or its subtitle/audio-track picker).
+ *
+ * Unlike the old Teleport-based approach this replaces, the player mounts
+ * `component` directly in its own template, at the given `zone` — it is
+ * never physically moved from one DOM location to another. That matters
+ * for two reasons: (1) the contributing source never needs to know
+ * anything about cinema mode, any DOM id, or how to move itself there —
+ * it just describes what it wants shown and where; (2) the widget's own
+ * internal positioning (e.g. `position: fixed`) is never at the mercy of
+ * some unrelated ancestor element's `transform`/`filter`/`backdrop-filter`
+ * establishing a new containing block underneath it, which is exactly what
+ * broke the subtitle/audio dropdown under the old Teleport target (see
+ * WebtorrentAudioSubtitleMenu.vue's own comment for the full story).
+ *
+ * `props` is a function, re-invoked by the player on every render, so the
+ * contribution can hand the mounted component fresh reactive values instead
+ * of a snapshot frozen at registration time.
+ */
+export interface PlayerWidgetContribution {
+  id: string;
+  /** Which MediaEntryMirror['type'] value(s) this widget applies to, or 'all' sources. */
+  sourceTypes: MediaEntryMirror['type'][] | 'all';
+  /** 'cinema-bar' is the bottom transport-style row (alongside play/pause when shown); 'cinema-progress' is the full-width strip just above it, next to the main seek bar. */
+  zone: 'cinema-bar' | 'cinema-progress';
+  component: Component;
+  props?: () => Record<string, unknown>;
+}
+
+/**
  * A single plugin's contribution to a webtorrent peer-list row. `component`
  * receives `peerId`, `infoHash`, `addr`, `t`, plus whatever static `props`
  * were registered alongside it. The player core has no idea what any given
@@ -261,10 +323,22 @@ export interface BFPlayerAPI {
   registerRailItem: (contribution: RailItemContribution) => void;
   /** Rail items currently registered, in registration order. Used by CinemaRail.vue. */
   getRailItems: () => RailItemContribution[];
+  /** Registers a source's own simple button into cinema mode's bottom bar (see PlayerButtonContribution). Idempotent by id. */
+  registerPlayerButton: (contribution: PlayerButtonContribution) => void;
+  /** Removes a previously-registered button — sources that come and go with a component's lifecycle (e.g. a video-source component) should pair this with their own onUnmounted. */
+  unregisterPlayerButton: (id: string) => void;
+  /** Button contributions currently registered for `zone`, filtered to whatever source type is actually playing right now. Used by MediaPlayer.vue's cinema chrome. */
+  getPlayerButtons: (zone: PlayerButtonContribution['zone']) => PlayerButtonContribution[];
+  /** Registers a source's own Vue component into cinema mode's chrome (see PlayerWidgetContribution). Idempotent by id. */
+  registerPlayerWidget: (contribution: PlayerWidgetContribution) => void;
+  /** Removes a previously-registered widget — pair with onUnmounted, same as unregisterPlayerButton. */
+  unregisterPlayerWidget: (id: string) => void;
+  /** Widget contributions currently registered for `zone`, filtered to whatever source type is actually playing right now. Used by MediaPlayer.vue's cinema chrome. */
+  getPlayerWidgets: (zone: PlayerWidgetContribution['zone']) => PlayerWidgetContribution[];
   /** Call on any user activity (mousemove/click/keydown/touch) while cinema
    *  mode is active -- shows the floating chrome and resets the auto-hide
-   *  timer. Any component contributing its own cinema controls (e.g.
-   *  WebtorrentVideo.vue teleporting its overlay in) should call this
+   *  timer. Any source contributing its own cinema controls (via
+   *  registerPlayerButton/registerPlayerWidget above) should call this
    *  instead of running its own timer, so everything hides/shows together. */
   showCinemaControls: () => void;
   /** Temporarily blocks manual skip (e.g. while a sponsored track must play). Plugins are responsible for calling unlockSkip(). */

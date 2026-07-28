@@ -125,6 +125,28 @@ export function useApp() {
       if (BFPlayer.state.currentTrack && BFPlayer.state.expanded) {
         BFPlayer.state.cinema = true;
       }
+    } else {
+      // Mirror image of the branch above, and just as necessary: leaving
+      // the TV/cinema browsing UI has to drop the player back out of its
+      // OWN fullscreen cinema display too. Nothing else does this --
+      // CinemaIndex.vue's onUnmounted only resets state.hidden (so the
+      // docked mini-bar's visibility goes back to normal), it was never the
+      // one flipping .cinema off. Real bug this fixed: switch into cinema
+      // mode, start something playing (-> state.cinema = true above), then
+      // toggle cinema mode back off from the settings button while it's
+      // still playing -- state.cinema stayed true forever after, so
+      // MediaPlayer.vue kept rendering its fullscreen `.bfp-panel--cinema`
+      // (position:fixed, 100vh, z-index:999) on top of the now-normal page,
+      // with the docked bar (gated on `!state.cinema`) unable to ever show
+      // again and no obvious way back short of digging for the small
+      // "back to library" button. Playback itself is left completely
+      // alone here -- only the fullscreen *presentation* ends, same as
+      // picking any other tab/source would; the user can keep listening/
+      // watching docked or expanded, or stop it themselves as normal.
+      BFPlayer.state.hidden = false;
+      if (BFPlayer.state.cinema) {
+        BFPlayer.state.cinema = false;
+      }
     }
   };
 

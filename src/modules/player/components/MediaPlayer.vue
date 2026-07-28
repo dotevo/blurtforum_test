@@ -168,7 +168,7 @@ const cinemaPanelTabs = computed(() => [
 // just a second (really third) bar. Only audio has genuinely zero UI of its
 // own.
 const showOwnCinemaControls = computed(() =>
-  CINEMA_HIDE_NATIVE_CONTROLS || currentSource.value?.type === 'audio'
+  currentSource.value?.type !== 'webtorrent'
 );
 
 // Cinema mode's floating chrome (top bar, side icons, bottom bar) auto-hides
@@ -641,13 +641,18 @@ onUnmounted(() => {
 
         <!-- Bottom chrome: always present in cinema mode as a scaffold, even
              for sources that don't use our own play/pause/progress (e.g.
-             WebTorrent) -- #bfp-cinema-extra-controls and
-             #bfp-cinema-extra-progress are stable Teleport targets a
-             source-specific component can render its own controls/bars
-             into (see WebtorrentVideo.vue) instead of reimplementing an
-             overlay + auto-hide timer of its own. -->
+             WebTorrent) -- player.getPlayerWidgets()/getPlayerButtons() let
+             a source-specific component (see WebtorrentVideo.vue) register
+             its own controls/bars here instead of reimplementing an overlay
+             + auto-hide timer of its own. Mounted directly, never
+             Teleported, so a source's own internal positioning (e.g. a
+             dropdown using `position: fixed`) is never at the mercy of
+             backdrop-filter/transform on some ancestor it didn't choose. -->
         <div v-show="player.state.cinema" class="bfp-cinema-controls">
-          <div id="bfp-cinema-extra-progress" class="bfp-cinema-extra-progress"></div>
+          <div class="bfp-cinema-extra-progress">
+            <component v-for="w in player.getPlayerWidgets('cinema-progress')" :key="w.id"
+                       :is="w.component" v-bind="w.props ? w.props() : {}" />
+          </div>
 
           <div
             v-if="showOwnCinemaControls"
@@ -696,7 +701,15 @@ onUnmounted(() => {
               <slot name="track-actions" :track="player.state.currentTrack" zone="cinema"></slot>
             </div>
 
-            <div id="bfp-cinema-extra-controls" class="bfp-cinema-extra-controls"></div>
+            <div class="bfp-cinema-extra-controls">
+              <button v-for="b in player.getPlayerButtons('cinema')" :key="b.id" class="bfp-btn bfp-cinema-extra-btn"
+                      :class="{ 'bfp-cinema-extra-btn--active': b.active?.() }" @click="b.onClick()" :title="b.label">
+                <i :class="b.icon"></i>
+                <span v-if="b.badge?.()" class="bfp-cinema-extra-badge">{{ b.badge() }}</span>
+              </button>
+              <component v-for="w in player.getPlayerWidgets('cinema-bar')" :key="w.id"
+                         :is="w.component" v-bind="w.props ? w.props() : {}" />
+            </div>
           </div>
         </div>
 
@@ -1467,6 +1480,32 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   margin-left: auto;
+}
+.bfp-cinema-extra-btn {
+  position: relative;
+  background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+}
+.bfp-cinema-extra-btn:hover { background: rgba(0,0,0,.75); color: #fff; }
+.bfp-cinema-extra-btn--active {
+  background: rgba(35,130,90,.75);
+  border-color: rgba(126,232,201,.5);
+}
+.bfp-cinema-extra-btn--active:hover { background: rgba(35,150,100,.85); }
+.bfp-cinema-extra-badge {
+  position: absolute;
+  bottom: -6px;
+  right: -6px;
+  background: #1b8a5a;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 4px;
 }
 /* Sits above the main progress bar -- e.g. WebTorrent's piece map (see
    WebtorrentVideo.vue), a full-width supplementary bar, not more buttons in

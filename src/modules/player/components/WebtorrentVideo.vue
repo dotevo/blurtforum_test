@@ -180,7 +180,7 @@ registerPlayerButton({
 registerPlayerWidget({
   id: 'webtorrent-extras',
   sourceTypes: ['webtorrent'],
-  zone: 'cinema-bar',
+  zone: 'cinema-left',
   component: WebtorrentExtras,
   props: () => ({
     t: props.t,
@@ -348,8 +348,18 @@ watch(isWebtorrent, (active) => { if (active) showControls(); });
         this element's src directly — a single persistent element, not
         recreated per track, since torrent-lib.js attaches/detaches its own
         stream to whatever element you hand it.
+
+        `:controls` is off while in cinema mode: MediaPlayer.vue's own
+        transport row (play/pause/prev/next/volume/seek) plus this file's own
+        piece-map/subtitle-picker widgets are a full replacement there (same
+        principle as CINEMA_HIDE_NATIVE_CONTROLS for YouTube/PeerTube), so
+        leaving the browser's native video chrome on top of all that just
+        meant two independent control layers visually overlapping at the
+        bottom of the screen. Outside cinema mode nothing else provides
+        play/pause/seek for the docked/expanded view, so native controls
+        stay on there.
       -->
-      <video id="bf-wt-player-video" class="bfp-video-iframe" controls playsinline controls-list="nodownload nofullscreen"></video>
+      <video id="bf-wt-player-video" class="bfp-video-iframe" :controls="!playerState.cinema" playsinline controls-list="nodownload nofullscreen"></video>
 
       <div class="wtv-controls" v-if="isWebtorrent && !playerState.cinema" :class="{ 'wtv-controls--hidden': !effectiveControlsVisible }">
         <button class="wtv-btn" @click="playerState.expanded = true; playerState.expandedTab = 'webtorrent-info'" :title="t('torrentInfo') || 'Torrent info'">

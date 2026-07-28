@@ -124,7 +124,7 @@ watch(() => props.visible, (v) => { if (!v) { showMenu.value = false; showAudioA
 // -- any of those creates a containing block of its own for fixed
 // descendants (same rule as above, just a different CSS property tripping
 // it). In cinema mode this component (via WebtorrentExtras.vue, registered
-// as a cinema-bar widget by WebtorrentVideo.vue -- see player.ts's
+// as a cinema-left widget by WebtorrentVideo.vue -- see player.ts's
 // registerPlayerWidget) ends up mounted inside MediaPlayer.vue's
 // `.bfp-cinema-controls`, which has `backdrop-filter: blur(...)` for its
 // glassy look. That silently turned this menu's "fixed" position back into

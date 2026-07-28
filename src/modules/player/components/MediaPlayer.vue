@@ -159,17 +159,14 @@ const cinemaPanelTabs = computed(() => [
   ...props.player.getExpandedTabs(),
 ]);
 
-// YouTube/PeerTube keep their own native play/pause/progress UI for now (see
-// CINEMA_HIDE_NATIVE_CONTROLS in player.ts). WebTorrent is NOT included here
-// even though it's "ours" -- WebtorrentVideo.vue already has its own
-// complete, purpose-built overlay (torrent info, download toggle,
-// peers/speed, its own fullscreen fix, subtitles menu) on top of the native
-// <video controls>. Duplicating play/pause/progress here on top of that was
-// just a second (really third) bar. Only audio has genuinely zero UI of its
-// own.
-const showOwnCinemaControls = computed(() =>
-  currentSource.value?.type !== 'webtorrent'
-);
+// Every source shares this same transport row (play/pause/prev/next/volume/
+// seek) -- a source's own registered cinema buttons/widgets (see
+// registerPlayerButton/registerPlayerWidget in player.ts, used by
+// WebtorrentVideo.vue) supplement this row, they never replace it. (History:
+// this briefly excluded webtorrent on the theory that its own overlay was a
+// full replacement -- it wasn't; that silently removed the only way to
+// pause, seek, or change volume for webtorrent in cinema mode.)
+const showOwnCinemaControls = computed(() => true);
 
 // Cinema mode's floating chrome (top bar, side icons, bottom bar) auto-hides
 // after a few seconds of no activity -- the actual timer lives in player.ts
@@ -639,15 +636,15 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <!-- Bottom chrome: always present in cinema mode as a scaffold, even
-             for sources that don't use our own play/pause/progress (e.g.
-             WebTorrent) -- player.getPlayerWidgets()/getPlayerButtons() let
-             a source-specific component (see WebtorrentVideo.vue) register
-             its own controls/bars here instead of reimplementing an overlay
-             + auto-hide timer of its own. Mounted directly, never
-             Teleported, so a source's own internal positioning (e.g. a
-             dropdown using `position: fixed`) is never at the mercy of
-             backdrop-filter/transform on some ancestor it didn't choose. -->
+        <!-- Bottom chrome. player.getPlayerWidgets()/getPlayerButtons() let a
+             source-specific component (see WebtorrentVideo.vue) register its
+             own controls into the left-hand transport cluster below, or a
+             full-width bar above the seek bar (piece map), instead of
+             reimplementing an overlay + auto-hide timer of its own. Mounted
+             directly, never Teleported, so a source's own internal
+             positioning (e.g. a dropdown using `position: fixed`) is never
+             at the mercy of backdrop-filter/transform on some ancestor it
+             didn't choose. -->
         <div v-show="player.state.cinema" class="bfp-cinema-controls">
           <div class="bfp-cinema-extra-progress">
             <component v-for="w in player.getPlayerWidgets('cinema-progress')" :key="w.id"
@@ -695,20 +692,28 @@ onUnmounted(() => {
               <span class="bfp-cinema-time gs" v-if="player.state.duration > 0">
                 {{ formatTime(player.state.duration * player.state.progress / 100) }} / {{ formatTime(player.state.duration) }}
               </span>
-            </div>
 
-            <div class="bfp-cinema-track-actions" v-if="player.state.currentTrack">
-              <slot name="track-actions" :track="player.state.currentTrack" zone="cinema"></slot>
-            </div>
-
-            <div class="bfp-cinema-extra-controls">
+              <!-- A source's own controls (e.g. WebTorrent's torrent-info/
+                   download buttons and its peers/speed/subtitles widget) join
+                   this same left-hand cluster, right after the standard
+                   transport controls -- see registerPlayerButton/
+                   registerPlayerWidget in player.ts. Deliberately NOT on the
+                   right: that's where the track-actions slot and the
+                   slide-out panel toggles live, and D-pad navigation flows
+                   left-to-right through whichever cluster it's already in, so
+                   keeping everything playback-related in one group here
+                   keeps it reachable without jumping across the row. -->
               <button v-for="b in player.getPlayerButtons('cinema')" :key="b.id" class="bfp-btn bfp-cinema-extra-btn"
                       :class="{ 'bfp-cinema-extra-btn--active': b.active?.() }" @click="b.onClick()" :title="b.label">
                 <i :class="b.icon"></i>
                 <span v-if="b.badge?.()" class="bfp-cinema-extra-badge">{{ b.badge() }}</span>
               </button>
-              <component v-for="w in player.getPlayerWidgets('cinema-bar')" :key="w.id"
+              <component v-for="w in player.getPlayerWidgets('cinema-left')" :key="w.id"
                          :is="w.component" v-bind="w.props ? w.props() : {}" />
+            </div>
+
+            <div class="bfp-cinema-track-actions" v-if="player.state.currentTrack">
+              <slot name="track-actions" :track="player.state.currentTrack" zone="cinema"></slot>
             </div>
           </div>
         </div>
@@ -1471,16 +1476,9 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
 }
-.bfp-cinema-controls-left { display: flex; align-items: center; gap: 10px; }
+.bfp-cinema-controls-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bfp-cinema-track-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .bfp-cinema-track-actions:empty { display: none; }
-.bfp-cinema-extra-controls:empty { display: none; }
-.bfp-cinema-extra-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-}
 .bfp-cinema-extra-btn {
   position: relative;
   background: rgba(0,0,0,.55);
@@ -1509,7 +1507,7 @@ onUnmounted(() => {
 }
 /* Sits above the main progress bar -- e.g. WebTorrent's piece map (see
    WebtorrentVideo.vue), a full-width supplementary bar, not more buttons in
-   a row, hence its own target rather than sharing bfp-cinema-extra-controls. */
+   a row, hence its own zone rather than joining .bfp-cinema-controls-left. */
 .bfp-cinema-extra-progress:empty { display: none; }
 .bfp-cinema-extra-progress { width: 100%; margin-bottom: 8px; }
 .bfp-cinema-time { color: #ddd; font-size: 12px; margin-left: 6px; }

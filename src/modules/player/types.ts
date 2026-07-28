@@ -187,7 +187,7 @@ export interface PlayerButtonContribution {
   id: string;
   /** Which MediaEntryMirror['type'] value(s) this button applies to, or 'all' sources. */
   sourceTypes: MediaEntryMirror['type'][] | 'all';
-  /** Where this is allowed to render. Currently only cinema mode's bottom bar contributes buttons this way — the docked/expanded views are source-specific enough (see module/player/sources/) that they render their own controls directly instead. */
+  /** Where this is allowed to render. Currently the only option: joins the left-hand transport cluster (play/pause/prev/next/volume) in cinema mode's bottom bar -- kept there, not on the right, so it stays reachable via D-pad navigation without crossing the row, and stays clear of the track-actions slot / slide-out panel toggles. The docked/expanded views are source-specific enough (see WebtorrentVideo.vue) that they render their own controls directly instead. */
   zone: 'cinema';
   icon: string;
   label: string;
@@ -223,8 +223,8 @@ export interface PlayerWidgetContribution {
   id: string;
   /** Which MediaEntryMirror['type'] value(s) this widget applies to, or 'all' sources. */
   sourceTypes: MediaEntryMirror['type'][] | 'all';
-  /** 'cinema-bar' is the bottom transport-style row (alongside play/pause when shown); 'cinema-progress' is the full-width strip just above it, next to the main seek bar. */
-  zone: 'cinema-bar' | 'cinema-progress';
+  /** 'cinema-left' joins the left-hand transport cluster (play/pause/prev/next/volume) -- kept there rather than on the right so it stays reachable via D-pad navigation without crossing the row, and stays clear of the track-actions slot / slide-out panel toggles that live on the right. 'cinema-progress' is the full-width strip just above the main seek bar. */
+  zone: 'cinema-left' | 'cinema-progress';
   component: Component;
   props?: () => Record<string, unknown>;
 }

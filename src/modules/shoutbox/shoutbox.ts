@@ -127,7 +127,8 @@ class ShoutboxCore {
   onlineCount(scope?: ShoutboxScope): number {
     this.pruneStalePeers();
     const all = Array.from(this.peers.values());
-    return (scope ? all.filter((p) => p.scope === scope) : all).length;
+    const filtered = scope ? all.filter((p) => p.scope === scope) : all;
+    return this.dedupeByIdentity(filtered).length;
   }
 
   onlineUsernames(scope?: ShoutboxScope): string[] {
@@ -137,6 +138,31 @@ class ShoutboxCore {
     return Array.from(new Set(filtered.map((p) => p.username).filter((u): u is string => !!u)));
   }
 
+  /** Same logged-in account often shows up as several `peers` entries at
+   * once — a second browser tab, or a reconnect after a dropped
+   * connection (each gets its own fresh peerId) — since presence is
+   * tracked per-connection, not per-account. This collapses those down
+   * to a single entry (keeping whichever is most recently seen), so "N
+   * online" and the online list both reflect actual people rather than
+   * connections.
+   *
+   * Anonymous peers (no signed-in username) are deliberately left
+   * un-merged: two anonymous connections might be the same visitor with
+   * two tabs, or might be two different anonymous visitors — unlike a
+   * logged-in username, there's no signal here we can trust either way,
+   * so merging them would just be trading one inaccuracy for another
+   * (silently hiding real distinct visitors). */
+  private dedupeByIdentity(peers: PeerInfo[]): PeerInfo[] {
+    const byUsername = new Map<string, PeerInfo>();
+    const anonymous: PeerInfo[] = [];
+    for (const p of peers) {
+      if (!p.username) { anonymous.push(p); continue; }
+      const existing = byUsername.get(p.username);
+      if (!existing || p.lastSeen > existing.lastSeen) byUsername.set(p.username, p);
+    }
+    return [...byUsername.values(), ...anonymous];
+  }
+
   /** Everyone currently online, across every scope — not filtered by
    * whichever tab is active. Used by the "who's online" tab, which is
    * deliberately a single unified list rather than per-scope, since
@@ -144,7 +170,8 @@ class ShoutboxCore {
    * on a forum this size. */
   allPeers(): PeerInfo[] {
     this.pruneStalePeers();
-    return Array.from(this.peers.values()).sort((a, b) => (a.username ?? '').localeCompare(b.username ?? ''));
+    const deduped = this.dedupeByIdentity(Array.from(this.peers.values()));
+    return deduped.sort((a, b) => (a.username ?? '').localeCompare(b.username ?? ''));
   }
 
   /** Tell the room what post/topic is currently open, if any — included

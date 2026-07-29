@@ -3,21 +3,10 @@
  * Cinema mode's "browse" screen — a VOD-style grid, either:
  *  - category rows (posts containing embedded media, grouped by tag), or
  *  - the user's playlists (rows = playlists, cards = playlist tracks)
- * toggled via player.state.cinemaBrowseView, which the left rail's
- * Playlists entry sets directly (see player.ts) so it doesn't need any
- * direct reference to this component.
+ * toggled via player.state.cinemaBrowseView.
  *
- * No new backend calls for categories: reuses the same bridge
- * get_ranked_posts the rest of the forum already uses (Blockchain.getRankedPosts)
- * and the same normalizePost() pipeline that already builds post.tracks
- * (grouped mirrors) for every other view.
- *
- * The card thumbnail is <ForumMedia mode="card" hide-buttons> — same
- * component ForumView/TopicView already use for covers (mirror resolution,
- * YouTube/Suno cover art, WebTorrent live status), just with its own
- * play/pause/queue overlay suppressed. This screen supplies its own single
- * play action (like ForumMediaContainer does for the micro/list view), which
- * plays the track and flips the player into fullscreen cinema display.
+ * Enhanced with multi-tag fetching, multi-sort fallback (trending -> created),
+ * and automatic deduplication per category.
  */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { Blockchain } from '../blockchain';
@@ -31,105 +20,286 @@ const props = defineProps<{
   t: (k: string) => string;
 }>();
 
-interface CinemaCard { post: { author: string; permlink: string; title: string }; track: MediaTrack; }
-interface CinemaRow {
-  id: string; label: string; icon: string; cards: CinemaCard[]; loading: boolean;
-  /** Debug info so an empty category is diagnosable from the UI itself
-   *  (useful on mobile where there's no easy console) instead of just
-   *  silently vanishing. Not used for playlist rows (nothing to fetch). */
-  rawCount: number; error: string | null;
-  /** Pagination cursor (last raw post seen so far) for "load more" --
-   *  continues from here instead of re-fetching the same page. Only used
-   *  for category rows; undefined/unused for playlist rows. */
-  cursor?: { author: string; permlink: string } | null;
-  /** Set once a fetch page added zero new videos, or the feed itself ran
-   *  out of posts -- stops both the initial auto-fill and hides "load
-   *  more", since a category that just came up empty on the last page is
-   *  assumed to be tapped out rather than retried forever. */
-  exhausted?: boolean;
-  loadingMore?: boolean;
+interface CinemaCard {
+  post: { author: string; permlink: string; title: string };
+  track: MediaTrack;
 }
 
-// Small badge so a thumbnail's source is identifiable at a glance in a grid
-// full of mixed YouTube/PeerTube/WebTorrent/audio cards.
+type SortMethod = 'trending' | 'created' | 'hot';
+
+interface CinemaRow {
+  id: string;
+  label: string;
+  icon: string;
+  /** Primary and fallback tags to fetch videos from */
+  tags: string[];
+  /** Order of sort methods to attempt for each tag (e.g. trending first, fallback to newest/created) */
+  sorts: SortMethod[];
+  cards: CinemaCard[];
+  loading: boolean;
+  rawCount: number;
+  error: string | null;
+  /** Index of current active tag from tags[] */
+  currentTagIndex: number;
+  /** Index of current active sort method from sorts[] */
+  currentSortIndex: number;
+  /** Pagination cursor for current tag/sort stream */
+  cursor?: { author: string; permlink: string } | null;
+  /** Set when all tags and sort methods for this row are fully exhausted */
+  exhausted?: boolean;
+  loadingMore?: boolean;
+  /** Set of unique author/permlink identifiers to prevent duplicate cards */
+  seenKeys: Set<string>;
+}
+
+// Small badge so a thumbnail's source is identifiable at a glance
 const sourceBadge: Record<string, { label: string; icon: string }> = {
   youtube: { label: 'YT', icon: 'fa-brands fa-youtube' },
   peertube: { label: 'PT', icon: 'fa-solid fa-video' },
   audio: { label: 'MP3', icon: 'fa-solid fa-music' },
   webtorrent: { label: 'WT', icon: 'fa-solid fa-magnet' },
 };
+
 const cardSource = (card: CinemaCard) => {
   const src = card.track.sources?.[card.track.activeSourceIndex ?? 0] || card.track.sources?.[0];
   return src ? sourceBadge[src.type] : null;
 };
 
-// Starter categories — real tags on the Blurt chain, not invented buckets.
-// Easy to extend/replace once real category conventions are decided.
-// 'video' leads the list (and so becomes the default hero background,
-// since the hero picks whichever category's first card loads first --
-// see updateHero() below) per the current primary-tag convention.
+// Expanded & optimized categories with primary + fallback tags, ranked by video density
 const categories = ref<CinemaRow[]>([
-  { id: 'video',      label: 'Video',       icon: 'fa-solid fa-film',          cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
-  { id: 'blurtmedia', label: 'Blurt Media', icon: 'fa-solid fa-fire',           cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
-  { id: 'sport',      label: 'Sport',       icon: 'fa-solid fa-futbol',        cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
-  { id: 'comedy',     label: 'Comedy',      icon: 'fa-solid fa-masks-theater', cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
-  { id: 'music',      label: 'Music',       icon: 'fa-solid fa-music',         cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
-  { id: 'gaming',     label: 'Gaming',      icon: 'fa-solid fa-gamepad',       cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
-  { id: 'crypto',     label: 'Crypto',      icon: 'fa-solid fa-coins',         cards: [], loading: true, rawCount: 0, error: null, cursor: null, exhausted: false, loadingMore: false },
+  {
+    id: 'video',
+    label: 'Featured Videos',
+    icon: 'fa-solid fa-film',
+    tags: ['video', 'blurt-video', 'blurtmedia', 'vlog'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'vlogs',
+    label: 'Vlogs & Stories',
+    icon: 'fa-solid fa-video',
+    tags: ['vlog', 'life', 'blog'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'blurtmedia',
+    label: 'Blurt Originals',
+    icon: 'fa-solid fa-fire',
+    tags: ['blurtmedia', 'blurt-video', 'blurt'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'music',
+    label: 'Music & Performance',
+    icon: 'fa-solid fa-music',
+    tags: ['music', 'song', 'livemusic', 'audio'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'gaming',
+    label: 'Gaming & Esports',
+    icon: 'fa-solid fa-gamepad',
+    tags: ['gaming', 'game', 'play2earn', 'gameplay'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'crypto',
+    label: 'Crypto & Finance',
+    icon: 'fa-solid fa-coins',
+    tags: ['crypto', 'bitcoin', 'blockchain', 'finances'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'movies',
+    label: 'Cinema & Reviews',
+    icon: 'fa-solid fa-clapperboard',
+    tags: ['movies', 'cinema', 'film', 'movie'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'comedy',
+    label: 'Comedy & Entertainment',
+    icon: 'fa-solid fa-masks-theater',
+    tags: ['comedy', 'fun', 'funny', 'humor'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'tech',
+    label: 'Tech & Science',
+    icon: 'fa-solid fa-microchip',
+    tags: ['tech', 'technology', 'gadgets', 'tutorials'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'sport',
+    label: 'Sports & Fitness',
+    icon: 'fa-solid fa-futbol',
+    tags: ['sport', 'sports', 'fitness', 'workout'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'food',
+    label: 'Cooking & Food',
+    icon: 'fa-solid fa-utensils',
+    tags: ['food', 'cooking', 'recipe', 'foodie'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
+  {
+    id: 'podcasts',
+    label: 'Podcasts & Shows',
+    icon: 'fa-solid fa-podcast',
+    tags: ['podcast', 'podcasts', 'interview', 'show'],
+    sorts: ['trending', 'created'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set()
+  },
 ]);
 
-// Posts don't all contain a detectable video/audio embed, so a flat "give
-// me 10 posts" fetch would often surface a mostly-empty row. Page through
-// get_ranked_posts PAGE_SIZE posts at a time instead, keep whatever has a
-// track, and keep paging until `target` cards are collected -- unless a
-// page adds nothing at all, or the feed itself runs out, in which case
-// this tag is treated as tapped out (see `exhausted` above).
 const PAGE_SIZE = 10;
 const AUTO_FETCH_TARGET = 10;
 
+/**
+ * Advances category pointer to the next sort mode or tag when current stream is exhausted.
+ */
+function advanceCursorToNextMode(cat: CinemaRow): void {
+  cat.cursor = null;
+  cat.currentSortIndex++;
+
+  // If we ran through all sorts for this tag, move to the next tag
+  if (cat.currentSortIndex >= cat.sorts.length) {
+    cat.currentSortIndex = 0;
+    cat.currentTagIndex++;
+  }
+
+  // If we ran through all tags, mark row as fully exhausted
+  if (cat.currentTagIndex >= cat.tags.length) {
+    cat.exhausted = true;
+  }
+}
+
+/**
+ * Multi-tag & Multi-sort fetching loop with built-in deduplication.
+ */
 async function fetchMoreForCategory(cat: CinemaRow, target: number): Promise<void> {
+  let emptyAttemptsInARow = 0;
+  const MAX_EMPTY_ATTEMPTS = 5;
+
   while (cat.cards.length < target && !cat.exhausted) {
-    const before = cat.cards.length;
-    let raw: any[];
-    try {
-      raw = await Blockchain.getRankedPosts(props.client, 'trending', cat.id, PAGE_SIZE, cat.cursor?.author, cat.cursor?.permlink);
-    } catch (e) {
-      cat.error = e instanceof Error ? e.message : String(e);
+    if (cat.currentTagIndex >= cat.tags.length) {
       cat.exhausted = true;
       break;
     }
 
-    // The bridge convention returns the cursor post itself again as the
-    // first result when start_author/start_permlink are given -- drop it,
-    // it was already counted on the previous page.
+    const currentTag = cat.tags[cat.currentTagIndex];
+    const currentSort = cat.sorts[cat.currentSortIndex];
+
+    let raw: any[] = [];
+    try {
+      raw = await Blockchain.getRankedPosts(
+        props.client,
+        currentSort,
+        currentTag,
+        PAGE_SIZE,
+        cat.cursor?.author,
+        cat.cursor?.permlink
+      );
+    } catch (e) {
+      cat.error = e instanceof Error ? e.message : String(e);
+      advanceCursorToNextMode(cat);
+      continue;
+    }
+
+    // Drop cursor post returned by bridge API convention
     if (cat.cursor && raw.length && raw[0].author === cat.cursor.author && raw[0].permlink === cat.cursor.permlink) {
       raw = raw.slice(1);
     }
-    if (!raw.length) { cat.exhausted = true; break; }
-    cat.rawCount += raw.length;
 
-    // Advance the cursor to this page's last post regardless of whether it
-    // had video, so the next page continues from here either way.
+    if (!raw.length) {
+      advanceCursorToNextMode(cat);
+      emptyAttemptsInARow++;
+      if (emptyAttemptsInARow >= MAX_EMPTY_ATTEMPTS) {
+        cat.exhausted = true;
+        break;
+      }
+      continue;
+    }
+
+    cat.rawCount += raw.length;
     const lastRaw = raw[raw.length - 1];
     cat.cursor = { author: lastRaw.author, permlink: lastRaw.permlink };
 
+    let addedThisPage = 0;
     for (const r of raw) {
       const post = PostProcessor.normalizePost(r);
-      // normalizePost already extracted + grouped mirrors into post.tracks —
-      // no need to re-run media detection here.
+      const postKey = `${post.author}/${post.permlink}`;
+
+      // Deduplication check: skip if post is already present in this row
+      if (cat.seenKeys.has(postKey)) {
+        continue;
+      }
+
       if (post.tracks && post.tracks.length) {
         const track = post.tracks[0] as unknown as MediaTrack;
-        cat.cards.push({ post: { author: post.author, permlink: post.permlink, title: post.title }, track });
+        cat.seenKeys.add(postKey);
+        cat.cards.push({
+          post: { author: post.author, permlink: post.permlink, title: post.title },
+          track,
+        });
+        addedThisPage++;
       }
     }
-    if (cat.cards.length && !currentCard.value) updateHero(cat.cards[0]);
 
-    // Nothing new this page -- stop trying rather than keep paging a tag
-    // that's run dry on video content.
-    if (cat.cards.length === before) { cat.exhausted = true; break; }
-    // Fewer posts than requested means we've hit the actual end of this
-    // tag's feed, regardless of how many had video.
-    if (raw.length < PAGE_SIZE) { cat.exhausted = true; break; }
+    if (cat.cards.length && !currentCard.value) {
+      updateHero(cat.cards[0]);
+    }
+
+    // End of stream for current tag + sort method
+    if (raw.length < PAGE_SIZE) {
+      advanceCursorToNextMode(cat);
+    }
+
+    if (addedThisPage === 0) {
+      emptyAttemptsInARow++;
+      if (emptyAttemptsInARow >= MAX_EMPTY_ATTEMPTS) {
+        advanceCursorToNextMode(cat);
+      }
+    } else {
+      emptyAttemptsInARow = 0;
+    }
   }
 }
 
@@ -139,7 +309,10 @@ const loadCategory = async (cat: CinemaRow): Promise<void> => {
   cat.cards = [];
   cat.rawCount = 0;
   cat.cursor = null;
+  cat.currentTagIndex = 0;
+  cat.currentSortIndex = 0;
   cat.exhausted = false;
+  cat.seenKeys = new Set<string>();
   await fetchMoreForCategory(cat, AUTO_FETCH_TARGET);
   cat.loading = false;
 };
@@ -154,34 +327,35 @@ async function loadMoreForCategory(cat: CinemaRow): Promise<void> {
   }
 }
 
-// Playlists view: rows = playlists, cards = each playlist's tracks. No
-// fetching -- playlistState is already fully loaded/reactive.
-const playlistRows = computed<CinemaRow[]>(() => playlistState.playlists.map(pl => ({
-  id: pl.id,
-  label: pl.name,
-  icon: 'fa-solid fa-list',
-  loading: false,
-  rawCount: pl.tracks.length,
-  error: null,
-  cards: pl.tracks.map(track => ({ post: { author: track.author, permlink: track.permlink, title: track.title }, track })),
-})));
+// Playlists view mapping
+const playlistRows = computed<CinemaRow[]>(() =>
+  playlistState.playlists.map((pl) => ({
+    id: pl.id,
+    label: pl.name,
+    icon: 'fa-solid fa-list',
+    tags: [],
+    sorts: [],
+    loading: false,
+    rawCount: pl.tracks.length,
+    error: null,
+    currentTagIndex: 0,
+    currentSortIndex: 0,
+    seenKeys: new Set(),
+    cards: pl.tracks.map((track) => ({
+      post: { author: track.author, permlink: track.permlink, title: track.title },
+      track,
+    })),
+  }))
+);
 
 const rows = computed<CinemaRow[]>(() =>
   playerState.cinemaBrowseView === 'playlists' ? playlistRows.value : categories.value
 );
 
-// ── Hero: highlights whichever card was last hovered/focused ──────────────
+// Hero state & controls
 const currentCard = ref<CinemaCard | null>(null);
 const updateHero = (card: CinemaCard) => { currentCard.value = card; };
 
-// Same "is this card the one that's actually already loaded and playing"
-// check ForumMedia.ce.vue's own handlePlay() does for its card/micro modes.
-// Without it, clicking an already-playing card just re-ran playTrack() on
-// every click (harmless there since playTrack() dedupes identical sources
-// and no-ops -- but exactly this "click just re-issues playTrack() instead
-// of toggling" shape is what leaves a stuck source silently ignoring
-// pause/volume, see player.ts togglePlay()/initPT()). Toggling explicitly
-// here means a click on the active card always does the right thing.
 const isCardActive = (card: CinemaCard): boolean => {
   const current = playerState.currentTrack;
   if (!current) return false;
@@ -195,18 +369,11 @@ const playCard = async (card: CinemaCard): Promise<void> => {
   } else {
     await playTrack(card.track, true);
   }
-  // Set explicitly rather than relying only on the watcher below: if this is
-  // the same track that's already current (e.g. user went back to the
-  // library and picked the same video again), state.currentTrack doesn't
-  // change reference, so a watcher on it wouldn't fire.
   playerState.cinema = true;
   playerState.expanded = true;
   playerState.minimized = false;
 };
 
-// Whenever a track actually starts playing while this screen is mounted,
-// flip the player into fullscreen cinema display (covers cases other than
-// playCard triggering playback, e.g. resuming from queue/history).
 watch(() => playerState.currentTrack, (track) => {
   if (!track) return;
   playerState.cinema = true;
@@ -214,10 +381,6 @@ watch(() => playerState.currentTrack, (track) => {
   playerState.minimized = false;
 });
 
-// The docked bar is never wanted in cinema context -- browsing or playing.
-// Playback controls now live inside the fullscreen panel itself (see
-// MediaPlayer.vue's .bfp-cinema-controls), so there's nothing for the bar
-// to still be useful for here.
 onMounted(() => {
   categories.value.forEach(loadCategory);
   playerState.hidden = true;
@@ -228,17 +391,10 @@ onUnmounted(() => {
   playerState.cinemaBrowseView = 'categories';
 });
 
-// ── Keyboard / remote (D-pad) initial focus ────────────────────────────────
-// Actual arrow-key/Enter/Escape navigation is handled globally, uniformly
-// across the whole cinema UI (grid + rail + player), by
-// modules/cinema/dpad-nav.ts — see its file comment for why that replaced
-// a bespoke per-zone handler here. All that's left for this view to own is
-// putting focus somewhere sensible once cards actually exist: nothing is
-// focused by default, and the global navigator only *moves* focus that
-// already exists, it doesn't invent a starting point.
+// Keyboard & D-pad focus management
 const gridEl = ref<HTMLElement | null>(null);
-
 let hasAutoFocused = false;
+
 watch(rows, () => {
   if (hasAutoFocused) return;
   nextTick(() => {
@@ -251,8 +407,6 @@ watch(rows, () => {
   });
 }, { deep: true, immediate: true });
 
-// Switching between categories/playlists is a fresh browse -- allow
-// auto-focus to run again for the new view.
 watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
 </script>
 
@@ -260,15 +414,6 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   <div ref="gridEl" class="cinema-index">
 
     <section class="cinema-hero" v-if="currentCard">
-      <!-- Reuses the exact same component (and thus the exact same
-           thumbnail-resolution logic) as the card grid below, rather than
-           reading currentCard.track.cover directly. That field is only
-           ever populated synchronously for sources with a predictable
-           thumbnail URL pattern (YouTube); PeerTube's real thumbnail comes
-           from an async, proxied API call that ForumMedia.ce.vue makes and
-           keeps in its own internal state -- never written back to the
-           plain track object CinemaIndex builds -- so the hero showed
-           nothing for PeerTube even though the card right below it did. -->
       <ForumMedia
         :key="currentCard.post.author + '/' + currentCard.post.permlink"
         class="cinema-hero-backdrop"
@@ -286,20 +431,20 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
           <span><i class="fa-solid fa-user-astronaut"></i> @{{ currentCard.post.author }}</span>
         </div>
         <button class="cinema-hero-play" @click="playCard(currentCard)">
-          <i class="fa-solid fa-play"></i> {{ t('play') || 'Odtwórz' }}
+          <i class="fa-solid fa-play"></i> {{ t('play') || 'Play' }}
         </button>
       </div>
     </section>
 
     <div v-if="playerState.cinemaBrowseView === 'playlists'" class="cinema-view-header">
       <button class="cinema-back-link" @click="playerState.cinemaBrowseView = 'categories'">
-        <i class="fa-solid fa-arrow-left"></i> {{ t('categories') || 'Kategorie' }}
+        <i class="fa-solid fa-arrow-left"></i> {{ t('categories') || 'Categories' }}
       </button>
-      <h1 class="cinema-view-title">{{ t('playlists') || 'Playlisty' }}</h1>
+      <h1 class="cinema-view-title">{{ t('playlists') || 'Playlists' }}</h1>
     </div>
 
     <div v-if="playerState.cinemaBrowseView === 'playlists' && !rows.length" class="cinema-empty">
-      {{ t('noPlaylists') || 'Nie masz jeszcze żadnej playlisty.' }}
+      {{ t('noPlaylists') || 'You do not have any playlists yet.' }}
     </div>
 
     <template v-for="row in rows" :key="row.id">
@@ -309,13 +454,13 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
         <div v-if="row.loading" class="loader"><span class="spin"></span></div>
 
         <div v-else-if="row.error" class="cinema-empty">
-          {{ t('error') || 'Błąd' }}: {{ row.error }}
+          {{ t('error') || 'Error' }}: {{ row.error }}
         </div>
 
         <div v-else-if="!row.cards.length" class="cinema-empty">
           {{ playerState.cinemaBrowseView === 'playlists'
-              ? (t('emptyPlaylist') || 'Ta playlista jest pusta.')
-              : `${row.rawCount} ${t('postsFetched') || 'postów pobranych'}, 0 ${t('withDetectedMedia') || 'z wykrytym medium'}` }}
+              ? (t('emptyPlaylist') || 'This playlist is empty.')
+              : `${row.rawCount} ${t('postsFetched') || 'posts fetched'}, 0 ${t('withDetectedMedia') || 'with detected media'}` }}
         </div>
 
         <div v-else class="cinema-cards">
@@ -353,7 +498,7 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
             <span v-if="row.loadingMore" class="spin"></span>
             <template v-else>
               <i class="fa-solid fa-plus"></i>
-              <span>{{ t('loadMore') || 'Ściągnij więcej' }}</span>
+              <span>{{ t('loadMore') || 'Load More' }}</span>
             </template>
           </button>
         </div>
@@ -393,18 +538,9 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   position: absolute; inset: 0;
   display: block;
   filter: brightness(0.6);
-  /* Real alpha transparency, not a solid-color fade -- this is what
-     actually lets whatever's behind (the fixed hero sits on top of the
-     page) show through near the bottom, instead of just blending to a
-     flat color that only works if it happens to match exactly. */
   -webkit-mask-image: linear-gradient(to top, transparent 0, black 100px, black 100%);
   mask-image: linear-gradient(to top, transparent 0, black 100px, black 100%);
 }
-/* ForumMedia's own .media-placeholder is sized for a small 16:9 grid tile
-   (width:100% + aspect-ratio, so its height is derived from its own width,
-   not from its container). Reused here as a full-bleed hero banner instead,
-   it needs to actually fill the fixed-height hero section — hence the
-   :deep() override, scoped to just this usage via the wrapping class. */
 .cinema-hero-backdrop :deep(.media-placeholder) {
   width: 100%;
   height: 100%;
@@ -413,9 +549,6 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   border: none;
 }
 .cinema-hero::after {
-  /* Separate dark tint (not a mask) purely for text legibility where the
-     hero title/meta/button sit -- independent of the backdrop's real
-     transparency above. */
   content: "";
   position: absolute; inset: 0;
   background: linear-gradient(0deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 45%, transparent 75%);
@@ -465,9 +598,6 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   gap: 14px;
   overflow-x: auto;
   overflow-y: visible;
-  /* Enough room on every side for the focus/hover scale-up (1.1x/1.04x
-     transform, growing from center) to not visually clip against this
-     row's own edges. */
   padding: 24px 20px;
 }
 .cinema-cards::-webkit-scrollbar { height: 6px; }
@@ -481,14 +611,6 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   border-radius: 6px;
   overflow: hidden;
   transition: transform 0.15s ease;
-  /* .cinema-hero is position:fixed, permanently covering the top
-     var(--cinema-hero-h) of the viewport regardless of scroll position.
-     scrollIntoView() has no idea that space is occupied -- without this,
-     navigating back up to the first row could scroll a card to the very
-     top of the viewport, which is exactly where the hero then covers it.
-     The extra +50px accounts for the row's own title (h2 + margin) sitting
-     above the card, which would otherwise still end up hidden even though
-     the card itself was correctly visible. */
   scroll-margin-top: calc(var(--cinema-hero-h, 40vh) + 24px + 50px);
 }
 .cinema-card:hover { transform: scale(1.04); outline: none; }
@@ -500,10 +622,6 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
   box-shadow: 0 0 0 4px var(--brand), 0 8px 30px rgba(0,0,0,0.6);
 }
 
-/* ForumMedia's own card-mode styles already render a 16:9 thumbnail (cover
-   art / mirror resolution / webtorrent live status) -- hideButtons strips
-   its built-in play/pause/queue overlay since this screen supplies its own
-   single click-to-play action instead. */
 .cinema-card-thumb-wrap { position: relative; }
 .cinema-card-thumb { display: block; border-radius: 0; border: none; pointer-events: none; }
 
@@ -529,9 +647,6 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
 }
 .cinema-card-meta { color: var(--card-muted-text); }
 
-/* Sits at the end of a category row, same footprint as a card so it reads
-   as "one more tile" rather than a stray control -- aspect-ratio keeps it
-   matching the 16:9 thumbnail + info block height without hardcoding it. */
 .cinema-load-more-btn {
   display: flex;
   flex-direction: column;

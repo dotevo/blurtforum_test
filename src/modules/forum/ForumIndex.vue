@@ -178,7 +178,7 @@ const emit = defineEmits<{
   transform: scale(1.05);
 }
 
-.index-table { width: 100%; margin-top: 15px; border-collapse: collapse; }
+.index-table { width: 100%; margin-top: 15px }
 .row-hover:hover { background: var(--table-row-hover-bg); cursor: pointer; }
 
 

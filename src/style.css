@@ -1459,10 +1459,15 @@ body.theme-amber {
 
 * { margin:0; padding:0; box-sizing:border-box; }
  
+/* Used by modules/device-profiles/body-scroll-lock.ts while a TV-only
+   full-viewport overlay (profile picker/PIN, manage-profiles) is open. */
+body.bf-scroll-locked { overflow: hidden !important; }
+
 body {
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1.4;
+
   background-color: var(--page-bg);
   color: var(--body-text);
   padding: 20px;

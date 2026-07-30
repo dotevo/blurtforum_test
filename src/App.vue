@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { defineAsyncComponent, watch } from 'vue';
+import { defineAsyncComponent, watch, computed, ref } from 'vue';
 import { useApp } from './composables/useApp';
 import { useTitle } from './composables/useTitle';
 import { installCinemaDpadNav } from './modules/cinema/dpad-nav';
+import { isTVPlatform } from './modules/native/platform-info';
+import { activeProfile } from './modules/device-profiles/device-profiles';
+import { limitReached } from './modules/device-profiles/watch-time';
+import CinemaProfileGate from './modules/device-profiles/components/CinemaProfileGate.vue';
+import ManageProfiles from './modules/device-profiles/components/ManageProfiles.vue';
+import WatchLimitReached from './modules/device-profiles/components/WatchLimitReached.vue';
 import type { Post } from './types';
 
 // Layout
@@ -102,6 +108,13 @@ const {
   initTitleWatcher();
 
   installCinemaDpadNav(() => cinemaMode.value);
+
+  // TV-only device-profiles gate (see modules/device-profiles/). On web/
+  // phone, isTVPlatform is always false, so cinemaContentReady === cinemaMode
+  // exactly as before this existed -- zero behavior change off-TV.
+  const showCinemaProfileGate = computed(() => cinemaMode.value && isTVPlatform.value && !activeProfile.value);
+  const cinemaContentReady = computed(() => cinemaMode.value && (!isTVPlatform.value || !!activeProfile.value));
+  const showManageProfiles = ref(false);
 
   // Bridges the shoutbox's minimal (author, permlink) post references —
   // see modules/shoutbox/render.ts — onto the app's real navigation.
@@ -279,8 +292,18 @@ const {
     @open-forum="openForum"
   />
 
+  <CinemaProfileGate v-if="showCinemaProfileGate" />
+  <WatchLimitReached v-if="isTVPlatform && limitReached" />
+  <ManageProfiles
+    v-if="showManageProfiles && isTVPlatform"
+    :auth="auth"
+    @close="showManageProfiles = false"
+    @open-switch-account-modal="openSwitchAccountModal"
+    @logout="logout"
+  />
+
   <CinemaRail
-    v-if="cinemaMode"
+    v-if="cinemaContentReady"
     :auth="auth"
     :has-new-notif="notifModal.hasNew"
     :theme="theme" :themes="themes" :lang="lang" :langs="langs"
@@ -301,6 +324,7 @@ const {
     @open-notification="openNotification"
     @toggle-push-notifications="togglePushNotifications"
     @open-profile="openProfile"
+    @open-manage-profiles="showManageProfiles = true"
     @logout="logout"
     @set-theme="setTheme"
     @set-lang="(v: string) => setLang(v as 'en'|'pl'|'eo')"
@@ -331,7 +355,7 @@ const {
       <button class="btn btn-sm" @click="() => claimRewards()" style="background:var(--surface-1); color:var(--accent); border:none">{{ t('claimRewards') }}</button>
     </div>
 
-    <div v-if="loading && !cinemaMode" class="loader"><span class="spin"></span>{{ t('loading') }} {{ config.communityAccount }}…</div>
+    <div v-if="loading" class="loader"><span class="spin"></span>{{ t('loading') }} {{ config.communityAccount }}…</div>
 
     <div v-if="!cinemaMode && !loading && forumPagination.bgLoading" style="background: var(--surface-nav); padding: 5px 15px; margin-bottom: 15px; border-radius: 4px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--surface-border);">
       <div style="flex: 1; height: 4px; background: var(--page-bg); border-radius: 2px; overflow: hidden;">
@@ -358,10 +382,10 @@ const {
       </div>
     </div>
 
-    <template v-if="!loading || cinemaMode">
+    <template v-if="!loading">
 
       <!-- Tag filter bar -->
-      <div v-if="!cinemaMode && ((view==='index' && currentTagFilter) || (view==='forum'))" class="tag-filter-bar forumline forumline-wrap">
+      <div v-if="!cinemaMode && ((view==='index' && currentTagFilter) || (view==='forum'))" class="tag-filter-bar forumline">
         <div style="display:flex; align-items:center; gap:10px; width: 100%;">
           <i class="fa-solid fa-filter" style="color:var(--brand); opacity:0.7;"></i>
           <div style="position:relative; flex:1; max-width: 300px;">
@@ -380,6 +404,14 @@ const {
       <!-- ── Views ───────────────────────────────────────────────── -->
 
       <CinemaIndex v-if="cinemaMode" :client="client" :t="t" :auth="auth" />
+
+      <!-- While the TV-only device-profiles gate is up, render nothing here
+           at all rather than falling through to the full forum UI
+           underneath -- the gate's own fixed overlay already covers it
+           visually, but there's no reason to also run all of the forum
+           view's data-fetching/mounting for a view nobody can see or
+           interact with. -->
+      <template v-else-if="showCinemaProfileGate"></template>
 
       <template v-else>
       <ForumIndex

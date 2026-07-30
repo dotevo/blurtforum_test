@@ -11,6 +11,9 @@
  */
 import PayoutBadge from '../../../components/layout/PayoutBadge.vue';
 import VoteButton from '../../../components/layout/VoteButton.vue';
+import { computed } from 'vue';
+import { activeProfile } from '../../device-profiles/device-profiles';
+import { isTVPlatform } from '../../native/platform-info';
 import type { BFPlayerAPI, MediaTrack } from '../../player/types';
 
 const props = defineProps<{
@@ -49,6 +52,11 @@ const onVote = () => {
     emit('submitVote', { author: props.track.author, permlink: props.track.permlink });
   }
 };
+
+// TV device-profiles' "showVotes" toggle -- hides the vote button only,
+// not the payout badge (a separate concept: what a post has earned, not
+// whether this profile can/should vote on it). No-op off-TV.
+const votesVisible = computed(() => !isTVPlatform.value || !activeProfile.value || activeProfile.value.showVotes);
 </script>
 
 <template>
@@ -58,6 +66,7 @@ const onVote = () => {
       @click="onPayoutClick"
     />
     <VoteButton
+      v-if="votesVisible"
       :voted="!!track.meta?.voted"
       :count="(track.meta?.voteCount as number) || 0"
       @vote="onVote"

@@ -47,6 +47,8 @@ const props = defineProps<{
 
 const replies = ref<Post[]>([]);
 const repliesLoading = ref(false);
+const postBody = ref<string | null>(null);
+const postLoading = ref(false);
 
 const fetchReplies = async (author: string, permlink: string) => {
   repliesLoading.value = true;
@@ -72,11 +74,23 @@ const fetchReplies = async (author: string, permlink: string) => {
   repliesLoading.value = false;
 };
 
+const fetchPostBody = async (author: string, permlink: string) => {
+  postLoading.value = true;
+  postBody.value = null;
+  const content = await Blockchain.getContent(props.client, author, permlink);
+  if (content?.body) {
+    props.cachePostBody(author, permlink, content.body);
+    postBody.value = content.body;
+  }
+  postLoading.value = false;
+};
+
 watch(
   () => props.track ? props.track.author + '/' + props.track.permlink : null,
   (id) => {
-    if (!id || !props.track) { replies.value = []; return; }
+    if (!id || !props.track) { replies.value = []; postBody.value = null; return; }
     fetchReplies(props.track.author, props.track.permlink);
+    fetchPostBody(props.track.author, props.track.permlink);
   },
   { immediate: true },
 );
@@ -96,38 +110,58 @@ const emptyReplyForm = { body: '', loading: false, error: '', success: '', benef
 <template>
   <div class="bfp-comments-tab">
     <div v-if="!track" class="gs" style="padding: 20px; text-align: center;">{{ t('noTracks') || 'No track' }}</div>
-    <PostReplyThread
-      v-else
-      :replies="replies"
-      :repliesLoading="repliesLoading"
-      :auth="auth"
-      :replyTarget="null"
-      :replyForm="emptyReplyForm"
-      :replyImgUpload="false"
-      :replyFeeEstimate="null"
-      :followingSet="getFollowingSet()"
-      :canMute="getCanMute()"
-      :t="t"
-      :fmtDate="fmtDate"
-      :renderMD="renderMD"
-      :hasVoted="hasVoted"
-      :isNestedReply="isNestedReply"
-      :getParentBody="getParentBody"
-      :isPostInCommunity="isPostInCommunity"
-      :config="config"
-      :navigateToPath="navigateToPath"
-      :compact="true"
-      @open-profile="openProfile"
-      @open-payout-modal="openPayoutModal"
-      @submit-vote="submitVote"
-      @start-reply="goToComment"
-      @start-edit="goToComment"
-      @toggle-follow="toggleFollow"
-      @mute-post="mutePost"
-    />
+    <template v-else>
+      <div class="bfp-comments-post">
+        <h3 class="bfp-comments-post-title">{{ track.title }}</h3>
+        <i v-if="postLoading" class="fa-solid fa-spinner fa-spin bfp-comments-post-loading"></i>
+        <div
+          v-else-if="postBody"
+          class="bfp-comments-post-body markdown-body"
+          v-html="renderMD(postBody, { author: track.author, permlink: track.permlink })"
+        ></div>
+      </div>
+      <PostReplyThread
+        :replies="replies"
+        :repliesLoading="repliesLoading"
+        :auth="auth"
+        :replyTarget="null"
+        :replyForm="emptyReplyForm"
+        :replyImgUpload="false"
+        :replyFeeEstimate="null"
+        :followingSet="getFollowingSet()"
+        :canMute="getCanMute()"
+        :t="t"
+        :fmtDate="fmtDate"
+        :renderMD="renderMD"
+        :hasVoted="hasVoted"
+        :isNestedReply="isNestedReply"
+        :getParentBody="getParentBody"
+        :isPostInCommunity="isPostInCommunity"
+        :config="config"
+        :navigateToPath="navigateToPath"
+        :compact="true"
+        @open-profile="openProfile"
+        @open-payout-modal="openPayoutModal"
+        @submit-vote="submitVote"
+        @start-reply="goToComment"
+        @start-edit="goToComment"
+        @toggle-follow="toggleFollow"
+        @mute-post="mutePost"
+      />
+    </template>
   </div>
 </template>
 
 <style scoped>
 .bfp-comments-tab { padding: 12px; overflow-y: auto; height: 100%; }
+.bfp-comments-post {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: var(--card-bg, rgba(255,255,255,0.04));
+  border: 1px solid var(--surface-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+}
+.bfp-comments-post-title { margin: 0 0 8px; font-size: 0.95rem; font-weight: 700; }
+.bfp-comments-post-body { font-size: 0.85rem; line-height: 1.5; opacity: 0.9; max-height: 220px; overflow-y: auto; }
+.bfp-comments-post-loading { opacity: 0.6; }
 </style>

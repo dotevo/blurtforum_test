@@ -404,17 +404,33 @@ const loadSavedQueue = (): void => {
 
 loadSavedQueue();
 
+let _playlistNamespace: string | null = null;
+const _playlistsKey = (): string => (_playlistNamespace ? `bf-player-playlists:${_playlistNamespace}` : 'bf-player-playlists');
+
 const _loadPlaylists = (): void => {
   try {
-    const raw = localStorage.getItem('bf-player-playlists');
-    if (raw) playlistState.playlists = JSON.parse(raw);
+    const raw = localStorage.getItem(_playlistsKey());
+    playlistState.playlists = raw ? JSON.parse(raw) : [];
   } catch (e) { console.warn('BFPlayer: failed to load playlists:', e); }
 };
 _loadPlaylists();
 
 const _savePlaylists = (): void => {
-  localStorage.setItem('bf-player-playlists', JSON.stringify(playlistState.playlists));
+  localStorage.setItem(_playlistsKey(), JSON.stringify(playlistState.playlists));
 };
+
+/**
+ * Scopes playlist storage to `ns` (any string key) instead of the shared
+ * default -- used by device-profiles.ts so each TV profile gets its own
+ * playlists instead of sharing one global list. Player core itself has no
+ * idea *why* the namespace changed, just that it did, and reloads from
+ * the new key. Pass null to go back to the shared/default key.
+ */
+export function setPlaylistNamespace(ns: string | null): void {
+  if (_playlistNamespace === ns) return;
+  _playlistNamespace = ns;
+  _loadPlaylists();
+}
 
 const handleError = (msg: string): void => {
   if (!state.currentTrack) return;

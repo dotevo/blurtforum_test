@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:tv": "vite --mode tv",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",

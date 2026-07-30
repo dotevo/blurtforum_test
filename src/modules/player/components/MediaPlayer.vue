@@ -6,6 +6,8 @@ import WebtorrentStorage from './WebtorrentStorage.vue';
 import WebtorrentInfoTab from './WebtorrentInfoTab.vue';
 import type { MediaTrack, BFPlayerAPI, Playlist } from '../types';
 import { currentSource, CINEMA_HIDE_NATIVE_CONTROLS, stopAll } from '../player';
+import { isTVPlatform } from '../../native/platform-info';
+import { activeProfile } from '../../device-profiles/device-profiles';
 
 const props = defineProps<{
   player: BFPlayerAPI;
@@ -146,6 +148,13 @@ function formatRelativeTime(timestamp?: number): string {
 // ── Media type badge labels ─────────────────────────────────────────────────
 const typeLabel: Record<string, string> = { youtube: 'YT', peertube: 'PT', audio: 'MP3' };
 
+// Applies each contribution's own optional `visible` predicate (see
+// PlayerTabContribution in types.ts) -- e.g. the Comments tab hiding itself
+// for a TV device-profile with showComments off. Generic: this component
+// has no idea why a given tab is or isn't visible, only that it should
+// respect what the contribution says.
+const visibleExpandedTabs = computed(() => props.player.getExpandedTabs().filter(tab => tab.visible?.() !== false));
+
 // Cinema mode hides the normal tab-bar header entirely and instead surfaces
 // a small set of icon buttons that each open the same slide-in tabs panel.
 // Native tabs (queue/playlists/settings) aren't in player.getExpandedTabs()
@@ -156,7 +165,7 @@ const cinemaPanelTabs = computed(() => [
   { id: 'playlists', label: props.t('playlists') || 'Playlists', icon: 'fa-solid fa-list' },
   { id: 'settings', label: props.t('settings') || 'Settings', icon: 'fa-solid fa-gear' },
   ...(currentSource.value?.type === 'webtorrent' ? [{ id: 'webtorrent-info', label: props.t('torrentInfo') || 'Torrent info', icon: 'fa-solid fa-circle-info' }] : []),
-  ...props.player.getExpandedTabs(),
+  ...visibleExpandedTabs.value,
 ]);
 
 // Every source shares this same transport row (play/pause/prev/next/volume/
@@ -762,7 +771,7 @@ onUnmounted(() => {
           <button v-if="currentSource?.type === 'webtorrent'" class="bfp-tab" :class="{ active: player.state.expandedTab === 'webtorrent-info' }" @click="player.state.expandedTab = 'webtorrent-info'">
             <i class="fa-solid fa-circle-info"></i> <span>{{ t('torrentInfo') || 'Torrent info' }}</span>
           </button>
-          <button v-for="tab in player.getExpandedTabs()" :key="tab.id" class="bfp-tab"
+          <button v-for="tab in visibleExpandedTabs" :key="tab.id" class="bfp-tab"
                   :class="{ active: player.state.expandedTab === tab.id }" @click="player.state.expandedTab = tab.id">
             <i :class="tab.icon"></i> <span>{{ tab.label }}</span>
           </button>
@@ -792,12 +801,17 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="bfp-settings-header" style="margin-top:18px;">
-          <strong>{{ t('webtorrent') || 'WebTorrent' }}</strong>
-        </div>
-        <div class="bfp-settings-body">
-          <WebtorrentStorage :t="t" />
-        </div>
+        <template v-if="!isTVPlatform || activeProfile?.isAdmin">
+          <div class="bfp-settings-header" style="margin-top:18px;">
+            <strong>{{ t('webtorrent') || 'WebTorrent' }}</strong>
+          </div>
+          <div class="bfp-settings-body">
+            <WebtorrentStorage :t="t" />
+          </div>
+        </template>
+        <p v-else class="gs" style="margin-top:18px; padding: 8px 0; opacity: 0.7;">
+          <i class="fa-solid fa-lock"></i> Ustawienia WebTorrent są dostępne tylko dla profilu administratora.
+        </p>
       </div>
 
       <div class="bfp-panel-body" v-if="player.state.expandedTab === 'webtorrent-info'">
@@ -1029,7 +1043,7 @@ onUnmounted(() => {
         </div>
       </template>
     </div></div>
-        <div v-for="tab in player.getExpandedTabs()" :key="'body-' + tab.id" class="bfp-panel-body" v-show="player.state.expandedTab === tab.id">
+        <div v-for="tab in visibleExpandedTabs" :key="'body-' + tab.id" class="bfp-panel-body" v-show="player.state.expandedTab === tab.id">
       <component :is="tab.component" :track="player.state.currentTrack" :player="player" :t="t" v-bind="tab.props || {}" />
     </div>
     </div>

@@ -1,4 +1,6 @@
 import BlurtCommentsTab from './components/BlurtCommentsTab.vue';
+import { activeProfile } from '../device-profiles/device-profiles';
+import { isTVPlatform } from '../native/platform-info';
 import type { BFPlayerAPI } from '../player/types';
 import type { Post, AuthUser } from '../../types';
 
@@ -46,6 +48,7 @@ export const BlurtCommentsPlugin = (deps: BlurtCommentsPluginDeps) => ({
       icon: 'fa-solid fa-comments',
       component: BlurtCommentsTab,
       props: deps as unknown as Record<string, unknown>,
+      visible: () => !isTVPlatform.value || !activeProfile.value || activeProfile.value.showComments,
     });
   },
 });

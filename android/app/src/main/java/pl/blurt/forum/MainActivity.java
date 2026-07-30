@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         // super.onCreate() sets up the Capacitor bridge.
         registerPlugin(SecureStoragePlugin.class);
         registerPlugin(BackgroundSeedPlugin.class);
+        registerPlugin(PlatformInfoPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

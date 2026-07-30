@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ScrollableTabs from '../../modules/ui/ScrollableTabs.vue';
+import { isTVPlatform } from '../../modules/native/platform-info';
 
 defineProps<{
   theme: string;
@@ -42,7 +43,7 @@ const emit = defineEmits<{
     <button class="lang-btn rpc-btn" @click="emit('openRpc')" :title="t('rpcSettings')">
       <i class="fa-solid fa-gear"></i> <span>{{ t('rpc') }}</span>
     </button>
-    <button class="lang-btn rpc-btn cinema-btn" :class="{ active: cinemaMode }"
+    <button v-if="!isTVPlatform" class="lang-btn rpc-btn cinema-btn" :class="{ active: cinemaMode }"
             @click="emit('setCinemaMode', !cinemaMode)" :title="t('cinemaMode') || 'Cinema mode'">
       <i class="fa-solid fa-film"></i> <span>{{ t('cinemaMode') || 'Cinema' }}</span>
     </button>
@@ -71,7 +72,7 @@ const emit = defineEmits<{
       <button class="lang-btn rpc-btn" @click="emit('openRpc')" :title="t('rpcSettings')">
         <i class="fa-solid fa-gear"></i> <span v-if="!mobile">{{ t('rpc') }}</span>
       </button>
-      <button class="lang-btn rpc-btn cinema-btn" :class="{ active: cinemaMode }"
+      <button v-if="!isTVPlatform" class="lang-btn rpc-btn cinema-btn" :class="{ active: cinemaMode }"
               @click="emit('setCinemaMode', !cinemaMode)" :title="t('cinemaMode') || 'Cinema mode'">
         <i class="fa-solid fa-film"></i> <span v-if="!mobile">{{ t('cinemaMode') || 'Cinema' }}</span>
       </button>

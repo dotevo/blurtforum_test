@@ -25,6 +25,7 @@ import { SponsoredPlayerPlugin } from '../modules/player_blurt/sponsored-plugin'
 import { BlurtCommentsPlugin } from '../modules/player_blurt/comments-plugin';
 import { BFCommunity, VIRTUAL_FORUMS, DEFAULT_COMMUNITIES } from '../modules/community';
 import { BFPlayer } from '../modules/player/player';
+import { isTVPlatform } from '../modules/native/platform-info';
 import { Parser } from '../modules/parser';
 import { PostProcessor } from '../modules/post-processor';
 
@@ -149,6 +150,19 @@ export function useApp() {
       }
     }
   };
+
+  // On a real TV device, cinema mode is the app's only mode -- see
+  // device-profiles' whole reason for existing (a profile picker only makes
+  // sense as a permanent front door on TV, never as something a web/phone
+  // user could stumble into or back out of). Overrides whatever
+  // localStorage/isAndroidTV-heuristic value cinemaMode was initialized
+  // with above, and re-asserts itself if anything ever tried to turn it off
+  // (nothing should be able to on TV -- see SettingsSelectors.vue hiding the
+  // toggle entirely -- but this is the actual guarantee, not just the UI
+  // hiding a button).
+  watch([isTVPlatform, cinemaMode], ([isTV, cm]) => {
+    if (isTV && !cm) setCinemaMode(true);
+  }, { immediate: true });
 
   const config = reactive({
     communityAccount: 'blurt-140455',

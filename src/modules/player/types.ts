@@ -146,6 +146,8 @@ export interface PlayerTabContribution {
   icon: string;
   component: any;
   props?: Record<string, unknown>;
+  /** Re-evaluated by MediaPlayer.vue on every render, same idiom as RailItemContribution.visible below -- lets a contribution hide itself reactively (e.g. the TV-only device-profiles "showComments" toggle hiding the Comments tab) without the generic tab host needing to know why. Defaults to always-visible when omitted. */
+  visible?: () => boolean;
 }
 
 /**

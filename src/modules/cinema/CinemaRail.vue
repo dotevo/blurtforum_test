@@ -8,6 +8,8 @@ import UserAvatar from '../../components/layout/UserAvatar.vue';
 import SettingsSelectors from '../../components/layout/SettingsSelectors.vue';
 import NotificationsList from '../notifications/components/NotificationsList.vue';
 import PayoutDetails from '../../components/PayoutDetails.vue';
+import { isTVPlatform } from '../native/platform-info';
+import { activeProfile, exitProfile } from '../device-profiles/device-profiles';
 
 const props = defineProps<{
   auth: { user: AuthUser | null };
@@ -53,6 +55,7 @@ const emit = defineEmits<{
   openNotifModal: [];
   openNotification: [notif: NotificationItem];
   openProfile: [username: string];
+  openManageProfiles: [];
   logout: [];
   setTheme: [value: string];
   setLang: [value: string];
@@ -201,11 +204,19 @@ watch(() => props.payoutModal.show, (open) => { if (open) showNotifPanel.value =
         <UserAvatar :username="auth.user.username" size="xs" round />
         <span class="rail-label">@{{ auth.user.username }}</span>
       </div>
-      <div class="rail-item" tabindex="0" role="button" @click="emit('openSwitchAccountModal')" :title="t('switchAccount')">
+      <div v-if="!isTVPlatform" class="rail-item" tabindex="0" role="button" @click="emit('openSwitchAccountModal')" :title="t('switchAccount')">
         <i class="fa-solid fa-users-viewfinder"></i>
         <span class="rail-label">{{ t('switchAccount') }}</span>
       </div>
-      <div class="rail-item" tabindex="0" role="button" @click="emit('logout')">
+      <div v-if="isTVPlatform && activeProfile?.isAdmin" class="rail-item" tabindex="0" role="button" @click="emit('openManageProfiles')">
+        <i class="fa-solid fa-user-gear"></i>
+        <span class="rail-label">Zarządzaj profilami</span>
+      </div>
+      <div v-if="isTVPlatform" class="rail-item" tabindex="0" role="button" @click="exitProfile">
+        <i class="fa-solid fa-shuffle"></i>
+        <span class="rail-label">Przełącz profil</span>
+      </div>
+      <div v-if="!isTVPlatform" class="rail-item" tabindex="0" role="button" @click="emit('logout')">
         <i class="fa-solid fa-right-from-bracket"></i>
         <span class="rail-label">{{ t('logout') }}</span>
       </div>

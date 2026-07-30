@@ -18,6 +18,9 @@ import type { MediaTrack } from '../player/types';
 const props = defineProps<{
   client: any;
   t: (k: string) => string;
+  /** Reactive `{ user, accounts }` auth object from useAuth(), used to resolve the logged-in
+   *  username for the "Feed" row and the per-person rows derived from it. */
+  auth?: { user: { username: string } | null } | null;
 }>();
 
 interface CinemaCard {
@@ -25,13 +28,23 @@ interface CinemaCard {
   track: MediaTrack;
 }
 
-type SortMethod = 'trending' | 'created' | 'hot';
+type SortMethod = 'trending' | 'created' | 'hot' | 'feed' | 'posts';
 
 interface CinemaRow {
   id: string;
   label: string;
   icon: string;
-  /** Primary and fallback tags to fetch videos from */
+  /**
+   * 'tag' (default): tags[] are post tags, fetched via getRankedPosts.
+   * 'account': tags[0] is actually an account name, fetched via getAccountPosts
+   *   (used for the "Feed" row — sort 'feed' on the logged-in user — and for
+   *   the per-person rows derived from it — sort 'created' on that person).
+   */
+  sourceType?: 'tag' | 'account';
+  /** Per-row page size override (tag rows keep the default PAGE_SIZE; feed/person rows
+   *  request bigger pages since a large chunk of a person's posts has no media at all). */
+  pageSize?: number;
+  /** Primary and fallback tags to fetch videos from (or a single account name, see sourceType) */
   tags: string[];
   /** Order of sort methods to attempt for each tag (e.g. trending first, fallback to newest/created) */
   sorts: SortMethod[];
@@ -226,17 +239,27 @@ async function fetchMoreForCategory(cat: CinemaRow, target: number): Promise<voi
 
     const currentTag = cat.tags[cat.currentTagIndex];
     const currentSort = cat.sorts[cat.currentSortIndex];
+    const pageSize = cat.pageSize ?? PAGE_SIZE;
 
     let raw: any[] = [];
     try {
-      raw = await Blockchain.getRankedPosts(
-        props.client,
-        currentSort,
-        currentTag,
-        PAGE_SIZE,
-        cat.cursor?.author,
-        cat.cursor?.permlink
-      );
+      raw = cat.sourceType === 'account'
+        ? await Blockchain.getAccountPosts(
+            props.client,
+            currentSort,
+            currentTag, // account name, stashed in tags[0] for this sourceType
+            pageSize,
+            cat.cursor?.author,
+            cat.cursor?.permlink
+          )
+        : await Blockchain.getRankedPosts(
+            props.client,
+            currentSort,
+            currentTag,
+            pageSize,
+            cat.cursor?.author,
+            cat.cursor?.permlink
+          );
     } catch (e) {
       cat.error = e instanceof Error ? e.message : String(e);
       advanceCursorToNextMode(cat);
@@ -288,7 +311,7 @@ async function fetchMoreForCategory(cat: CinemaRow, target: number): Promise<voi
     }
 
     // End of stream for current tag + sort method
-    if (raw.length < PAGE_SIZE) {
+    if (raw.length < pageSize) {
       advanceCursorToNextMode(cat);
     }
 
@@ -327,6 +350,149 @@ async function loadMoreForCategory(cat: CinemaRow): Promise<void> {
   }
 }
 
+// --- "Feed" row: the classic profile feed (posts from followed accounts), same
+// card/media filtering as tag categories, just sourced from the account instead of a tag.
+function makeFeedRow(username: string): CinemaRow {
+  return {
+    id: 'feed',
+    label: props.t('myFeed') || 'Feed',
+    icon: 'fa-solid fa-house',
+    sourceType: 'account',
+    pageSize: 50,
+    tags: [username],
+    sorts: ['feed'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set(),
+  };
+}
+const feedRow = ref<CinemaRow | null>(null);
+
+// --- Per-person rows, derived from the feed itself: we walk the same classic feed
+// (paginated independently of the Feed row above) purely to build an ordered, deduplicated
+// list of followed authors — in the order they appear in the feed, i.e. by recency of their
+// last activity. Someone followed but silent for a year simply never surfaces here, since
+// their posts never come up while paging through the feed. Each new author becomes its own
+// row (its own posts, newest first), fetched exactly like a tag category.
+function makePersonRow(author: string): CinemaRow {
+  return {
+    id: `person-${author}`,
+    label: `@${author}`,
+    icon: 'fa-solid fa-user',
+    sourceType: 'account',
+    pageSize: 50,
+    tags: [author],
+    // NOTE: 'created' is NOT a valid sort for the bridge get_account_posts endpoint
+    // (that's only for get_ranked_posts/tags) — this is why person rows were coming
+    // back empty. 'posts' is the correct sort for "this account's own posts".
+    sorts: ['posts'],
+    cards: [], loading: true, rawCount: 0, error: null,
+    currentTagIndex: 0, currentSortIndex: 0, cursor: null,
+    exhausted: false, loadingMore: false, seenKeys: new Set(),
+  };
+}
+
+const personRows = ref<CinemaRow[]>([]);
+const personRowsLoading = ref(false);
+const personRowsExhausted = ref(false);
+const knownFeedAuthors = new Set<string>();
+const feedListCursor = ref<{ author: string; permlink: string } | null>(null);
+const FEED_LIST_PAGE_SIZE = 50;
+
+/** Pulls one page of the classic feed and returns any newly-seen author names, in order. */
+async function fetchNextFeedAuthorsPage(username: string): Promise<string[]> {
+  let raw: any[] = [];
+  try {
+    raw = await Blockchain.getAccountPosts(
+      props.client,
+      'feed',
+      username,
+      FEED_LIST_PAGE_SIZE,
+      feedListCursor.value?.author,
+      feedListCursor.value?.permlink
+    );
+  } catch {
+    personRowsExhausted.value = true;
+    return [];
+  }
+
+  if (feedListCursor.value && raw.length && raw[0].author === feedListCursor.value.author && raw[0].permlink === feedListCursor.value.permlink) {
+    raw = raw.slice(1);
+  }
+
+  if (!raw.length) {
+    personRowsExhausted.value = true;
+    return [];
+  }
+
+  const last = raw[raw.length - 1];
+  feedListCursor.value = { author: last.author, permlink: last.permlink };
+  if (raw.length < FEED_LIST_PAGE_SIZE) personRowsExhausted.value = true;
+
+  const newAuthors: string[] = [];
+  for (const post of raw) {
+    if (!post.author || knownFeedAuthors.has(post.author)) continue;
+    knownFeedAuthors.add(post.author);
+    newAuthors.push(post.author);
+  }
+  return newAuthors;
+}
+
+/**
+ * Called when the user scrolls past the last person row: fetches feed pages until it turns
+ * up at least one not-yet-shown author (a page can consist entirely of authors we already
+ * have a row for) or the feed itself runs out, then appends new person rows.
+ */
+async function loadMorePeople(): Promise<void> {
+  const username = props.auth?.user?.username;
+  if (!username || personRowsLoading.value || personRowsExhausted.value) return;
+  personRowsLoading.value = true;
+  try {
+    let attempts = 0;
+    while (attempts < 5 && !personRowsExhausted.value) {
+      attempts++;
+      const newAuthors = await fetchNextFeedAuthorsPage(username);
+      if (newAuthors.length) {
+        for (const author of newAuthors) {
+          personRows.value.push(makePersonRow(author));
+          // Read the just-pushed row back OUT of the reactive array (instead of using the
+          // plain object reference we just created) before handing it to loadCategory().
+          // Vue only tracks/triggers mutations that go through its reactive proxy; mutating
+          // the raw pre-push object directly (as we used to) silently updates the data but
+          // never notifies anything watching it, so a person row could finish loading with
+          // 0 media cards and just sit there showing stale/incorrect content instead of
+          // being properly hidden by visiblePersonRows the moment it's done.
+          const reactiveRow = personRows.value[personRows.value.length - 1];
+          loadCategory(reactiveRow);
+        }
+        break;
+      }
+    }
+  } finally {
+    personRowsLoading.value = false;
+  }
+}
+
+/** Resets the Feed row + person rows, e.g. on mount or when the logged-in user changes. */
+function resetFeedAndPeople(): void {
+  const username = props.auth?.user?.username;
+  feedListCursor.value = null;
+  knownFeedAuthors.clear();
+  personRows.value = [];
+  personRowsExhausted.value = false;
+  personRowsLoading.value = false;
+
+  if (!username) {
+    feedRow.value = null;
+    return;
+  }
+  feedRow.value = makeFeedRow(username);
+  loadCategory(feedRow.value);
+  loadMorePeople();
+}
+
+watch(() => props.auth?.user?.username, () => resetFeedAndPeople());
+
 // Playlists view mapping
 const playlistRows = computed<CinemaRow[]>(() =>
   playlistState.playlists.map((pl) => ({
@@ -348,9 +514,18 @@ const playlistRows = computed<CinemaRow[]>(() =>
   }))
 );
 
-const rows = computed<CinemaRow[]>(() =>
-  playerState.cinemaBrowseView === 'playlists' ? playlistRows.value : categories.value
+// Hide a person row entirely once it's done loading and turned up no media at all —
+// we only want people whose feed actually has something playable. While still loading,
+// keep it visible (with the spinner) so the row doesn't pop in/out.
+const visiblePersonRows = computed<CinemaRow[]>(() =>
+  personRows.value.filter((row) => row.loading || row.cards.length > 0)
 );
+
+const rows = computed<CinemaRow[]>(() => {
+  if (playerState.cinemaBrowseView === 'playlists') return playlistRows.value;
+  const feed = feedRow.value ? [feedRow.value] : [];
+  return [...feed, ...categories.value, ...visiblePersonRows.value];
+});
 
 // Hero state & controls
 const currentCard = ref<CinemaCard | null>(null);
@@ -383,12 +558,29 @@ watch(() => playerState.currentTrack, (track) => {
 
 onMounted(() => {
   categories.value.forEach(loadCategory);
+  resetFeedAndPeople();
   playerState.hidden = true;
 });
 
 onUnmounted(() => {
   playerState.hidden = false;
   playerState.cinemaBrowseView = 'categories';
+  peopleObserver?.disconnect();
+});
+
+// Infinite scroll for person rows: once the sentinel below the last one scrolls into view,
+// pull the next feed page and append any newly-discovered authors as rows.
+const peopleSentinel = ref<HTMLElement | null>(null);
+let peopleObserver: IntersectionObserver | null = null;
+
+watch(peopleSentinel, (el) => {
+  peopleObserver?.disconnect();
+  peopleObserver = null;
+  if (!el) return;
+  peopleObserver = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) loadMorePeople();
+  }, { rootMargin: '600px' });
+  peopleObserver.observe(el);
 });
 
 // Keyboard & D-pad focus management
@@ -504,6 +696,14 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
         </div>
       </section>
     </template>
+
+    <div
+      v-if="playerState.cinemaBrowseView === 'categories' && personRows.length"
+      ref="peopleSentinel"
+      class="cinema-people-sentinel"
+    >
+      <span v-if="personRowsLoading" class="spin"></span>
+    </div>
   </div>
 </template>
 
@@ -663,4 +863,11 @@ watch(() => playerState.cinemaBrowseView, () => { hasAutoFocused = false; });
 .cinema-load-more-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text-strong); border-color: var(--brand); }
 .cinema-load-more-btn i { font-size: 18px; }
 .cinema-load-more-btn:disabled { cursor: default; opacity: 0.7; }
+
+.cinema-people-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 40px;
+  min-height: 30px;
+}
 </style>

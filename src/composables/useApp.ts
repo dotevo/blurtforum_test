@@ -1515,6 +1515,14 @@ export function useApp() {
       // cinema mode this call (and the "loading community" state visible
       // while it runs) was pure waste, and the last-viewed-forum
       // restoration right after it is a classic-mode-only concept anyway.
+      // IMPORTANT: `loading` defaults to true and is normally only ever
+      // flipped to false inside loadData()'s finally block. Since cinema
+      // mode deliberately never calls loadData(), it must clear the flag
+      // itself here -- otherwise the app never leaves the "loading
+      // community" gate (see App.vue's `v-if="!loading"` around the main
+      // view) and CinemaIndex would never mount at all on a cold cinema
+      // load.
+      loading.value = false;
       handleUrlChange();
     } else {
       loadData().then(() => {

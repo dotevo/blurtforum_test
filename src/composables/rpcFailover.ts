@@ -40,6 +40,24 @@ import * as dblurt from '@beblurt/dblurt';
  */
 
 const COOLDOWN_MS = 60_000; // don't retry a node that JUST failed for a while, but never give up on it forever
+const REQUEST_TIMEOUT_MS = 12_000; // a node that never responds (no HTTP error, just silence) must not hang the app forever
+
+/**
+ * Races a node request against a timeout. A merely SLOW node still gets its full
+ * COOLDOWN_MS chance on the next call (this only stops us waiting on a single request
+ * past REQUEST_TIMEOUT_MS); a node that never responds at all (hung connection, no CORS
+ * error, nothing) previously left `attempt()` awaiting forever — since reads have no
+ * side effects, abandoning that wait and moving to the next node in the pool is safe.
+ */
+function withTimeout<T>(url: string, promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${url}`)), REQUEST_TIMEOUT_MS);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
 
 export interface FailoverPool {
   /** Drop-in replacement for a plain dblurt.Client — same shape, same
@@ -86,7 +104,7 @@ export function createFailoverPool(urls: string[], storageKey: string, onSwitch?
     let lastErr: unknown;
     for (const url of candidateOrder()) {
       try {
-        const result = await fn(getReal(url));
+        const result = await withTimeout(url, fn(getReal(url)));
         if (order[0] !== url) {
           order = [url, ...order.filter((u) => u !== url)];
           try { localStorage.setItem(storageKey, url); } catch { /* quota or private mode — non-fatal */ }

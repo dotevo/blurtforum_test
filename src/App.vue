@@ -331,7 +331,7 @@ const {
       <button class="btn btn-sm" @click="() => claimRewards()" style="background:var(--surface-1); color:var(--accent); border:none">{{ t('claimRewards') }}</button>
     </div>
 
-    <div v-if="loading" class="loader"><span class="spin"></span>{{ t('loading') }} {{ config.communityAccount }}…</div>
+    <div v-if="loading && !cinemaMode" class="loader"><span class="spin"></span>{{ t('loading') }} {{ config.communityAccount }}…</div>
 
     <div v-if="!cinemaMode && !loading && forumPagination.bgLoading" style="background: var(--surface-nav); padding: 5px 15px; margin-bottom: 15px; border-radius: 4px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--surface-border);">
       <div style="flex: 1; height: 4px; background: var(--page-bg); border-radius: 2px; overflow: hidden;">
@@ -358,7 +358,7 @@ const {
       </div>
     </div>
 
-    <template v-if="!loading">
+    <template v-if="!loading || cinemaMode">
 
       <!-- Tag filter bar -->
       <div v-if="!cinemaMode && ((view==='index' && currentTagFilter) || (view==='forum'))" class="tag-filter-bar forumline forumline-wrap">
@@ -379,7 +379,7 @@ const {
 
       <!-- ── Views ───────────────────────────────────────────────── -->
 
-      <CinemaIndex v-if="cinemaMode" :client="client" :t="t" />
+      <CinemaIndex v-if="cinemaMode" :client="client" :t="t" :auth="auth" />
 
       <template v-else>
       <ForumIndex

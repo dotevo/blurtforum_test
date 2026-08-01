@@ -74,7 +74,7 @@ const emit = defineEmits<{
         <div v-else style="text-align:center; font-size:11px; opacity:0.5; padding:8px;">—</div>
       </div>
 
-      <div style="display:flex; gap:10px; margin-top:16px;">
+      <div class="dpad-row" style="display:flex; gap:10px; margin-top:16px;">
         <button class="btn btn-primary" style="flex:1; padding:8px;" @click="emit('confirm')">
           <i class="fa-solid fa-caret-up"></i> {{ t('vote') || 'Vote' }} {{ voteModal.weight }}%
         </button>

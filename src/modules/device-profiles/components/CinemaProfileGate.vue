@@ -9,6 +9,19 @@
  * 'unlocked' and gets swapped out for the real, completely untouched
  * CinemaIndex/CinemaRail.
  *
+ * Navigation: this carries the `modal-overlay` class specifically so
+ * modules/cinema/dpad-nav.ts's existing MODAL zone drives it -- Escape,
+ * Enter, wrapping arrow-key movement between buttons, and leaving text
+ * inputs alone are all already solved problems there; this component adds
+ * no navigation logic of its own beyond one proactive "focus the first
+ * profile tile" call (see focusFirstTile) for a visible default selection
+ * the moment the picker appears, matching how a Netflix-style profile
+ * picker is expected to look on first render rather than needing an arrow
+ * press before anything is even highlighted. There's deliberately no
+ * `.modal-close` button anywhere in this component -- MODAL zone's Escape
+ * handling no-ops when one isn't found, which is exactly right here: this
+ * gate must never be dismissible without actually picking a profile.
+ *
  * Scope, deliberately: profile picker + PIN + just enough of a
  * profile-creation form to bootstrap the very first profile on a fresh
  * device (there being zero profiles is the only way anyone would ever be
@@ -19,23 +32,25 @@
  * once at least one profile exists, further additions only happen through
  * ManageProfiles.
  */
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import {
   profiles, loadProfiles, createProfile, selectProfile, verifyProfilePin, setPin,
 } from '../device-profiles';
 import PinPad from './PinPad.vue';
-import { useDpadRow } from '../dpad-row';
 import { useBodyScrollLock } from '../body-scroll-lock';
 
+const props = defineProps<{ t: (k: string) => string }>();
 const emit = defineEmits<{ unlocked: [] }>();
 
 useBodyScrollLock();
 
+const rootRef = ref<HTMLElement | null>(null);
 const ready = ref(false);
 const mode = ref<'picker' | 'pin' | 'create'>('picker');
-const containerRef = ref<HTMLElement | null>(null);
-const { refocusFirst } = useDpadRow(containerRef);
-watch(mode, () => nextTick(refocusFirst));
+
+function focusFirstTile(): void {
+  void nextTick(() => rootRef.value?.querySelector<HTMLElement>('.profile-tile')?.focus());
+}
 
 const pinTargetId = ref<string | null>(null);
 const pinError = ref<string | null>(null);
@@ -53,6 +68,15 @@ const nameInputRef = ref<HTMLInputElement | null>(null);
 // via the same PinPad used everywhere else -- NOT a plain visible text
 // field like this used to be. `confirmedPin` is null until both steps
 // match; that's what actually gets applied on submitCreate().
+//
+// PinPad is keyed by `pinSetupStep` in the template below: going from
+// 'first' -> 'confirm' changes the key, which makes Vue unmount+remount
+// the component, which resets its state via pinpad-state.ts's
+// registerPinPad() in onMounted. A wrong CONFIRM attempt, on the other
+// hand, calls .fail() and deliberately does NOT change pinSetupStep (stays
+// 'confirm', same key) -- that shakes and clears digits for a same-step
+// retry without losing pendingFirstPin or forcing the person to re-enter
+// the first PIN too.
 const pinSetupStep = ref<'first' | 'confirm' | null>(null);
 const pinSetupMismatch = ref(false);
 const confirmedPin = ref<string | null>(null);
@@ -75,8 +99,6 @@ function onCreatePinStep(pin: string): void {
     } else {
       pinSetupMismatch.value = true;
       createPinPadRef.value?.fail();
-      pinSetupStep.value = 'first';
-      pendingFirstPin = '';
     }
   }
 }
@@ -93,8 +115,7 @@ onMounted(async () => {
     await nextTick();
     nameInputRef.value?.focus();
   } else {
-    await nextTick();
-    refocusFirst();
+    focusFirstTile();
   }
 });
 
@@ -118,7 +139,7 @@ async function onPinComplete(pin: string): Promise<void> {
     selectProfile(pinTargetId.value);
     emit('unlocked');
   } else {
-    pinError.value = 'Błędny PIN, spróbuj ponownie';
+    pinError.value = props.t('profileWrongPin') || 'Wrong PIN, try again';
     pinPadRef.value?.fail();
   }
 }
@@ -127,6 +148,7 @@ function cancelPin(): void {
   mode.value = 'picker';
   pinTargetId.value = null;
   pinError.value = null;
+  focusFirstTile();
 }
 
 async function submitCreate(): Promise<void> {
@@ -143,11 +165,12 @@ async function submitCreate(): Promise<void> {
     return;
   }
   mode.value = 'picker';
+  focusFirstTile();
 }
 </script>
 
 <template>
-  <div ref="containerRef" class="profile-gate">
+  <div ref="rootRef" class="profile-gate modal-overlay">
     <div v-if="!ready" class="profile-gate-loading">
       <i class="fa-solid fa-spinner fa-spin"></i>
     </div>
@@ -155,7 +178,7 @@ async function submitCreate(): Promise<void> {
     <template v-else>
       <!-- Picker -->
       <div v-if="mode === 'picker'" class="profile-gate-picker">
-        <h1 class="profile-gate-title">Kto ogląda?</h1>
+        <h1 class="profile-gate-title">{{ t('profileWhosWatching') || "Who's watching?" }}</h1>
         <div class="profile-tiles">
           <button
             v-for="p in profiles" :key="p.id"
@@ -169,30 +192,31 @@ async function submitCreate(): Promise<void> {
             <i v-if="p.pinHash" class="fa-solid fa-lock profile-lock-badge"></i>
           </button>
         </div>
-        <p class="profile-gate-hint">Dodawanie i edycja profili — z poziomu profilu administratora, w "Zarządzaj profilami".</p>
+        <p class="profile-gate-hint">{{ t('profileManageHint') || 'Adding and editing profiles happens from the administrator profile, in "Manage profiles".' }}</p>
       </div>
 
       <!-- PIN -->
       <div v-else-if="mode === 'pin'" class="profile-gate-pin">
         <PinPad
           ref="pinPadRef"
-          title="Wpisz PIN"
+          :key="pinTargetId ?? undefined"
+          :title="t('profileEnterPin') || 'Enter PIN'"
           :subtitle="pinError"
           @complete="onPinComplete"
         />
         <button class="profile-gate-back" @click="cancelPin">
-          <i class="fa-solid fa-arrow-left"></i> Wróć do wyboru profilu
+          <i class="fa-solid fa-arrow-left"></i> {{ t('profileBackToPicker') || 'Back to profile picker' }}
         </button>
       </div>
 
       <!-- Create -->
       <div v-else class="profile-gate-create">
-        <h1 class="profile-gate-title">{{ profiles.length === 0 ? 'Witaj! Utwórz pierwszy profil' : 'Nowy profil' }}</h1>
+        <h1 class="profile-gate-title">{{ profiles.length === 0 ? (t('profileWelcomeCreateFirst') || 'Welcome! Create your first profile') : (t('profileNew') || 'New profile') }}</h1>
         <div class="create-form">
           <span class="profile-avatar create-form-avatar" :style="{ backgroundColor: newColor }">
             {{ (newName.charAt(0) || '?').toUpperCase() }}
           </span>
-          <div class="color-swatches">
+          <div class="color-swatches dpad-row">
             <button
               v-for="c in AVATAR_COLORS" :key="c"
               class="color-swatch" :class="{ 'color-swatch--active': c === newColor }"
@@ -205,7 +229,7 @@ async function submitCreate(): Promise<void> {
             v-model="newName"
             class="create-form-input"
             type="text"
-            placeholder="Imię"
+            :placeholder="t('profileNamePlaceholder') || 'Name'"
             maxlength="20"
             @keydown.enter="submitCreate"
           />
@@ -217,25 +241,26 @@ async function submitCreate(): Promise<void> {
             <template v-if="pinSetupStep">
               <PinPad
                 ref="createPinPadRef"
-                :title="pinSetupStep === 'first' ? 'Ustaw PIN (opcjonalnie)' : 'Powtórz PIN'"
-                :subtitle="pinSetupMismatch ? 'PIN-y się nie zgadzały, spróbuj ponownie' : null"
+                :key="pinSetupStep"
+                :title="pinSetupStep === 'first' ? (t('profileSetPinOptional') || 'Set PIN (optional)') : (t('profilePinRepeat') || 'Repeat PIN')"
+                :subtitle="pinSetupMismatch ? (t('profilePinMismatch') || 'PINs did not match, try again') : null"
                 @complete="onCreatePinStep"
               />
             </template>
             <template v-else-if="confirmedPin">
               <div class="create-pin-set-row">
-                <i class="fa-solid fa-lock"></i> PIN ustawiony
-                <button class="profile-gate-back" @click="clearPinSetup">Usuń</button>
+                <i class="fa-solid fa-lock"></i> {{ t('profilePinSet') || 'PIN set' }}
+                <button class="profile-gate-back" @click="clearPinSetup">{{ t('remove') || 'Remove' }}</button>
               </div>
             </template>
             <button v-else class="profile-gate-back" @click="startPinSetup">
-              <i class="fa-solid fa-lock"></i> Ustaw PIN (opcjonalnie)
+              <i class="fa-solid fa-lock"></i> {{ t('profileSetPinOptional') || 'Set PIN (optional)' }}
             </button>
           </div>
 
-          <div class="create-form-actions">
-            <button v-if="profiles.length > 0" class="profile-gate-back" @click="mode = 'picker'">Anuluj</button>
-            <button class="create-form-submit" :disabled="!newName.trim()" @click="submitCreate">Utwórz profil</button>
+          <div class="create-form-actions dpad-row">
+            <button v-if="profiles.length > 0" class="profile-gate-back" @click="mode = 'picker'; focusFirstTile()">{{ t('cancel') || 'Cancel' }}</button>
+            <button class="create-form-submit" :disabled="!newName.trim()" @click="submitCreate">{{ t('profileCreate') || 'Create profile' }}</button>
           </div>
         </div>
       </div>
@@ -245,13 +270,11 @@ async function submitCreate(): Promise<void> {
 
 <style scoped>
 .profile-gate {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(ellipse at top, #1a1d24 0%, #0b0d12 60%);
+  /* .modal-overlay (global, style.css) already gives position:fixed/inset:0/
+     z-index/flex-centering -- this scoped rule only overrides what needs to
+     differ, and wins automatically over the global one (scoped selectors
+     get a [data-v-*] attribute added, which is more specific). */
+  background: var(--surface-1);
   color: var(--text-strong);
   /* Belt-and-braces: this component's own content (create form + PIN pad
      together can be taller than a short window) never leaks into a
@@ -302,7 +325,6 @@ async function submitCreate(): Promise<void> {
   color: #fff;
   transition: transform .12s ease, box-shadow .12s ease;
 }
-.profile-avatar--add { background: var(--surface-2); color: var(--text-soft); font-size: 1.8rem; }
 .profile-name { font-size: 1rem; font-weight: 600; }
 .profile-lock-badge {
   position: absolute; top: 4px; right: 4px;
@@ -311,6 +333,7 @@ async function submitCreate(): Promise<void> {
   width: 26px; height: 26px;
   display: flex; align-items: center; justify-content: center;
   font-size: 11px;
+  color: #fff;
 }
 
 .profile-gate-pin { display: flex; flex-direction: column; align-items: center; gap: 24px; }
@@ -328,6 +351,7 @@ async function submitCreate(): Promise<void> {
 .color-swatch {
   width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
 }
+.color-swatch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--brand); }
 .color-swatch--active { border-color: var(--text-strong); }
 .create-form-input {
   width: 100%;
@@ -350,6 +374,9 @@ async function submitCreate(): Promise<void> {
   padding: 12px 18px;
   border-radius: 8px;
   font-weight: 700;
+}
+.create-form-submit:focus-visible, .profile-gate-back:focus-visible, .create-form-submit:not(:disabled):hover {
+  box-shadow: 0 0 0 3px var(--brand);
 }
 .create-form-submit:disabled { opacity: 0.5; }
 </style>

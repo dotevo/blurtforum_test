@@ -91,7 +91,7 @@ export function useApp() {
     { id: 'midnight',  label: '🌙 Midnight' },
     { id: 'amber',     label: '🟠 Amber' },
   ];
-  const theme = ref<string>(localStorage.getItem('bf-theme') || 'subsilver');
+  const theme = ref<string>(localStorage.getItem('bf-theme') || 'amber');
   const setTheme = (id: string) => {
     theme.value = id;
     localStorage.setItem('bf-theme', id);

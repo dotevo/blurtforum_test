@@ -195,7 +195,7 @@ watch(() => props.payoutModal.show, (open) => { if (open) showNotifPanel.value =
       <i class="fa-solid fa-right-to-bracket"></i>
       <span class="rail-label">{{ t('login') }}</span>
     </div>
-    <template v-else>
+    <template v-if="auth.user">
       <div class="rail-item" tabindex="0" role="button" @click="onNotifClick" :class="{ active: showNotifPanel }">
         <NotifBell :has-new="hasNewNotif" size="sm" />
         <span class="rail-label">{{ t('notifications') || 'Powiadomienia' }}</span>
@@ -208,19 +208,24 @@ watch(() => props.payoutModal.show, (open) => { if (open) showNotifPanel.value =
         <i class="fa-solid fa-users-viewfinder"></i>
         <span class="rail-label">{{ t('switchAccount') }}</span>
       </div>
-      <div v-if="isTVPlatform && activeProfile?.isAdmin" class="rail-item" tabindex="0" role="button" @click="emit('openManageProfiles')">
-        <i class="fa-solid fa-user-gear"></i>
-        <span class="rail-label">Zarządzaj profilami</span>
-      </div>
-      <div v-if="isTVPlatform" class="rail-item" tabindex="0" role="button" @click="exitProfile">
-        <i class="fa-solid fa-shuffle"></i>
-        <span class="rail-label">Przełącz profil</span>
-      </div>
       <div v-if="!isTVPlatform" class="rail-item" tabindex="0" role="button" @click="emit('logout')">
         <i class="fa-solid fa-right-from-bracket"></i>
         <span class="rail-label">{{ t('logout') }}</span>
       </div>
     </template>
+
+    <!-- Device profiles (see modules/device-profiles/) are a completely
+         separate mechanism from Blurt login -- available regardless of
+         whether a Blurt account happens to be linked/logged in yet, unlike
+         the auth.user-gated block above. -->
+    <div v-if="isTVPlatform && activeProfile?.isAdmin" class="rail-item" tabindex="0" role="button" @click="emit('openManageProfiles')">
+      <i class="fa-solid fa-user-gear"></i>
+      <span class="rail-label">{{ t('profileManage') || 'Manage profiles' }}</span>
+    </div>
+    <div v-if="isTVPlatform" class="rail-item" tabindex="0" role="button" @click="exitProfile">
+      <i class="fa-solid fa-shuffle"></i>
+      <span class="rail-label">{{ t('profileSwitchProfile') || 'Switch profile' }}</span>
+    </div>
   </div>
 </div>
 

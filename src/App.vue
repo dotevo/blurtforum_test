@@ -292,11 +292,12 @@ const {
     @open-forum="openForum"
   />
 
-  <CinemaProfileGate v-if="showCinemaProfileGate" />
-  <WatchLimitReached v-if="isTVPlatform && limitReached" />
+  <CinemaProfileGate v-if="showCinemaProfileGate" :t="t" />
+  <WatchLimitReached v-if="isTVPlatform && limitReached" :t="t" />
   <ManageProfiles
     v-if="showManageProfiles && isTVPlatform"
     :auth="auth"
+    :t="t"
     @close="showManageProfiles = false"
     @open-switch-account-modal="openSwitchAccountModal"
     @logout="logout"

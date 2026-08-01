@@ -54,7 +54,7 @@ const handleSubmit = () => {
                style="width:100%; padding: 10px; border: 1px solid #999; border-radius: 4px; box-sizing: border-box;">
       </div>
 
-      <div style="display: flex; gap: 10px;">
+      <div class="dpad-row" style="display: flex; gap: 10px;">
         <button class="btn btn-primary" style="flex: 1; padding: 12px;" @click="handleSubmit">
           <i class="fa-solid fa-paper-plane"></i> {{ t('confirmAndSend') || 'Confirm & Send' }}
         </button>

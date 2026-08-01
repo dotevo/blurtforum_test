@@ -810,7 +810,7 @@ onUnmounted(() => {
           </div>
         </template>
         <p v-else class="gs" style="margin-top:18px; padding: 8px 0; opacity: 0.7;">
-          <i class="fa-solid fa-lock"></i> Ustawienia WebTorrent są dostępne tylko dla profilu administratora.
+          <i class="fa-solid fa-lock"></i> {{ t('webtorrentAdminOnly') || 'WebTorrent settings are only available for the administrator profile.' }}
         </p>
       </div>
 

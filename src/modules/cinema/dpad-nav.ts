@@ -14,6 +14,10 @@
  * out here.
  *
  * Zones, in priority order (checked top to bottom on every keydown):
+ *   0. PIN_PAD — a Chromecast-style zone PIN entry (see modules/
+ *                device-profiles/PinPad.vue) is on screen. Owns every key
+ *                except Escape completely; not a roving-focus zone at all,
+ *                see pinpad-state.ts.
  *   1. MODAL   — any open .modal-overlay. Fully traps navigation until
  *                closed: arrows/Enter cycle only its own focusable
  *                elements, Escape closes it. Nothing outside is reachable.
@@ -32,6 +36,9 @@
  *                Escape also opens the rail.
  */
 import { state as playerState, stopAll, showCinemaControls } from '../player/player';
+import {
+  pinZone, pinMoveZone, pinCommit, pinDownInZoneC, getPinZoneDigits,
+} from '../device-profiles/pinpad-state';
 
 let installed = false;
 let isActive: () => boolean = () => false;
@@ -56,38 +63,123 @@ const NAV_SELECTOR = [
 ].join(', ');
 
 function navigableWithin(container: ParentNode): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(NAV_SELECTOR)).filter(isVisible);
+  return Array.from(container.querySelectorAll<HTMLElement>(NAV_SELECTOR))
+    .filter(isVisible)
+    // Escape already closes modals/panels -- the close button itself
+    // doesn't need to also compete for arrow-key roving focus (and if it
+    // did, it'd typically be the very first stop, right before the actual
+    // content, which is exactly the wrong thing to land on by default).
+    .filter(el => !el.classList.contains('modal-close') && !el.classList.contains('cinema-side-panel-close'));
+}
+
+/**
+ * A `.dpad-row` groups a set of horizontally-adjacent controls (a row of
+ * color swatches, a row of small icon-only toggle buttons, etc.) so
+ * Left/Right move between them as one unit, while Up/Down still treats the
+ * whole row as a single stop when moving between it and whatever comes
+ * before/after it vertically. Without this, a MODAL/PANEL zone's plain
+ * flat list of focusable elements has no way to know several buttons in a
+ * row are "one field" for vertical purposes -- Up/Down would stop on every
+ * individual swatch one at a time, and (in a PANEL, where Left/Right means
+ * "close") there'd be no way to move between swatches with the keyboard at
+ * all.
+ *
+ * Just a marker class -- wrap any row of buttons/links in an element with
+ * this class and both zones pick it up automatically, no JS registration
+ * needed. See moveWithinRow/verticalStops below for the mechanics, and
+ * device-profiles' CinemaProfileGate.vue/ManageProfiles.vue for real usage
+ * (the avatar-color swatch rows).
+ */
+function verticalStops(container: HTMLElement): HTMLElement[] {
+  const all = navigableWithin(container);
+  const stops: HTMLElement[] = [];
+  const seenRows = new Set<HTMLElement>();
+  for (const el of all) {
+    const row = el.closest<HTMLElement>('.dpad-row');
+    if (row && container.contains(row)) {
+      if (seenRows.has(row)) continue; // later children of an already-collapsed row
+      seenRows.add(row);
+      stops.push(el); // first navigable child in DOM order represents the whole row
+    } else {
+      stops.push(el);
+    }
+  }
+  return stops;
+}
+
+/** Finds which stop the currently-focused element belongs to -- not always
+ *  an exact match, since a stop representing a `.dpad-row` is just that
+ *  row's first child, but focus could legitimately be on its 2nd/3rd child
+ *  (after moving with Left/Right via moveWithinRow). */
+function currentStopIndex(stops: HTMLElement[], ae: HTMLElement | null): number {
+  if (!ae) return -1;
+  for (let i = 0; i < stops.length; i++) {
+    const row = stops[i].closest<HTMLElement>('.dpad-row');
+    if (row ? row.contains(ae) : stops[i] === ae) return i;
+  }
+  return -1;
+}
+
+/** Moves focus among a `.dpad-row`'s own children by `dir` (-1/+1), clamped
+ *  at the row's own edges -- deliberately doesn't wrap or fall through to
+ *  the zone's own Left/Right meaning at the edge (e.g. PANEL's "Left/Right
+ *  closes the panel"); reaching the end of a row is a natural stopping
+ *  point, not a cue to leave it. */
+function moveWithinRow(row: HTMLElement, dir: number): void {
+  const items = navigableWithin(row);
+  if (!items.length) return;
+  const ae = document.activeElement as HTMLElement | null;
+  const idx = ae ? items.indexOf(ae) : -1;
+  const next = idx === -1 ? 0 : Math.max(0, Math.min(items.length - 1, idx + dir));
+  items[next]?.focus({ preventScroll: true });
 }
 
 function isTypingTarget(el: HTMLElement | null): boolean {
   if (!el) return false;
   if (el.tagName === 'TEXTAREA') return true;
-  if (el.tagName === 'INPUT') return (el as HTMLInputElement).type !== 'range';
+  if (el.tagName === 'INPUT') return !['range', 'number', 'checkbox', 'radio', 'button'].includes((el as HTMLInputElement).type);
   return false;
 }
 
-/** Native range inputs and custom sliders (role="slider", e.g. the cinema
- *  seek bar) respond to Left/Right themselves by default -- which means
- *  Left/Right can never move focus PAST one once it's focused. Instead,
- *  Left/Right normally treat it as just another stop in the sequence
- *  (moving on, like any button); only once Enter/Space explicitly "opens"
- *  it does Left/Right start adjusting its value, and Enter/Space/Escape
- *  closes it again. */
-let sliderEditMode = false;
-let editingSlider: HTMLElement | null = null;
+/** Generalizes what used to be volume-slider-only "edit mode" to any input
+ *  where an arrow axis has a native meaning that conflicts with using that
+ *  same axis to move focus: a <input type="range"> owns Left/Right
+ *  (adjusting its value) and a <input type="number"> owns Up/Down (its
+ *  native increment/decrement spinner) -- but only once Enter/Space has
+ *  explicitly "opened" it for editing. Before that, arrows move on to the
+ *  next stop like any other control; there'd be no way to navigate PAST
+ *  one otherwise, since a TV remote has no Tab key to fall back on. */
+let editingControl: HTMLElement | null = null;
+
+function isEditableControl(el: HTMLElement | null): boolean {
+  if (!el || el.tagName !== 'INPUT') return false;
+  const type = (el as HTMLInputElement).type;
+  return type === 'range' || type === 'number';
+}
 
 /** Elements that already do something sensible with Left/Right themselves:
  *  - the seek bar (role="slider") always owns them -- it's a standalone
  *    full-width control with no sibling buttons to navigate past, so
  *    there's no ambiguity to resolve.
- *  - the volume range input only owns them once explicitly opened for
- *    editing (see sliderEditMode above) -- it sits inline among sibling
- *    buttons in the controls row, where Left/Right is genuinely ambiguous
- *    between "adjust the value" and "move to the next button". */
+ *  - a range input only owns them once explicitly opened for editing (see
+ *    editingControl above) -- it sits inline among sibling buttons in a
+ *    controls row, where Left/Right is genuinely ambiguous between "adjust
+ *    the value" and "move to the next button". */
 function ownsHorizontalArrows(el: HTMLElement | null): boolean {
   if (!el) return false;
   if (el.getAttribute('role') === 'slider') return true;
-  if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return sliderEditMode;
+  if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return editingControl === el;
+  return false;
+}
+
+/** Same idea as ownsHorizontalArrows, but for a <input type="number">'s
+ *  native Up/Down spinner -- only owns Up/Down once explicitly opened for
+ *  editing (e.g. ManageProfiles.vue's daily watch-limit field, sitting
+ *  among other fields where Up/Down normally means "move to the next
+ *  one"). */
+function ownsVerticalArrows(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'number') return editingControl === el;
   return false;
 }
 
@@ -103,7 +195,7 @@ function activateFocused(el: HTMLElement): void {
     (el as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
     return;
   }
-  if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return;
+  if (isEditableControl(el)) return; // Enter/Space toggles edit-mode instead (see below), not a click
   el.click();
 }
 
@@ -120,10 +212,7 @@ function getOpenModal(): HTMLElement | null {
 
 function handleModalZone(e: KeyboardEvent, modal: HTMLElement): void {
   const key = e.key;
-  const items = navigableWithin(modal);
-  if (!items.length) return;
   const ae = document.activeElement as HTMLElement | null;
-  const idx = ae ? items.indexOf(ae) : -1;
 
   if (key === 'Escape') {
     e.preventDefault();
@@ -131,15 +220,30 @@ function handleModalZone(e: KeyboardEvent, modal: HTMLElement): void {
     return;
   }
   if (key === 'Enter' || key === ' ') {
-    if (ae && idx !== -1) { e.preventDefault(); activateFocused(ae); }
+    if (ae && navigableWithin(modal).includes(ae)) { e.preventDefault(); activateFocused(ae); }
     return;
   }
   if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return;
   if ((key === 'ArrowLeft' || key === 'ArrowRight') && ownsHorizontalArrows(ae)) return;
+  if ((key === 'ArrowUp' || key === 'ArrowDown') && ownsVerticalArrows(ae)) return;
+
+  // Row grouping (see .dpad-row's own doc comment above navigableWithin):
+  // Left/Right move between a row's own children instead of the modal's
+  // next overall stop, whenever focus is already inside one.
+  const row = ae?.closest<HTMLElement>('.dpad-row');
+  if (row && modal.contains(row) && (key === 'ArrowLeft' || key === 'ArrowRight')) {
+    e.preventDefault();
+    moveWithinRow(row, key === 'ArrowLeft' ? -1 : 1);
+    return;
+  }
+
   e.preventDefault();
-  if (idx === -1) { focusFirst(items); return; }
+  const stops = verticalStops(modal);
+  if (!stops.length) return;
+  const idx = currentStopIndex(stops, ae);
+  if (idx === -1) { focusFirst(stops); return; }
   const dir = (key === 'ArrowDown' || key === 'ArrowRight') ? 1 : -1;
-  const next = items[(idx + dir + items.length) % items.length];
+  const next = stops[(idx + dir + stops.length) % stops.length];
   next.focus({ preventScroll: true });
   next.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -164,24 +268,33 @@ function closePanel(panel: HTMLElement): void {
 
 function handlePanelZone(e: KeyboardEvent, panel: HTMLElement): void {
   const key = e.key;
+  const ae = document.activeElement as HTMLElement | null;
+
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    const row = ae?.closest<HTMLElement>('.dpad-row');
+    if (row && panel.contains(row)) {
+      e.preventDefault();
+      moveWithinRow(row, key === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
+  }
   if (key === 'Escape' || key === 'ArrowLeft' || key === 'ArrowRight') {
     e.preventDefault();
     closePanel(panel);
     return;
   }
   if (key === 'Enter' || key === ' ') {
-    const ae = document.activeElement as HTMLElement | null;
     if (ae && panel.contains(ae)) { e.preventDefault(); activateFocused(ae); }
     return;
   }
   if (key !== 'ArrowUp' && key !== 'ArrowDown') return;
+  if (ownsVerticalArrows(ae)) return;
   e.preventDefault();
-  const items = navigableWithin(panel);
-  if (!items.length) return;
-  const ae = document.activeElement as HTMLElement | null;
-  const idx = ae ? items.indexOf(ae) : -1;
-  if (idx === -1) { focusFirst(items); return; }
-  const next = items[Math.max(0, Math.min(items.length - 1, idx + (key === 'ArrowDown' ? 1 : -1)))];
+  const stops = verticalStops(panel);
+  if (!stops.length) return;
+  const idx = currentStopIndex(stops, ae);
+  if (idx === -1) { focusFirst(stops); return; }
+  const next = stops[Math.max(0, Math.min(stops.length - 1, idx + (key === 'ArrowDown' ? 1 : -1)))];
   next.focus({ preventScroll: true });
   next.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -374,7 +487,36 @@ function handleKeydown(e: KeyboardEvent): void {
   if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Escape'].includes(key)) return;
 
   const ae = document.activeElement as HTMLElement | null;
-  if (key !== 'Escape' && isTypingTarget(ae)) return;
+  if (key !== 'Escape' && isTypingTarget(ae)) {
+    const isMultiline = ae?.tagName === 'TEXTAREA';
+    if (isMultiline || key === 'ArrowLeft' || key === 'ArrowRight') return;
+    // else: ArrowUp/ArrowDown on a single-line text input -- nothing native
+    // to protect, let it fall through to the zone's own vertical
+    // navigation below.
+  }
+
+  // PIN_PAD zone: highest priority of all, checked before MODAL/PANEL/
+  // anything else, since a PinPad (see modules/device-profiles/PinPad.vue)
+  // can be shown inside either one and needs to fully own every key except
+  // Escape while it's up -- its zone-highlight mechanic (which of A/B/C is
+  // highlighted) is not a "move focus to the next button" concept at all,
+  // so the generic MODAL/PANEL roving-focus handling below would actively
+  // fight it rather than drive it correctly. Detected by DOM presence
+  // (`.pinpad`), not focus -- the pin pad has no real focusable elements of
+  // its own to move focus onto in the first place.
+  const pinPad = document.querySelector<HTMLElement>('.pinpad');
+  if (pinPad && key !== 'Escape' && isVisible(pinPad)) {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(key)) return;
+    e.preventDefault();
+    switch (key) {
+      case 'ArrowUp': pinMoveZone(-1); break;
+      case 'ArrowDown': pinDownInZoneC(); break;
+      case 'ArrowLeft': pinCommit(getPinZoneDigits(pinZone.value)[0]); break;
+      case 'Enter': case ' ': pinCommit(getPinZoneDigits(pinZone.value)[1]); break;
+      case 'ArrowRight': pinCommit(getPinZoneDigits(pinZone.value)[2]); break;
+    }
+    return;
+  }
 
   // Auto-hidden cinema controls only ever came back via mousemove -- D-pad/
   // keyboard activity is just as much "the user is doing something" and
@@ -384,26 +526,24 @@ function handleKeydown(e: KeyboardEvent): void {
   // on-screen short of grabbing a mouse.
   if (playerState.cinema) showCinemaControls();
 
-  // Slider edit-mode toggle takes priority over everything else: while
-  // editing, Escape closes edit-mode (not whatever the current zone would
-  // otherwise do with Escape), and Enter/Space always toggles rather than
-  // being treated as "activate this button". Only the volume range input
-  // needs this -- the seek bar (role="slider") already owns Left/Right
-  // unconditionally (see ownsHorizontalArrows), nothing to toggle there.
-  const isVolumeSlider = ae?.tagName === 'INPUT' && (ae as HTMLInputElement).type === 'range';
-  if (isVolumeSlider) {
+  // Editable-control edit-mode toggle takes priority over everything else:
+  // while editing, Escape closes edit-mode (not whatever the current zone
+  // would otherwise do with Escape), and Enter/Space always toggles rather
+  // than being treated as "activate this button". Only range/number inputs
+  // sitting inline among sibling controls need this -- the seek bar
+  // (role="slider") already owns Left/Right unconditionally (see
+  // ownsHorizontalArrows), nothing to toggle there.
+  if (isEditableControl(ae)) {
     if (key === 'Enter' || key === ' ') {
       e.preventDefault();
-      sliderEditMode = !sliderEditMode;
-      ae!.classList.toggle('dpad-editing', sliderEditMode);
-      editingSlider = sliderEditMode ? ae : null;
+      editingControl = editingControl === ae ? null : ae;
+      ae!.classList.toggle('dpad-editing', editingControl === ae);
       return;
     }
-    if (key === 'Escape' && sliderEditMode) {
+    if (key === 'Escape' && editingControl === ae) {
       e.preventDefault();
-      sliderEditMode = false;
+      editingControl = null;
       ae!.classList.remove('dpad-editing');
-      editingSlider = null;
       return;
     }
   }
@@ -429,10 +569,9 @@ function handleFocusIn(e: FocusEvent): void {
   // Leaving the slider (by any means -- not just the explicit toggle-off)
   // always drops edit-mode; it should never survive onto whatever's
   // focused next.
-  if (editingSlider && t !== editingSlider) {
-    editingSlider.classList.remove('dpad-editing');
-    sliderEditMode = false;
-    editingSlider = null;
+  if (editingControl && t !== editingControl) {
+    editingControl.classList.remove('dpad-editing');
+    editingControl = null;
   }
   if (!t.closest('.cinema-rail') && !t.closest('.cinema-side-panel')) {
     lastContentFocus = t;

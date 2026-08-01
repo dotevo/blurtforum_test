@@ -34,7 +34,7 @@ const emit = defineEmits<{
               {{ acc.type === 'key' ? t('privateKey') : 'WhaleVault' }}
             </div>
           </div>
-          <div class="acc-actions">
+          <div class="acc-actions dpad-row">
             <button v-if="auth.user?.username !== acc.username" class="btn btn-sm btn-hdr" @click="emit('switchAccount', acc.username)" :title="t('switchAccount')">
               <i class="fa-solid fa-right-left"></i>
             </button>

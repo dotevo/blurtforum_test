@@ -253,8 +253,25 @@ onUnmounted(() => {
    "the height of the video element, with scroll for the rest" — a
    containing-block percentage/anchor here couldn't do that reliably
    because of the display:contents wrapper, see the comment in <script>. */
+/*
+ * z-index: this is Teleported straight to <body> (see <template>), so it
+ * shares a stacking context with MediaPlayer.vue's OWN top-level fixed
+ * elements — specifically .bfp-panel (z-index: 999, this is also the
+ * cinema-mode container, .bfp-panel--cinema is the same element) and
+ * .bfp-bar (z-index: 1000). WebtorrentVideo.vue — and therefore this menu's
+ * trigger button — is mounted INSIDE .bfp-panel, but once Teleported here
+ * this element is a SIBLING of .bfp-panel in the DOM, not a descendant of
+ * it, so it no longer inherits .bfp-panel's stacking context and has to
+ * out-rank it explicitly. At the old z-index: 50 it rendered — and
+ * received clicks — entirely behind .bfp-panel/.bfp-bar: present in the
+ * DOM, toggling correctly, completely invisible and unclickable, in both
+ * cinema and non-cinema mode (both are .bfp-panel just with/without the
+ * --cinema modifier). MediaPlayer.vue's own .pl-dropdown ran into exactly
+ * this same problem for the same reason and settled on z-index: 9999 to
+ * clear it — matching that value here rather than picking a new one.
+ */
 .wasm-menu {
-  z-index: 50;
+  z-index: 9999;
   width: 260px;
   max-width: calc(100vw - 16px);
   overflow-y: auto;

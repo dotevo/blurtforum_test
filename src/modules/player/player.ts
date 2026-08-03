@@ -196,10 +196,29 @@ const getTrackActions = (zone: Exclude<TrackActionZone, 'both'>): TrackActionCon
 // (id/label/icon/component) and the core renders it generically alongside
 // the built-in video/queue/playlists/settings tabs, with zero knowledge of
 // what it shows. Order = registration order.
+//
+// MUST be `reactive`, not a plain array: MediaPlayer.vue reads this through
+// `visibleExpandedTabs = computed(() => props.player.getExpandedTabs()...)`.
+// A `computed` only re-runs when a reactive dependency it read changes --
+// and a plain array's `.push()` isn't one, so with a plain array the very
+// first evaluation (which happens as soon as MediaPlayer.vue itself first
+// renders) permanently freezes `visibleExpandedTabs`'s value. Every plugin
+// that registers a tab during app bootstrap (i.e. before MediaPlayer.vue
+// exists at all) happened to land before that first evaluation, so this
+// never showed up before -- but WebtorrentVideo.vue registers its
+// 'webtorrent-audio-subs' tab from its OWN setup(), which only runs once
+// mounted as MediaPlayer.vue's child, i.e. strictly after that first
+// evaluation: the push happened, but nothing was listening for it, so the
+// tab (and its cinema-mode side icon) silently never appeared. `reactive()`
+// here is what makes `.push()` actually notify that computed. (Contrast
+// with getPlayerButtons()/getPlayerWidgets() below -- those are called
+// directly inline in the template rather than through a memoizing
+// `computed`, so frequent playback-driven re-renders paper over the same
+// underlying non-reactivity there; this file doesn't rely on that
+// coincidence to fix this bug going forward.)
+const _expandedTabs = reactive<PlayerTabContribution[]>([]);
 
-const _expandedTabs: PlayerTabContribution[] = [];
-
-const registerExpandedTab = (contribution: PlayerTabContribution): void => {
+export const registerExpandedTab = (contribution: PlayerTabContribution): void => {
   if (!contribution?.id) { console.warn('BFPlayer.registerExpandedTab: contribution must have an id'); return; }
   if (_expandedTabs.find(t => t.id === contribution.id)) { console.warn(`BFPlayer: expanded tab "${contribution.id}" already registered`); return; }
   _expandedTabs.push(contribution);

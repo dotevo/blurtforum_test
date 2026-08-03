@@ -32,11 +32,13 @@ import {
   showCinemaControls as showSharedCinemaControls, togglePlay,
   registerPlayerButton, unregisterPlayerButton,
   registerPlayerWidget, unregisterPlayerWidget,
+  registerExpandedTab,
 } from '../player';
 import * as WTPool from '../webtorrent-pool';
 import type { TorrentSnapshot } from '../webtorrent-pool';
 import WebtorrentPieceMap from './WebtorrentPieceMap.vue';
 import WebtorrentExtras from './WebtorrentExtras.vue';
+import WebtorrentAudioSubtitlePanel from './WebtorrentAudioSubtitlePanel.vue';
 
 const props = defineProps<{
   t: (k: string) => string;
@@ -189,7 +191,44 @@ registerPlayerWidget({
     files: stableFiles.value,
     activeFileIndex: activeFileIndex.value,
     visible: effectiveControlsVisible.value,
+    // The audio/subtitle ⋮ dropdown is deliberately left out of the cinema
+    // widget below (see 'webtorrent-audio-subs' registerExpandedTab call
+    // right after this) -- it's now a proper panel tab there instead. This
+    // widget still contributes the peers/speed readout to the cinema-left
+    // cluster same as before.
+    showAudioMenu: false,
   }),
+});
+
+// Registered once, unconditionally, same as registerPlayerButton/Widget
+// above (this component stays mounted for the player's whole lifetime, see
+// this file's own top-of-file comment) -- there's no unregisterExpandedTab
+// counterpart because registerExpandedTab is meant for exactly this kind of
+// permanent-for-the-session contribution (same shape as a plugin's
+// "Comments" tab), not something tied to a shorter-lived mount/unmount.
+// `visible` hides it whenever a webtorrent source isn't the one playing,
+// mirroring how MediaPlayer.vue's own hardcoded 'webtorrent-info' tab button
+// is gated by `currentSource?.type === 'webtorrent'`.
+//
+// See WebtorrentAudioSubtitlePanel.vue's own comment for the real bug this
+// fixes: the ⋮ dropdown (still used for the docked/expanded non-cinema
+// overlay, see WebtorrentExtras.vue) is Teleported to <body> as a loose
+// `position: fixed` box, which modules/cinema/dpad-nav.ts's zone-based D-pad
+// navigation doesn't recognize as "a panel is open" at all -- so a TV
+// remote/keyboard user could open it but never actually navigate or
+// activate anything inside it, with arrows instead falling through to the
+// PLAYER zone underneath (seeking/pausing the video). Registering this as a
+// genuine expanded tab makes `player.state.expandedTab` equal this tab's own
+// id while it's open, which is exactly the condition dpad-nav.ts's
+// getOpenPanel() checks for -- Up/Down roving focus and Left/Right/Escape-
+// to-close all work the same as they already do for Queue/Playlists/
+// Settings/Torrent info, with no changes needed in dpad-nav.ts itself.
+registerExpandedTab({
+  id: 'webtorrent-audio-subs',
+  label: props.t('audioSubtitleSettings') || 'Audio & subtitles',
+  icon: 'fa-solid fa-closed-captioning',
+  component: WebtorrentAudioSubtitlePanel,
+  visible: () => isWebtorrent.value,
 });
 
 // The piece-map widget needs a resolved infoHash + attached file index to

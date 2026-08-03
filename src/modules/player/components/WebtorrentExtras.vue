@@ -29,14 +29,26 @@
 import type { TorrentSnapshot } from '../webtorrent-pool';
 import WebtorrentAudioSubtitleMenu from './WebtorrentAudioSubtitleMenu.vue';
 
-defineProps<{
+withDefaults(defineProps<{
   t: (k: string) => string;
   torrent: TorrentSnapshot | null;
   infoHash: string | null;
   files: TorrentSnapshot['files'];
   activeFileIndex: number | null;
   visible: boolean;
-}>();
+  /** The docked/expanded (non-cinema) inline mounting of this component
+   *  (see WebtorrentVideo.vue's template) leaves this at its default of
+   *  true -- the ⋮ dropdown is the only UI for subtitles/audio track there.
+   *  The cinema-left widget mounting passes false: in cinema mode the same
+   *  picker is a proper panel tab instead (registerExpandedTab'd
+   *  'webtorrent-audio-subs', see WebtorrentVideo.vue and
+   *  WebtorrentAudioSubtitlePanel.vue's own comment for why), so showing
+   *  the dropdown there too would just be the same picker twice -- once
+   *  reachable by D-pad, once not. */
+  showAudioMenu?: boolean;
+}>(), {
+  showAudioMenu: true,
+});
 </script>
 
 <template>
@@ -47,6 +59,7 @@ defineProps<{
     <i class="fa-solid fa-arrow-down"></i> {{ (torrent.downloadSpeed / 1024).toFixed(0) }} KB/s
   </span>
   <WebtorrentAudioSubtitleMenu
+    v-if="showAudioMenu"
     :t="t"
     :info-hash="infoHash"
     :files="files"

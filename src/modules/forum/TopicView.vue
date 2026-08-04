@@ -7,7 +7,7 @@ import ForumMedia from '../player_blurt/components/ForumMedia.ce.vue';
 import PayoutBadge from '../../components/layout/PayoutBadge.vue';
 import UserAvatar from '../../components/layout/UserAvatar.vue';
 import PostEditor from '../../components/layout/PostEditor.vue';
-import PostReplyThread from './PostReplyThread.vue';
+import PostReplyThread from '../post/PostReplyThread.vue';
 import type { Post, AuthUser } from '../../types';
 
 const handleLinkClick = (event: MouseEvent) => {

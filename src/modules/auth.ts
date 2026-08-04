@@ -2,7 +2,11 @@
  * Authentication and Security module for BlurtForum
  * Handles PIN-based encryption/decryption of private keys using PBKDF2
  */
-import CryptoJS from 'crypto-js';
+import CryptoJS from 'crypto-js/core';
+import 'crypto-js/pbkdf2';
+import 'crypto-js/aes';
+import 'crypto-js/enc-hex';
+import 'crypto-js/enc-utf8';
 
 export const AuthService = {
   /** Derives a strong key from the PIN using PBKDF2 */

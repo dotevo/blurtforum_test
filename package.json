@@ -22,9 +22,7 @@
     "dompurify": "^3.4.7",
     "marked": "^15.0.12",
     "peerjs": "^1.5.5",
-    "vite-plugin-static-copy": "^4.1.1",
-    "vue": "^3.5.34",
-    "webtorrent": "^3.0.16"
+    "vue": "^3.5.34"
   },
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
@@ -37,6 +35,8 @@
     "vite": "^8.0.12",
     "vite-plugin-externals": "^0.6.2",
     "vite-plugin-node-polyfills": "^0.28.0",
-    "vue-tsc": "^3.2.8"
+    "vite-plugin-static-copy": "^4.1.1",
+    "vue-tsc": "^3.2.8",
+    "webtorrent": "^3.0.16"
   }
 }

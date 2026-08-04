@@ -15,7 +15,7 @@
  * the player.
  */
 import { ref, watch } from 'vue';
-import PostReplyThread from '../../forum/PostReplyThread.vue';
+import PostReplyThread from '../../post/PostReplyThread.vue';
 import { Blockchain } from '../../blockchain';
 import { PostProcessor } from '../../post-processor';
 import type { MediaTrack, BFPlayerAPI } from '../../player/types';

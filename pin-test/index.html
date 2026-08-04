@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIN zone test</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    background: #0b0d12;
+    color: #eef1f6;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #8b93a3; margin: 0; }
+
+  .pin-display {
+    display: flex;
+    gap: 10px;
+  }
+  .pin-digit {
+    width: 40px;
+    height: 52px;
+    border-radius: 8px;
+    background: #171b24;
+    border: 1px solid #2a2f3d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 600;
+  }
+  .pin-digit.empty { color: #3a4152; }
+
+  .zones {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .zone-row {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 14px;
+    border: 2px solid transparent;
+    transition: border-color .12s ease, background-color .12s ease;
+  }
+  .zone-row.active {
+    border-color: #4f8cff;
+    background: rgba(79,140,255,.08);
+    box-shadow: 0 0 0 4px rgba(79,140,255,.12);
+  }
+  .key {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    background: #1c2029;
+    border: 1px solid #2c3140;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 600;
+    color: #cfd5e2;
+  }
+  .key.zero { margin-left: 74px; } /* centers "0" under the middle key of C */
+
+  .hint {
+    max-width: 460px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #8b93a3;
+  }
+  .hint b { color: #cfd5e2; }
+
+  .log {
+    width: 460px;
+    max-height: 90px;
+    overflow-y: auto;
+    font-size: 12px;
+    color: #6b7385;
+    background: #12151c;
+    border: 1px solid #232838;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: ui-monospace, monospace;
+  }
+
+  button.reset {
+    background: #1c2029;
+    border: 1px solid #2c3140;
+    color: #cfd5e2;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button.reset:hover { background: #232838; }
+</style>
+</head>
+<body>
+
+  <h1>Test wpisywania PIN-u (D-pad / strzałki)</h1>
+
+  <div class="pin-display" id="pinDisplay"></div>
+
+  <div class="zones" id="zones">
+    <div class="zone-row" data-zone="A">
+      <div class="key">1</div><div class="key">2</div><div class="key">3</div>
+    </div>
+    <div class="zone-row" data-zone="B">
+      <div class="key">4</div><div class="key">5</div><div class="key">6</div>
+    </div>
+    <div class="zone-row" data-zone="C">
+      <div class="key">7</div><div class="key">8</div><div class="key">9</div>
+    </div>
+    <div class="zone-row" data-zone="C" style="padding-top:0;">
+      <div class="key zero">0</div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <b>Góra/Dół</b> — przesuwa podświetloną strefę (nic nie wpisuje).<br>
+    <b>Lewo / Enter / Prawo</b> — wpisuje 1./2./3. cyfrę aktualnej strefy (nie rusza podświetlenia).<br>
+    W strefie C, <b>Dół</b> wpisuje <b>0</b> zamiast przesuwać.<br>
+    <b>Backspace</b> — usuwa ostatnią cyfrę. <b>R</b> — reset.
+  </div>
+
+  <button class="reset" id="resetBtn">Reset</button>
+
+  <div class="log" id="log"></div>
+
+<script>
+  const ZONE_DIGITS = { A: ['1', '2', '3'], B: ['4', '5', '6'], C: ['7', '8', '9'] };
+  const ZONE_ORDER = ['A', 'B', 'C'];
+  const MAX_PIN_LEN = 4;
+
+  let currentZone = 'A';
+  let pin = [];
+
+  const pinDisplayEl = document.getElementById('pinDisplay');
+  const logEl = document.getElementById('log');
+  const zoneRows = document.querySelectorAll('.zone-row');
+
+  function log(msg) {
+    const line = document.createElement('div');
+    line.textContent = msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function render() {
+    zoneRows.forEach(row => {
+      row.classList.toggle('active', row.dataset.zone === currentZone);
+    });
+
+    pinDisplayEl.innerHTML = '';
+    for (let i = 0; i < MAX_PIN_LEN; i++) {
+      const d = document.createElement('div');
+      d.className = 'pin-digit' + (i < pin.length ? '' : ' empty');
+      // Not masked on purpose (this is a logic test harness) --
+      // shows the actual digit so it can be visually confirmed.
+      d.textContent = i < pin.length ? pin[i] : '·';
+      pinDisplayEl.appendChild(d);
+    }
+  }
+
+  function moveZone(delta) {
+    const idx = ZONE_ORDER.indexOf(currentZone);
+    const next = idx + delta;
+    if (next < 0 || next >= ZONE_ORDER.length) return; // clamp, no wrap
+    currentZone = ZONE_ORDER[next];
+    log(`→ strefa ${currentZone} (bez wpisu)`);
+  }
+
+  function commit(digit) {
+    if (pin.length >= MAX_PIN_LEN) return;
+    pin.push(digit);
+    log(`→ wpisano "${digit}" (strefa ${currentZone} bez zmian)`);
+  }
+
+  function handleKey(key) {
+    switch (key) {
+      case 'ArrowUp':
+        moveZone(-1);
+        break;
+      case 'ArrowDown':
+        if (currentZone === 'C') {
+          commit('0');
+        } else {
+          moveZone(+1);
+        }
+        break;
+      case 'ArrowLeft':
+        commit(ZONE_DIGITS[currentZone][0]);
+        break;
+      case 'Enter':
+        commit(ZONE_DIGITS[currentZone][1]);
+        break;
+      case 'ArrowRight':
+        commit(ZONE_DIGITS[currentZone][2]);
+        break;
+      case 'Backspace':
+        if (pin.length) {
+          const removed = pin.pop();
+          log(`→ usunięto "${removed}"`);
+        }
+        break;
+      default:
+        return; // ignore, don't preventDefault
+    }
+    render();
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Backspace'].includes(e.key)) {
+      e.preventDefault();
+      handleKey(e.key);
+    } else if (e.key === 'r' || e.key === 'R') {
+      reset();
+    }
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', reset);
+
+  function reset() {
+    currentZone = 'A';
+    pin = [];
+    logEl.innerHTML = '';
+    log('reset');
+    render();
+  }
+
+  render();
+</script>
+
+</body>
+</html>

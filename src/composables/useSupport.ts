@@ -10,6 +10,9 @@ import type { Post, Beneficiary, AuthUser } from '../types';
  * 1. Scan direct children for existing support comment (matching beneficiaries)
  * 2a. Found  → vote on it directly with chosen weight
  * 2b. Not found → open modal (user writes body + picks weight) → create comment → vote
+ * 3. Either way, also (best-effort, separately) vote on the ORIGINAL post
+ *    itself -- see voteOnOriginalPost()'s own comment for why that's a
+ *    second broadcast rather than bundled into step 2's.
  */
 export function useSupport(
   client: any,
@@ -32,6 +35,31 @@ export function useSupport(
     existingAuthor: null as string | null,
   });
 
+  /**
+   * Best-effort vote on the ORIGINAL paid-out post, in addition to the
+   * support-comment vote both call sites below already do. Deliberately a
+   * separate broadcast, not bundled into the same transaction as the
+   * support-comment vote: Steem-family chains validate every op in a
+   * transaction together and reject the whole transaction if any one op
+   * fails, so if this chain rejects votes past a post's cashout window (the
+   * whole reason the support-comment flow exists in the first place —
+   * see this file's top-of-file comment), bundling it with the
+   * support-comment vote would take that reliably-working vote down with
+   * it. Kept independent so a rejection here (if the chain does still
+   * reject it) can never break the part of the flow that already works.
+   * Silently best-effort for the same reason -- this is a bonus, not the
+   * point of the flow, so it doesn't get its own status message or thrown
+   * error the user has to deal with.
+   */
+  const voteOnOriginalPost = async (weight: number): Promise<void> => {
+    if (!auth.user) return;
+    try {
+      await broadcast([['vote', { voter: auth.user.username, author: modal.author, permlink: modal.permlink, weight }]]);
+    } catch (err) {
+      console.warn('Support: vote on original post failed (may be past its own cashout window on top of the support-comment path, or already voted):', err);
+    }
+  };
+
   const submitSupportComment = async (): Promise<void> => {
     if (checkLock(submitSupportComment)) return;
     if (!auth.user || !modal.author) return;
@@ -50,6 +78,7 @@ export function useSupport(
           permlink: modal.existingPermlink,
           weight,
         }]]);
+        void voteOnOriginalPost(weight);
         modal.status = t('supportSuccess');
         setTimeout(() => { modal.show = false; }, 1500);
       } catch (err: any) {
@@ -100,6 +129,7 @@ ${modal.body}`.trim(),
         permlink,
         weight,
       }]]);
+      void voteOnOriginalPost(weight);
       modal.status = t('supportSuccess');
       setTimeout(() => { modal.show = false; }, 1500);
     } catch (err: any) {

@@ -3,6 +3,10 @@ import App from './App.vue';
 import './style.css';
 import ForumMedia from './modules/player_blurt/components/ForumMedia.ce.vue';
 import ForumIframe from './modules/player_blurt/components/ForumIframe.ce.vue';
+import { initConsent } from './modules/cookie-consent';
+
+initConsent();
+
 
 // Register ForumMedia as a native Web Component
 const ForumMediaElement = defineCustomElement(ForumMedia);

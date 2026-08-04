@@ -51,6 +51,13 @@ const WalletAuthModal = defineAsyncComponent(() => import('./components/modals/W
 const RpcModal = defineAsyncComponent(() => import('./components/modals/RpcModal.vue'));
 const SwitchAccountModal = defineAsyncComponent(() => import('./components/modals/SwitchAccountModal.vue'));
 const OldContentModal = defineAsyncComponent(() => import('./components/modals/OldContentModal.vue'));
+const PrivacyPolicyModal = defineAsyncComponent(() => import('./components/modals/PrivacyPolicyModal.vue'));
+
+// Cookie consent banner is tiny and shown on essentially every first visit,
+// so it's a sync (not async) import unlike the modals above.
+import CookieConsentBanner from './components/CookieConsentBanner.vue';
+import { consent as cookieConsent, acceptCookies, rejectCookies, resetConsent } from './modules/cookie-consent';
+const showPrivacyPolicy = ref(false);
 
 const {
   lang, setLang, langs, t, theme, setTheme, themes, cinemaMode, setCinemaMode, config, view, loading, globalProps, forumStructure,
@@ -106,6 +113,44 @@ const {
 
   const { initTitleWatcher, setPageTitle } = useTitle();
   initTitleWatcher();
+
+  /**
+   * How much bottom clearance (px) a fixed-position element needs to sit
+   * ABOVE the docked player instead of underneath it. Shared by
+   * .bc-queue-panel and CookieConsentBanner -- see this file's comment on
+   * .bc-queue-panel for the cinema-mode bug this same logic used to have
+   * (state.cinema always implies state.expanded, so a bare `expanded` check
+   * fires in cinema mode too). Both consumers are themselves gated on
+   * `!cinemaMode` already, so this deliberately returns 0 for cinema rather
+   * than trying to also account for it here.
+   *
+   * The two magic numbers below match the two already in use elsewhere for
+   * the exact same docked-player states: `expandedHeight` is MediaPlayer.vue's
+   * own docked-panel height (`:style="{ height: player.state.expandedHeight
+   * + 'px' }"`); 76 matches the pre-existing `.has-player-active
+   * .bc-queue-panel { bottom: 76px }` rule for the medium (not expanded, not
+   * minimized) docked bar -- kept as a plain number here instead of a CSS
+   * class rule so CookieConsentBanner (a separate component) can use the
+   * exact same value via a prop rather than needing its own copy of this
+   * class-selector trick.
+   */
+  const playerClearance = computed<number>(() => {
+    if (!player.state.active || player.state.minimized || player.state.cinema) return 0;
+    return player.state.expanded ? player.state.expandedHeight : 76;
+  });
+
+  /** Extra clearance CookieConsentBanner needs on top of playerClearance
+   *  when the wait-queue bar is ALSO on screen at the same time, so the two
+   *  stack instead of overlapping. Rough constant (matches this file's
+   *  existing style of hardcoded px clearances above) rather than measuring
+   *  the real DOM height -- .bc-queue-panel's height only varies by a row
+   *  or two of text, not enough to bother with a ResizeObserver for a
+   *  "stack neatly" nicety. */
+  const bcQueuePanelClearance = computed<number>(() => {
+    if (cinemaMode.value || bcWaitQueue.value.length === 0) return 0;
+    const shown = bcQueueExpanded.value ? bcWaitQueue.value.length : Math.min(bcWaitQueue.value.length, 3);
+    return 44 + shown * 30 + (bcWaitQueue.value.length > 3 && !bcQueueExpanded.value ? 30 : 0);
+  });
 
   installCinemaDpadNav(() => cinemaMode.value);
 
@@ -365,9 +410,40 @@ const {
       <span class="gs">{{ t('fetchingMore') }} ({{ forumPagination.fetchedCount }}/300)</span>
     </div>
 
-    <!-- Blockchain wait queue panel -->
-    <div v-if="bcWaitQueue.length > 0" class="bc-queue-panel"
-         :style="{ bottom: (player.state.active && !player.state.minimized && player.state.expanded) ? player.state.expandedHeight + 'px' : '' }">
+    <!--
+      Blockchain wait queue panel.
+
+      Real bug fixed here: the `bottom` offset below used to be
+      `player.state.expanded ? player.state.expandedHeight + 'px' : ''`.
+      `expandedHeight` (default 400, user-resizable up to 80% of window
+      height, see player.ts) is the height of the DOCKED (non-cinema)
+      expanded panel -- see MediaPlayer.vue's own use of it, `:style="{
+      height: player.state.expandedHeight + 'px' }"`, applied only to that
+      docked panel. But CinemaIndex.vue always sets `cinema` and `expanded`
+      together (playing a card, or currentTrack changing, sets
+      `playerState.cinema = true; playerState.expanded = true;` in the same
+      breath -- state.cinema is never true on its own), so the old condition
+      here was just `player.state.expanded`, with no check for cinema at
+      all -- true in cinema mode exactly as much as in the docked one. Net
+      effect: voting while in cinema mode pinned this bar `expandedHeight`px
+      (whatever the user last dragged the UNRELATED docked panel to, often
+      several hundred px) above the true bottom edge, instead of at it --
+      which reads as "floating in the middle of the video". Gated on
+      `!cinemaMode` now so cinema gets its own presentation entirely (see
+      below) rather than inheriting a docked-mode-only offset.
+
+      Second half of the same fix -- and the actual UX ask, not just the
+      position bug: in cinema mode this now renders as a small pinned corner
+      chip (spinner + one line of text) instead of the full per-item
+      progress-bar list. The full list makes sense in the normal page layout
+      where there's a whole page of other content it's a footer strip for;
+      stacked over a fullscreen video it's just noise. Still uses the exact
+      same bcWaitQueue/bcQueueExpanded state as the normal panel -- only the
+      cinema branch's template/CSS differs, nothing about how entries get
+      queued.
+    -->
+    <div v-if="bcWaitQueue.length > 0 && !cinemaMode" class="bc-queue-panel"
+         :style="{ bottom: playerClearance ? playerClearance + 'px' : '' }">
       <div class="bc-queue-inner">
         <template v-for="entry in (bcQueueExpanded ? bcWaitQueue : bcWaitQueue.slice(0, 3))" :key="entry.id">
           <div class="bc-queue-item">
@@ -381,6 +457,11 @@ const {
           +{{ bcWaitQueue.length - 3 }} {{ t('more') || 'more' }} ▾
         </button>
       </div>
+    </div>
+
+    <div v-if="bcWaitQueue.length > 0 && cinemaMode" class="bc-queue-chip" :title="bcWaitQueue.map(e => e.label).join(' · ')">
+      <span class="bc-queue-chip-spin"></span>
+      <span class="bc-queue-chip-label">⛓ {{ bcWaitQueue[0].label }}<template v-if="bcWaitQueue.length > 1"> (+{{ bcWaitQueue.length - 1 }})</template></span>
     </div>
 
     <template v-if="!loading">
@@ -571,12 +652,23 @@ const {
     <!-- Footer -->
     <div v-if="!cinemaMode" class="site-footer">
       BlurtForum — Thanks to: <a href="#" @click.stop.prevent="openProfile('drakernoise')">@drakernoise</a> (for RPC), @beblurt/dblurt · Blurt Network | #{{ globalProps.head_block_number||'…' }} | {{ lang.toUpperCase() }}
-      <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--surface-border); display: flex; justify-content: center; align-items: center; gap: 10px;">
+      <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--surface-border); display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;">
         <span style="font-size: 11px; opacity: 0.6;">Media Player Enabled</span>
+        <span style="opacity: 0.4;">·</span>
+        <a href="#" @click.stop.prevent="showPrivacyPolicy = true" style="font-size: 11px;">{{ t('privacyPolicy') || 'Privacy policy' }}</a>
+        <span style="opacity: 0.4;">·</span>
+        <a href="#" @click.stop.prevent="resetConsent()" style="font-size: 11px;">{{ t('cookieSettings') || 'Cookie settings' }}</a>
       </div>
     </div>
 
   </div><!-- /content -->
+
+  <CookieConsentBanner v-if="!cinemaMode && !cookieConsent" :t="t"
+                        :bottom="playerClearance + bcQueuePanelClearance"
+                        @accept="acceptCookies" @reject="rejectCookies"
+                        @open-privacy="showPrivacyPolicy = true" />
+
+  <PrivacyPolicyModal v-if="showPrivacyPolicy" :t="t" @close="showPrivacyPolicy = false" />
 
   <!-- ── Player ─────────────────────────────────────────────────── -->
 
@@ -795,6 +887,48 @@ const {
 }
 
 /* ===== BLOCKCHAIN WAIT QUEUE PANEL ===== */
+
+/* Cinema-mode variant of the wait queue: a small pinned corner chip instead
+   of the full-width bottom bar (see the template comment above where this
+   renders for why it's a separate branch rather than a CSS override of
+   .bc-queue-panel). Sits above the cinema controls cluster (which itself is
+   z-index 5-ish, see MediaPlayer.vue) and above the cinema player's own
+   z-index: 999/1000 (.bfp-panel/.bfp-bar), same as .bc-queue-panel did. */
+.bc-queue-chip {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(70vw, 320px);
+  padding: 7px 12px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+.bc-queue-chip-spin {
+  flex: 0 0 auto;
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+.bc-queue-chip-label {
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 600px) {
+  .bc-queue-chip { bottom: 84px; right: 10px; }
+}
+
 .bc-queue-panel {
   position: fixed;
   bottom: 0;
@@ -807,14 +941,13 @@ const {
   padding: 8px 14px;
   transition: bottom 0.3s ease-in-out;
 }
-.has-player-active .bc-queue-panel {
-  bottom: 76px;
-}
-@media (max-width: 600px) {
-  .has-player-active .bc-queue-panel {
-    bottom: 64px;
-  }
-}
+/* The bottom offset for the "docked bar, not expanded" player state used to
+   live here as a CSS class rule (`.has-player-active .bc-queue-panel {
+   bottom: 76px }`, plus a 64px mobile variant) -- now provided via the
+   `playerClearance` computed (see <script setup>) and applied as an inline
+   style instead, so CookieConsentBanner can read the exact same value as a
+   prop rather than needing its own copy of this selector trick nested
+   somewhere under #app's .has-player-active class. */
 .bc-queue-inner {
   max-width: 1200px;
   margin: 0 auto;

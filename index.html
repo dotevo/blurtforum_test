@@ -32,13 +32,9 @@
 <script src="./vendor/dblurt/dblurt.js"></script>
 <script src="./vendor/peertube-embed-api/player.min.js"></script>
 <link rel="stylesheet" href="./vendor/fontawesome/css/all.min.css">
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-66P34PGTQF"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-66P34PGTQF', { send_page_view: false });
-</script>
+<!-- Google Analytics (gtag.js) is intentionally NOT loaded here anymore --
+     it only loads after the user accepts cookies via the in-app consent
+     banner. See src/modules/cookie-consent.ts for the full story. -->
 </head>
 <body>
 <div id="app"></div>

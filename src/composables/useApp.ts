@@ -953,6 +953,18 @@ export function useApp() {
           const p = profileUser.posts.find(x => x.permlink === permlink);
           if (p) p._pendingVote = false;
         }
+        // Fourth post-holding location -- see getFullPost() right below,
+        // which already treats activeForum.value.posts as one of four known
+        // spots a post object can live. Missing this one meant voting from
+        // the forum LIST view (not after opening the topic, not from your
+        // own profile) left that post's VoteButton spinning forever: the
+        // vote succeeded on-chain, but nothing ever cleared the flag on
+        // this specific object since it's a different array from the three
+        // above.
+        if (activeForum.value?.posts) {
+          const fp = activeForum.value.posts.find(x => x.author === author && x.permlink === permlink);
+          if (fp) fp._pendingVote = false;
+        }
       }
       const idx = bcWaitQueue.value.findIndex(e => e.id === id);
       if (idx >= 0) bcWaitQueue.value.splice(idx, 1);

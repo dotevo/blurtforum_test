@@ -463,5 +463,8 @@
   "privacyPolicyRightsTitle": "7. Ihre Wahlmöglichkeiten",
   "privacyPolicyRightsBody": "Sie können die Zustimmung zu Analysen jederzeit ablehnen oder widerrufen (Link in der Fußzeile) und den gesamten lokalen Speicher über Ihren Browser löschen. Da On-Chain-Daten von Natur aus öffentlich und dauerhaft sind, kann diese Seite keinen Mechanismus „meine Kontodaten löschen“ anbieten, der über das hinausgeht, was das Blurt-Protokoll selbst erlaubt (z. B. Bearbeiten/Leeren eigener Beiträge).",
   "privacyPolicyContactTitle": "8. Kontakt",
-  "privacyPolicyContactBody": "Fragen zu dieser Richtlinie können über die eigenen Kanäle der Community an die Seitenbetreiber gerichtet werden (siehe Forum-Fußzeile)."
+  "privacyPolicyContactBody": "Fragen zu dieser Richtlinie können über die eigenen Kanäle der Community an die Seitenbetreiber gerichtet werden (siehe Forum-Fußzeile).",
+  "experimentalMode": "Experimenteller Modus",
+  "noEarningsData": "Keine Einnahmedaten im Verlauf gefunden",
+  "queueHistory": "Verlauf"
 }

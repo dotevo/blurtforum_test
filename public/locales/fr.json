@@ -463,5 +463,8 @@
   "privacyPolicyRightsTitle": "7. Vos choix",
   "privacyPolicyRightsBody": "Vous pouvez refuser ou retirer votre consentement aux analyses à tout moment (lien en pied de page), et effacer tout le stockage local via votre navigateur. Comme les données on-chain sont par nature publiques et permanentes, ce site ne peut proposer aucun mécanisme « supprimer les données de mon compte » au-delà de ce que le protocole Blurt lui-même permet (par ex. modifier/vider ses propres publications).",
   "privacyPolicyContactTitle": "8. Contact",
-  "privacyPolicyContactBody": "Les questions concernant cette politique peuvent être adressées aux opérateurs du site via les canaux propres de la communauté (voir le pied de page du forum)."
+  "privacyPolicyContactBody": "Les questions concernant cette politique peuvent être adressées aux opérateurs du site via les canaux propres de la communauté (voir le pied de page du forum).",
+  "experimentalMode": "Mode expérimental",
+  "noEarningsData": "Aucune donnée de revenus trouvée dans l'historique",
+  "queueHistory": "Historique"
 }

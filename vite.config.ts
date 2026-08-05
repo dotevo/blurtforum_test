@@ -3,7 +3,6 @@ import vue from '@vitejs/plugin-vue';
 import { viteExternalsPlugin } from 'vite-plugin-externals';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
-import { viteStaticCopy } from 'vite-plugin-static-copy'; // npm i -D vite-plugin-static-copy
  
 const compilerOptions = {
   isCustomElement: (tag: string) => tag.startsWith('forum-')
@@ -29,19 +28,23 @@ export default defineConfig({
       '@beblurt/dblurt': 'dblurt',
     }),
     basicSsl(),
-    // WebTorrent's Service Worker (required for file.streamTo() playback in
-    // webtorrent >=2.0) must be served as a plain, unbundled static file at
-    // the app's root — Vite doesn't pull files out of node_modules on its
-    // own, so we copy it explicitly. This re-copies from whatever
-    // `webtorrent` version is actually installed on every dev start / build,
-    // so it can never silently go stale after a dependency bump.
-    // Ends up served at `${BASE_URL}sw.min.js`, matching SW_PATH in
-    // modules/player/webtorrent-pool.ts.
-    viteStaticCopy({
-      targets: [
-        { src: 'node_modules/webtorrent/dist/sw.min.js', dest: '.' },
-      ],
-    }),
+    // NOTE: there used to be a viteStaticCopy() step here copying
+    // node_modules/webtorrent/dist/sw.min.js into the build output, with a
+    // comment claiming it "ends up served at ${BASE_URL}sw.min.js, matching
+    // SW_PATH in modules/player/webtorrent-pool.ts". Verified false on both
+    // counts while investigating a font-subsetting question: (1)
+    // webtorrent-pool.ts passes `swPath: './sw.js'` explicitly -- the app
+    // has its own hand-built service worker at public/sw.js (see its own
+    // header comment, build tag "wtp-sw-3-fixed-verbose-en"), copied to
+    // dist/ automatically by Vite's normal public/ handling, no plugin
+    // needed; sw.min.js was never registered by anything. (2) even the copy
+    // itself wasn't landing where the comment said -- `dest: '.'` with this
+    // plugin version preserved the full source path, so it actually ended
+    // up at dist/node_modules/webtorrent/dist/sw.min.js, not dist/sw.min.js.
+    // Removed entirely, along with the `webtorrent` and
+    // `vite-plugin-static-copy` packages from package.json (neither is
+    // referenced by anything else -- webtorrent itself is loaded from a CDN
+    // URL at runtime by torrent-lib.js, see that file's own header comment).
   ],
   server: {
     host: true, // Listen on all interfaces (needed for mobile testing)

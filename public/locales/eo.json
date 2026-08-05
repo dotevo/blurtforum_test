@@ -460,5 +460,11 @@
   "privacyPolicyRightsTitle": "7. Viaj elektoj",
   "privacyPolicyRightsBody": "Vi povas rifuzi aŭ retiri analitikan konsenton iam ajn (ligilo en la piedo), kaj viŝi la tutan lokan konservadon per via retumilo. Ĉar surĉenaj datumoj estas nature publikaj kaj daŭraj, ĉi tiu retejo ne povas oferti mekanismon «forigi miajn kontajn datumojn» preter tio, kion la Blurt-protokolo mem permesas (ekz. redakti/malplenigi proprajn afiŝojn).",
   "privacyPolicyContactTitle": "8. Kontakto",
-  "privacyPolicyContactBody": "Demandoj pri ĉi tiu politiko povas esti direktitaj al la retejaj administrantoj per la propraj kanaloj de la komunumo (vidu la piedon de la forumo)."
+  "privacyPolicyContactBody": "Demandoj pri ĉi tiu politiko povas esti direktitaj al la retejaj administrantoj per la propraj kanaloj de la komunumo (vidu la piedon de la forumo).",
+  "actions": "Agoj",
+  "admins": "Administrantoj",
+  "bpDesc": "Influaj ĵetonoj kiuj pliigas voĉdonan povon kaj generas rekompencojn.",
+  "experimentalMode": "Eksperimenta reĝimo",
+  "noEarningsData": "Neniuj enspezaj datumoj trovitaj en la historio",
+  "queueHistory": "Historio"
 }

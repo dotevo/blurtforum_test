@@ -152,6 +152,23 @@ const {
     return 44 + shown * 30 + (bcWaitQueue.value.length > 3 && !bcQueueExpanded.value ? 30 : 0);
   });
 
+  /** CookieConsentBanner-only clearance, deliberately NOT the same value as
+   *  .bc-queue-panel gets. playerClearance can be as large as
+   *  `expandedHeight` -- default 400, user-draggable up to 80% of the
+   *  viewport height (see player.ts's drag-resize handler) -- which is fine
+   *  for .bc-queue-panel (a small corner chip that just needs to clear the
+   *  player, however tall it is) but not for this banner: a full-width bar
+   *  with wrapped text that has no business floating up into the top half
+   *  of a phone screen just because the player happens to be dragged tall
+   *  at that moment. Capped well below the "expanded player" range instead
+   *  of reusing playerClearance directly -- 160 is a rough constant (same
+   *  style as bcQueuePanelClearance above), sized to comfortably clear the
+   *  76px docked mini-bar plus a couple of stacked wait-queue rows, not a
+   *  measured value. */
+  const cookieBannerClearance = computed<number>(() =>
+    Math.min(playerClearance.value + bcQueuePanelClearance.value, 160)
+  );
+
   installCinemaDpadNav(() => cinemaMode.value);
 
   // TV-only device-profiles gate (see modules/device-profiles/). On web/
@@ -664,7 +681,7 @@ const {
   </div><!-- /content -->
 
   <CookieConsentBanner v-if="!cinemaMode && !cookieConsent" :t="t"
-                        :bottom="playerClearance + bcQueuePanelClearance"
+                        :bottom="cookieBannerClearance"
                         @accept="acceptCookies" @reject="rejectCookies"
                         @open-privacy="showPrivacyPolicy = true" />
 

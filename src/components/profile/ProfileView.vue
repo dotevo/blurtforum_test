@@ -320,7 +320,7 @@ const barSeries = computed(() => {
 
             <div class="delegation-half">
               <h4 style="color: var(--brand); margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
-                <i class="fa-solid fa-arrow-down-left-and-arrow-up-right-to-center"></i> {{ t('incomingDelegations') }}
+                <i class="fa-solid fa-down-left-and-up-right-to-center"></i> {{ t('incomingDelegations') }}
               </h4>
               <div class="forumline-wrap">
               <table class="forumline profile-list-table tight">

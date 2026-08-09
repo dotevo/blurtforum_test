@@ -161,8 +161,8 @@ const visibleExpandedTabs = computed(() => props.player.getExpandedTabs().filter
 // -- that only holds plugin-registered ones (e.g. Comments) -- so build the
 // combined list here instead of only using plugin tabs.
 const cinemaPanelTabs = computed(() => [
-  { id: 'queue', label: props.t('queue') || 'Queue', icon: 'fa-solid fa-list-ul' },
-  { id: 'playlists', label: props.t('playlists') || 'Playlists', icon: 'fa-solid fa-list' },
+  { id: 'queue', label: props.t('queue') || 'Queue', icon: 'fa-solid fa-list-ol' },
+  { id: 'playlists', label: props.t('playlists') || 'Playlists', icon: 'fa-solid fa-layer-group' },
   { id: 'settings', label: props.t('settings') || 'Settings', icon: 'fa-solid fa-gear' },
   ...(currentSource.value?.type === 'webtorrent' ? [{ id: 'webtorrent-info', label: props.t('torrentInfo') || 'Torrent info', icon: 'fa-solid fa-circle-info' }] : []),
   ...visibleExpandedTabs.value,
@@ -434,7 +434,7 @@ onUnmounted(() => {
           <div class="bfp-minimized-author">{{ player.state.currentTrack ? '@' + player.state.currentTrack.author : t('playlists') }}</div>
         </div>
         <i v-if="player.state.currentTrack" class="fa-solid" :class="player.state.playing ? 'fa-pause' : 'fa-play'" style="margin: 0 15px;"></i>
-        <i v-else class="fa-solid fa-list" style="margin: 0 15px;"></i>
+        <i v-else class="fa-solid fa-layer-group" style="margin: 0 15px;"></i>
       </button>
       <button class="bfp-btn" @click="player.state.minimized = false; if(!player.state.currentTrack) { player.state.expanded = true; player.state.expandedTab = 'playlists'; }" title="Maximize"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
     </template>
@@ -756,13 +756,13 @@ onUnmounted(() => {
           </button>
           <button class="bfp-tab" :class="{ active: player.state.expandedTab === 'queue' }"
                   @click="player.state.expandedTab = 'queue'; player.scrollToCurrent()">
-            <i class="fa-solid fa-list-ul"></i> <span>{{ t('queue') }}</span>
+            <i class="fa-solid fa-list-ol"></i> <span>{{ t('queue') }}</span>
             <span class="bfp-tab-count" v-if="player.state.queue.length + displayedAutoQueue.length > 0">
               {{ player.state.queue.length + displayedAutoQueue.length }}
             </span>
           </button>
           <button class="bfp-tab" :class="{ active: player.state.expandedTab === 'playlists' }" @click="player.state.expandedTab = 'playlists'">
-            <i class="fa-solid fa-list"></i> <span>{{ t('playlists') || 'Playlists' }}</span>
+            <i class="fa-solid fa-layer-group"></i> <span>{{ t('playlists') || 'Playlists' }}</span>
             <span class="bfp-tab-count" v-if="player.playlistState.playlists.length > 0">{{ player.playlistState.playlists.length }}</span>
           </button>
           <button class="bfp-tab" :class="{ active: player.state.expandedTab === 'settings' }" @click="player.state.expandedTab = 'settings'">
@@ -946,7 +946,7 @@ onUnmounted(() => {
 
       <template v-if="!activePlaylistId">
         <div class="pl-header">
-          <span class="pl-header-title"><i class="fa-solid fa-list"></i> {{ t('playlists') || 'Playlists' }}</span>
+          <span class="pl-header-title"><i class="fa-solid fa-layer-group"></i> {{ t('playlists') || 'Playlists' }}</span>
           <button class="pl-new-btn" @click="openPlaylistCreateForm(player.state.currentTrack || null)">
             <i class="fa-solid fa-plus"></i> {{ t('new') || 'New' }}
           </button>
@@ -988,7 +988,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="pq-empty" v-if="player.playlistState.playlists.length === 0">
-            <i class="fa-solid fa-list" style="font-size:28px; opacity:0.2;"></i>
+            <i class="fa-solid fa-layer-group" style="font-size:28px; opacity:0.2;"></i>
             <div>{{ t('playlistEmpty') || 'No playlists — click "+ New"' }}</div>
           </div>
         </div>
@@ -1429,7 +1429,13 @@ onUnmounted(() => {
   border-radius: 50%;
   border: none;
   background: rgba(0,0,0,0.35);
-  color: var(--bfp-text);
+  /* Hardcoded white, not var(--bfp-text) -- same bug and same reasoning as
+     .bfp-cinema-back-btn just above: a fixed dark translucent circle needs
+     a fixed light text color regardless of theme. Unlike the back button,
+     there's no guaranteed-white ancestor to inherit from here (this button
+     floats independently over both the video and the tab panel), so this
+     one states it directly rather than relying on inheritance. */
+  color: #fff;
   font-size: 16px;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -1444,7 +1450,15 @@ onUnmounted(() => {
   border: none;
   background: rgba(255,255,255,0.12);
   backdrop-filter: blur(4px);
-  color: var(--bfp-text);
+  /* No color here -- inherits #fff from .bfp-panel--cinema .bfp-video-header
+     (see that rule) on purpose. This button used to hardcode
+     `color: var(--bfp-text)`, which -- being a rule directly on the
+     element -- won over that inherited white regardless of selector
+     specificity, silently opting this one button out of a contrast fix
+     already applied to the rest of the cinema header. For light themes
+     (dark --bfp-text) that meant dark text on a barely-there translucent
+     white pill sitting over actual video content: exactly the reported
+     "can barely see the back button" bug. */
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;

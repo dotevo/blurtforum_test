@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import ScrollableTabs from '../../modules/ui/ScrollableTabs.vue';
 import { isTVPlatform } from '../../modules/native/platform-info';
 
-defineProps<{
+const props = defineProps<{
   theme: string;
   themes: { id: string; label: string }[];
   lang: string;
@@ -21,6 +22,64 @@ const emit = defineEmits<{
   'openRpc': [];
   'setCinemaMode': [value: boolean];
 }>();
+
+/**
+ * Mobile-only icon pickers for theme/lang (see the `v-if="mobile"` branch
+ * in the template below). Real bug this replaces: on mobile, `mobile` only
+ * ever hid the "Theme:"/"Lang:" LABEL text next to the selects (`v-if=
+ * "!mobile"` on those spans) -- the native <select> itself still always
+ * displays the full current option text ("🏛 Classic", "Polski", etc, up
+ * to a CSS `max-width: 84px` that doesn't even reliably truncate a native
+ * select's own rendering across mobile browsers). In
+ * MobileTopBar.vue's drawer, this sits in the same flex row as the
+ * logout/switch-account buttons (`.mtb-lang-bar { flex: 1 }` next to
+ * `.mtb-auth-actions`) -- wide select boxes there were pushing logout
+ * off/out of comfortable tap range, matching the reported "can't tap
+ * logout" bug.
+ *
+ * Fix: on mobile, theme/lang render as a single icon button (current
+ * value not shown at all when closed) that opens a small menu listing
+ * every option BY NAME -- i.e. the name only appears while actively
+ * choosing, never as part of the always-visible bar. Desktop/rail keep
+ * the plain <select> exactly as before (unchanged) -- both already show
+ * their current value inline there, which is fine since there's room.
+ */
+const openMenu = ref<'theme' | 'lang' | null>(null);
+function toggleMenu(which: 'theme' | 'lang'): void {
+  openMenu.value = openMenu.value === which ? null : which;
+}
+function pickTheme(id: string): void {
+  emit('setTheme', id);
+  openMenu.value = null;
+}
+function pickLang(code: string): void {
+  emit('setLang', code);
+  openMenu.value = null;
+}
+function langLabel(l: unknown): string {
+  const asAny = l as { code?: string; name?: string } | string;
+  if (typeof asAny === 'string') return asAny.toUpperCase();
+  return asAny.name || (asAny.code || '').toUpperCase();
+}
+function langCode(l: unknown): string {
+  const asAny = l as { code?: string } | string;
+  return typeof asAny === 'string' ? asAny : (asAny.code || '');
+}
+function currentThemeIcon(): string {
+  const t = props.themes.find(x => x.id === props.theme);
+  // Theme labels are "<emoji> <Name>" (see useApp.ts's `themes` list) --
+  // just the emoji, so the closed button has *some* visual identity
+  // without needing the full name.
+  return t ? t.label.split(' ')[0] : '🎨';
+}
+
+function onDocClick(e: MouseEvent): void {
+  if (!openMenu.value) return;
+  const target = e.target as HTMLElement;
+  if (!target.closest('.icon-picker')) openMenu.value = null;
+}
+onMounted(() => document.addEventListener('click', onDocClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 </script>
 
 <template>
@@ -55,20 +114,46 @@ const emit = defineEmits<{
        the same pattern used for the player's tabs. -->
   <ScrollableTabs v-else class="settings-selectors-scroll">
     <div class="settings-selectors" :class="{ 'is-mobile': mobile }">
-      <div class="selector-item">
-        <i class="fa-solid fa-palette"></i>
-        <span class="gs hide-on-mobile" v-if="!mobile">{{ t('theme') }}:</span>
-        <select :value="theme" @change="emit('setTheme', ($event.target as HTMLSelectElement).value)" class="lang-btn">
-          <option v-for="th in themes" :key="th.id" :value="th.id">{{ th.label }}</option>
-        </select>
-      </div>
-      <div class="selector-item">
-        <i class="fa-solid fa-language"></i>
-        <span class="gs hide-on-mobile" v-if="!mobile">{{ t('lang') }}:</span>
-        <select :value="lang" @change="emit('setLang', ($event.target as HTMLSelectElement).value)" class="lang-btn">
-          <option v-for="l in (langs as any)" :key="l.code || l" :value="l.code || l">{{ l.name || l.toUpperCase() }}</option>
-        </select>
-      </div>
+      <template v-if="mobile">
+        <div class="icon-picker">
+          <button class="lang-btn icon-picker-btn" @click.stop="toggleMenu('theme')" :title="t('theme')">
+            {{ currentThemeIcon() }}
+          </button>
+          <div v-if="openMenu === 'theme'" class="icon-picker-menu">
+            <button v-for="th in themes" :key="th.id" class="icon-picker-option" :class="{ active: th.id === theme }"
+                    @click.stop="pickTheme(th.id)">
+              {{ th.label }}
+            </button>
+          </div>
+        </div>
+        <div class="icon-picker">
+          <button class="lang-btn icon-picker-btn" @click.stop="toggleMenu('lang')" :title="t('lang')">
+            <i class="fa-solid fa-language"></i>
+          </button>
+          <div v-if="openMenu === 'lang'" class="icon-picker-menu">
+            <button v-for="l in (langs as any)" :key="langCode(l)" class="icon-picker-option" :class="{ active: langCode(l) === lang }"
+                    @click.stop="pickLang(langCode(l))">
+              {{ langLabel(l) }}
+            </button>
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <div class="selector-item">
+          <i class="fa-solid fa-palette"></i>
+          <span class="gs">{{ t('theme') }}:</span>
+          <select :value="theme" @change="emit('setTheme', ($event.target as HTMLSelectElement).value)" class="lang-btn">
+            <option v-for="th in themes" :key="th.id" :value="th.id">{{ th.label }}</option>
+          </select>
+        </div>
+        <div class="selector-item">
+          <i class="fa-solid fa-language"></i>
+          <span class="gs">{{ t('lang') }}:</span>
+          <select :value="lang" @change="emit('setLang', ($event.target as HTMLSelectElement).value)" class="lang-btn">
+            <option v-for="l in (langs as any)" :key="l.code || l" :value="l.code || l">{{ l.name || l.toUpperCase() }}</option>
+          </select>
+        </div>
+      </template>
       <button class="lang-btn rpc-btn" @click="emit('openRpc')" :title="t('rpcSettings')">
         <i class="fa-solid fa-gear"></i> <span v-if="!mobile">{{ t('rpc') }}</span>
       </button>
@@ -143,20 +228,6 @@ const emit = defineEmits<{
   gap: 8px;
 }
 
-.is-mobile .selector-item {
-  background: var(--surface-nav);
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--surface-border);
-}
-
-.is-mobile .selector-item select {
-  border: none;
-  background: transparent;
-  padding: 0;
-  max-width: 84px;
-}
-
 .is-mobile .rpc-btn {
   padding: 6px 10px;
   background: var(--surface-nav);
@@ -169,14 +240,58 @@ const emit = defineEmits<{
   color: #fff;
 }
 
-.hide-on-mobile {
-  display: none;
+/* Mobile icon pickers (theme/lang) — see this file's <script setup>
+   comment on `openMenu` for the bug this replaces (native <select> always
+   showing its full current value, crowding out the logout button next to
+   it in MobileTopBar.vue's drawer row). Closed button shows only an
+   icon/emoji, never the current value's name — the name only appears
+   inside the open menu, i.e. only while actively choosing. */
+.icon-picker {
+  position: relative;
+  flex-shrink: 0;
 }
-
-@media (min-width: 901px) {
-  .hide-on-mobile {
-    display: inline;
-  }
+.icon-picker-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+.icon-picker-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 140px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+.icon-picker-option {
+  background: transparent;
+  border: none;
+  color: var(--text-strong);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.icon-picker-option:hover {
+  background: var(--surface-2);
+}
+.icon-picker-option.active {
+  background: var(--brand);
+  color: #fff;
 }
 
 /* Rail (vertical side-nav) layout: stacked full-width rows instead of a

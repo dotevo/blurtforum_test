@@ -57,6 +57,7 @@ const PrivacyPolicyModal = defineAsyncComponent(() => import('./components/modal
 // so it's a sync (not async) import unlike the modals above.
 import CookieConsentBanner from './components/CookieConsentBanner.vue';
 import { consent as cookieConsent, acceptCookies, rejectCookies, resetConsent } from './modules/cookie-consent';
+import { useFloatingLayer } from './modules/floating-stack';
 const showPrivacyPolicy = ref(false);
 
 const {
@@ -115,59 +116,25 @@ const {
   initTitleWatcher();
 
   /**
-   * How much bottom clearance (px) a fixed-position element needs to sit
-   * ABOVE the docked player instead of underneath it. Shared by
-   * .bc-queue-panel and CookieConsentBanner -- see this file's comment on
-   * .bc-queue-panel for the cinema-mode bug this same logic used to have
-   * (state.cinema always implies state.expanded, so a bare `expanded` check
-   * fires in cinema mode too). Both consumers are themselves gated on
-   * `!cinemaMode` already, so this deliberately returns 0 for cinema rather
-   * than trying to also account for it here.
-   *
-   * The two magic numbers below match the two already in use elsewhere for
-   * the exact same docked-player states: `expandedHeight` is MediaPlayer.vue's
-   * own docked-panel height (`:style="{ height: player.state.expandedHeight
-   * + 'px' }"`); 76 matches the pre-existing `.has-player-active
-   * .bc-queue-panel { bottom: 76px }` rule for the medium (not expanded, not
-   * minimized) docked bar -- kept as a plain number here instead of a CSS
-   * class rule so CookieConsentBanner (a separate component) can use the
-   * exact same value via a prop rather than needing its own copy of this
-   * class-selector trick.
+   * bc-queue-panel's position in the shared floating-bottom-layer stack
+   * (see modules/floating-stack.ts for the full rationale -- this replaces
+   * what used to be three separate, drifting, guessed-constant computeds
+   * here: `playerClearance`, `bcQueuePanelClearance`, and
+   * `cookieBannerClearance`). Order 10: closest to the player (which the
+   * shared formula in floating-stack.ts accounts for automatically),
+   * with CookieConsentBanner (order 20) and then ShoutboxWidget's chat
+   * dock (order 30, topmost) stacking above it -- this ordering (chat at
+   * the very top, blockchain-sync status closest to the player) was a
+   * deliberate choice, not the original order this was built with. `el`
+   * gets bound to .bc-queue-panel's root below so its height is a real
+   * ResizeObserver measurement, not a row-counting estimate.
    */
-  const playerClearance = computed<number>(() => {
-    if (!player.state.active || player.state.minimized || player.state.cinema) return 0;
-    return player.state.expanded ? player.state.expandedHeight : 76;
+  const bcQueueEl = ref<HTMLElement | null>(null);
+  const bcQueueStackBottom = useFloatingLayer(bcQueueEl, {
+    id: 'bc-queue',
+    order: 10, // closest to the player -- see modules/floating-stack.ts's `order` doc for the stacking story
+    visible: () => bcWaitQueue.value.length > 0 && !cinemaMode.value,
   });
-
-  /** Extra clearance CookieConsentBanner needs on top of playerClearance
-   *  when the wait-queue bar is ALSO on screen at the same time, so the two
-   *  stack instead of overlapping. Rough constant (matches this file's
-   *  existing style of hardcoded px clearances above) rather than measuring
-   *  the real DOM height -- .bc-queue-panel's height only varies by a row
-   *  or two of text, not enough to bother with a ResizeObserver for a
-   *  "stack neatly" nicety. */
-  const bcQueuePanelClearance = computed<number>(() => {
-    if (cinemaMode.value || bcWaitQueue.value.length === 0) return 0;
-    const shown = bcQueueExpanded.value ? bcWaitQueue.value.length : Math.min(bcWaitQueue.value.length, 3);
-    return 44 + shown * 30 + (bcWaitQueue.value.length > 3 && !bcQueueExpanded.value ? 30 : 0);
-  });
-
-  /** CookieConsentBanner-only clearance, deliberately NOT the same value as
-   *  .bc-queue-panel gets. playerClearance can be as large as
-   *  `expandedHeight` -- default 400, user-draggable up to 80% of the
-   *  viewport height (see player.ts's drag-resize handler) -- which is fine
-   *  for .bc-queue-panel (a small corner chip that just needs to clear the
-   *  player, however tall it is) but not for this banner: a full-width bar
-   *  with wrapped text that has no business floating up into the top half
-   *  of a phone screen just because the player happens to be dragged tall
-   *  at that moment. Capped well below the "expanded player" range instead
-   *  of reusing playerClearance directly -- 160 is a rough constant (same
-   *  style as bcQueuePanelClearance above), sized to comfortably clear the
-   *  76px docked mini-bar plus a couple of stacked wait-queue rows, not a
-   *  measured value. */
-  const cookieBannerClearance = computed<number>(() =>
-    Math.min(playerClearance.value + bcQueuePanelClearance.value, 160)
-  );
 
   installCinemaDpadNav(() => cinemaMode.value);
 
@@ -458,9 +425,16 @@ const {
       same bcWaitQueue/bcQueueExpanded state as the normal panel -- only the
       cinema branch's template/CSS differs, nothing about how entries get
       queued.
+
+      `bottom` now comes from the shared floating-stack registry (see
+      modules/floating-stack.ts and this file's <script setup> comment on
+      `bcQueueStackBottom`) instead of a locally-computed offset -- this is
+      also what makes it stack correctly above ShoutboxWidget's chat dock
+      when both are visible at once, which the old per-file computed didn't
+      account for at all.
     -->
-    <div v-if="bcWaitQueue.length > 0 && !cinemaMode" class="bc-queue-panel"
-         :style="{ bottom: playerClearance ? playerClearance + 'px' : '' }">
+    <div v-if="bcWaitQueue.length > 0 && !cinemaMode" ref="bcQueueEl" class="bc-queue-panel"
+         :style="{ bottom: bcQueueStackBottom + 'px' }">
       <div class="bc-queue-inner">
         <template v-for="entry in (bcQueueExpanded ? bcWaitQueue : bcWaitQueue.slice(0, 3))" :key="entry.id">
           <div class="bc-queue-item">
@@ -681,7 +655,6 @@ const {
   </div><!-- /content -->
 
   <CookieConsentBanner v-if="!cinemaMode && !cookieConsent" :t="t"
-                        :bottom="cookieBannerClearance"
                         @accept="acceptCookies" @reject="rejectCookies"
                         @open-privacy="showPrivacyPolicy = true" />
 
@@ -960,11 +933,12 @@ const {
 }
 /* The bottom offset for the "docked bar, not expanded" player state used to
    live here as a CSS class rule (`.has-player-active .bc-queue-panel {
-   bottom: 76px }`, plus a 64px mobile variant) -- now provided via the
-   `playerClearance` computed (see <script setup>) and applied as an inline
-   style instead, so CookieConsentBanner can read the exact same value as a
-   prop rather than needing its own copy of this selector trick nested
-   somewhere under #app's .has-player-active class. */
+   bottom: 76px }`, plus a 64px mobile variant), then briefly as a
+   locally-computed `playerClearance` in <script setup>. Both are gone now
+   in favor of modules/floating-stack.ts's shared registry (`bcQueueStackBottom`,
+   bound via the `ref="bcQueueEl"` + `:style` on .bc-queue-panel above) --
+   see that module's own comment for why a shared registry replaced three
+   separate per-file computeds that had drifted out of sync with each other. */
 .bc-queue-inner {
   max-width: 1200px;
   margin: 0 auto;

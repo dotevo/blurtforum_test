@@ -254,6 +254,7 @@ const getLatestActivities = () => {
   border: none !important;
   padding: 0 !important;
   flex: 1;
+  min-width: 0; /* let this actually shrink / let its own ScrollableTabs scroll internally, instead of refusing to shrink below its content's natural width (flex items default to min-width:auto) and pushing .mtb-auth-actions off-screen */
 }
 
 .mtb-auth-actions {
@@ -263,6 +264,7 @@ const getLatestActivities = () => {
   padding-left: 10px;
   border-left: 1px solid var(--surface-border);
   margin-left: 5px;
+  flex-shrink: 0; /* never lose space to .mtb-lang-bar -- logout must always stay reachable */
 }
 
 .btn-hdr {

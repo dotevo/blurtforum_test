@@ -1019,9 +1019,21 @@ export function useApp() {
   };
 
   const startReply = (target: Post): void => {
-    replyTarget.value = target; 
+    replyTarget.value = target;
     replyForm.body = drafts.loadReplyDraft(target.author, target.permlink);
     replyForm.error = replyForm.success = '';
+    // A previous reply's own submitReply() can legitimately still be
+    // running in the background here -- its waitAndReload() polling loop
+    // can take minutes (see that function), well past when the user has
+    // already moved on to reply to something else. Without this, the send
+    // button below would stay disabled (loading still true from that
+    // unrelated, still-in-flight submission) with absolutely no feedback:
+    // a disabled button doesn't fire its click handler at all, so nothing
+    // reaches the console either. See submitReply()'s own generation-guard
+    // comment for the other half of this fix (stopping that old
+    // submission's eventual completion from clobbering whatever the user
+    // is doing by the time it finishes).
+    replyForm.loading = false;
     fetchFeeInfo().then(() => { feeEstimates.reply = estimateTxFee(2, 0); });
   };
 
@@ -1196,10 +1208,24 @@ export function useApp() {
     }
   };
 
-  const explorationForm = reactive<{ forums: Forum[]; loading: boolean }>({ forums: [...VIRTUAL_FORUMS], loading: false });
+  // Deep clone, not [...VIRTUAL_FORUMS] -- see the comment on
+  // loadExplorationData() below for why a shallow copy (same Forum object
+  // references, just a new outer array) was a real, live bug: this data
+  // and activeForum.value can end up pointing at the exact same object
+  // when browsing a virtual forum (MyFeed/trending/etc), so this panel's
+  // own 1-post preview fetch could silently overwrite the real listing's
+  // posts array out from under it.
+  const explorationForm = reactive<{ forums: Forum[]; loading: boolean }>({
+    forums: VIRTUAL_FORUMS.map(f => ({ ...f, posts: [...f.posts], pageHistory: [...f.pageHistory] })),
+    loading: false,
+  });
   const explorationExpanded = ref(false);
 
   const loadExplorationData = async (): Promise<void> => {
+    // Safe to mutate `vf.posts` here for each entry -- explorationForm.forums
+    // is deep-cloned from VIRTUAL_FORUMS (see its own declaration above),
+    // so this can never again land on the same object activeForum.value
+    // might be pointing at while actually browsing one of these forums.
     explorationForm.loading = true;
     for (const vf of explorationForm.forums) {
       if ((vf as Forum & { auth?: boolean }).auth && !auth.user) continue;

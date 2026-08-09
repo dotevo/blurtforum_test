@@ -53,7 +53,7 @@ import type { ShoutboxScope } from '../types';
 import type { AuthUser } from '../../../types';
 import { EMOJI_LIST } from '../emoji';
 import { parseMessageSegments } from '../render';
-import { state as playerState } from '../../player/player';
+import { useFloatingLayer } from '../../floating-stack';
 
 const props = defineProps<{
   auth: { user: AuthUser | null };
@@ -105,28 +105,19 @@ const isSending = computed(() => Shoutbox.sending.value);
 // send()). This is the second of two enforcement points, not the only one.
 const canSend = computed(() => !!props.auth.user && !isSending.value);
 
-// ─── Position: stay a bit above whatever the player currently occupies ───
-// Bar mode: --bfp-h (72px, 60px on narrow screens) + --bfp-prog-h (4px) —
-// 76px covers both cases; being a few px too generous on mobile is a
-// harmless slightly-bigger gap, not an overlap.
-// Expanded mode: the panel's own rendered height IS the full occupied
-// span from the viewport bottom — see MediaPlayer.vue's
-// `:style="{ height: player.state.expandedHeight + 'px' }"` combined with
-// its `padding-bottom: calc(var(--bfp-h) + var(--bfp-prog-h))` (the bar
-// visually sits on top of the panel's own reserved padding, so nothing
-// needs to be added on top of expandedHeight here).
-// Minimized mode: a small pill anchored bottom-RIGHT — doesn't span the
-// left side where this dock lives, so no shift needed.
-// Hidden: nothing occupied at all.
+// ─── Position: stay a bit above whatever's below in the shared floating
+// stack (the player, plus anything else registered there) ───
+// See modules/floating-stack.ts for the full story of why this used to be
+// a locally-duplicated copy of the player-footprint formula, and isn't
+// anymore.
 const GAP_ABOVE_PLAYER_PX = 12;
-const dockBottomPx = computed(() => {
-  const occupied = playerState.hidden || playerState.minimized
-    ? 0
-    : playerState.expanded
-      ? playerState.expandedHeight
-      : 76;
-  return occupied + GAP_ABOVE_PLAYER_PX;
+const dockEl = ref<HTMLElement | null>(null);
+const stackBottomPx = useFloatingLayer(dockEl, {
+  id: 'shoutbox',
+  order: 30, // topmost layer -- furthest from the player. Stacking order (bottom to top): player -> blockchain wait-queue bar (order 10, App.vue) -> cookie banner (order 20, CookieConsentBanner.vue) -> chat (here, order 30)
+  visible: () => true, // always rendered, at minimum as the collapsed pill (see mount condition in App.vue)
 });
+const dockBottomPx = computed(() => stackBottomPx.value + GAP_ABOVE_PLAYER_PX);
 
 onMounted(async () => {
   Shoutbox.init({ auth: props.auth, getClient: props.getClient, checkLock: props.checkLock });
@@ -210,7 +201,7 @@ function shareCurrentPost(): void {
 </script>
 
 <template>
-  <div class="shoutbox-dock" :class="{ 'shoutbox-dock--expanded': expanded }" :style="{ bottom: dockBottomPx + 'px' }">
+  <div ref="dockEl" class="shoutbox-dock" :class="{ 'shoutbox-dock--expanded': expanded }" :style="{ bottom: dockBottomPx + 'px' }">
     <button type="button" class="shoutbox-pill" @click="toggleExpanded">
       <span class="dot" :class="status"></span>
       <span class="shoutbox-pill-label">Chat</span>

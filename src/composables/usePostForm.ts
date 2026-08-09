@@ -35,6 +35,14 @@ export interface PostFormContext {
 }
 
 export function usePostForm(ctx: PostFormContext) {
+  // See submitReply()'s own comment on `myReplyGeneration` for why this
+  // exists: replyForm is one shared object across every reply target in
+  // the app, and a submission's own waitAndReload() can take minutes in
+  // the background -- this stops an old, abandoned submission's eventual
+  // completion from clobbering a newer one's `loading` state if the user
+  // has since started replying to something else.
+  let replyGeneration = 0;
+
   const postForm = reactive<PostFormState>({
     title: '', body: '', loading: false, error: '', success: '', hasDraft: false,
     devTip: localStorage.getItem('blurtforum_devtip') !== 'false',
@@ -87,11 +95,31 @@ export function usePostForm(ctx: PostFormContext) {
     data?: any
   ): Promise<void> => {
     if (ctx.checkLock(() => submitReply(target, replies, activeTopicPermlink, quickReplyBody, drafts, data))) return;
-    if (!ctx.auth.user || !target) return;
+    if (!ctx.auth.user) {
+      console.warn('submitReply: no auth.user at submit time -- session may have been lost.');
+      replyForm.error = ctx.t('replyError') + ' (not logged in)';
+      if (data) data.error = replyForm.error;
+      return;
+    }
+    if (!target) {
+      // Real, previously silent failure mode: this fires if replyTarget
+      // became null between the reply box rendering and the click actually
+      // reaching here (e.g. loadReplies(..., keepState=false) resets
+      // replyTarget.value = null as a side effect of an unrelated reload
+      // racing with the user still composing) -- a click that visibly does
+      // nothing, no error, nothing in the console, which is exactly what
+      // was reported. Now at least surfaces something instead of silently
+      // no-oping.
+      console.warn('submitReply: called with no target (replyTarget was likely reset from under an in-progress reply).');
+      replyForm.error = ctx.t('replyError') + ' (lost reply target -- please reopen the reply box and try again)';
+      if (data) data.error = replyForm.error;
+      return;
+    }
 
     const body = (data?.body || replyForm.body).trim();
     if (!body) { replyForm.error = 'Reply cannot be empty.'; return; }
 
+    const myReplyGeneration = ++replyGeneration;
     replyForm.loading = true; replyForm.error = ''; replyForm.success = '';
     const communityAcc = target.category;
     const beneficiaries = prepareBeneficiaries(data?.beneficiary || replyForm.beneficiary, communityAcc);
@@ -144,7 +172,16 @@ export function usePostForm(ctx: PostFormContext) {
       replyForm.error = ctx.t('replyError') + ' (' + ((err as Error).message || '') + ')';
       if (data) data.error = replyForm.error;
     }
-    replyForm.loading = false;
+    // Only this generation gets to clear `loading` -- if the user has
+    // since called submitReply() again (a newer generation), THAT call
+    // owns `loading` now; this one finishing late (waitAndReload can take
+    // minutes) must not clear it out from under a still-in-progress newer
+    // submission. startReply() (see useApp.ts) independently resets
+    // `loading` to false the moment the user switches targets, so an old
+    // submission finishing after that is a no-op here either way -- this
+    // guard specifically covers the narrower case of two submissions to
+    // the same target in quick succession.
+    if (myReplyGeneration === replyGeneration) replyForm.loading = false;
   };
 
   const submitPost = async (

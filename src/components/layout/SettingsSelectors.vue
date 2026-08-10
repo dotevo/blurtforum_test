@@ -44,9 +44,41 @@ const emit = defineEmits<{
  * the plain <select> exactly as before (unchanged) -- both already show
  * their current value inline there, which is fine since there's room.
  */
+/**
+ * Real bug found after the icon-picker fix above shipped: on mobile, the
+ * menu's `openMenu` state WAS toggling correctly, but nothing visibly
+ * happened -- because .icon-picker-menu (`position: absolute`) is a
+ * descendant of ScrollableTabs' `.scrollable-tabs-wrapper`, which needs
+ * `overflow-x: auto` for the horizontal tab-scroll it exists for, and per
+ * the CSS overflow spec, that wrapper ALSO sets `overflow-y: hidden`
+ * (needed together to avoid an unwanted vertical scrollbar) -- which
+ * silently clips ANY descendant that tries to render outside the
+ * wrapper's own box, popup menu included. It was opening -- just
+ * invisible, clipped to nothing.
+ *
+ * Fix: Teleport the menu to <body> and position it with real viewport
+ * coordinates from the trigger button's own getBoundingClientRect(),
+ * instead of `position: absolute` relative to a clipped ancestor. Same
+ * fix shape as WebtorrentAudioSubtitleMenu.vue used earlier for the same
+ * category of bug (something needing to render outside a container that's
+ * clipping/scrolling for an unrelated reason).
+ */
+const menuStyle = ref<{ top: string; left: string }>({ top: '0px', left: '0px' });
 const openMenu = ref<'theme' | 'lang' | null>(null);
+const menuBtnEls: Record<string, HTMLElement | null> = { theme: null, lang: null };
+function setMenuBtnEl(which: 'theme' | 'lang', el: unknown): void {
+  menuBtnEls[which] = (el as HTMLElement | null) ?? null;
+}
+function updateMenuStyle(which: 'theme' | 'lang'): void {
+  const btn = menuBtnEls[which];
+  if (!btn) return;
+  const r = btn.getBoundingClientRect();
+  menuStyle.value = { top: (r.bottom + 4) + 'px', left: Math.max(4, r.left) + 'px' };
+}
 function toggleMenu(which: 'theme' | 'lang'): void {
-  openMenu.value = openMenu.value === which ? null : which;
+  const opening = openMenu.value !== which;
+  openMenu.value = opening ? which : null;
+  if (opening) updateMenuStyle(which);
 }
 function pickTheme(id: string): void {
   emit('setTheme', id);
@@ -76,10 +108,21 @@ function currentThemeIcon(): string {
 function onDocClick(e: MouseEvent): void {
   if (!openMenu.value) return;
   const target = e.target as HTMLElement;
-  if (!target.closest('.icon-picker')) openMenu.value = null;
+  if (!target.closest('.icon-picker') && !target.closest('.icon-picker-menu')) openMenu.value = null;
 }
-onMounted(() => document.addEventListener('click', onDocClick));
-onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
+function onScrollOrResize(): void {
+  if (openMenu.value) openMenu.value = null;
+}
+onMounted(() => {
+  document.addEventListener('click', onDocClick);
+  window.addEventListener('resize', onScrollOrResize);
+  window.addEventListener('scroll', onScrollOrResize, true);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick);
+  window.removeEventListener('resize', onScrollOrResize);
+  window.removeEventListener('scroll', onScrollOrResize, true);
+});
 </script>
 
 <template>
@@ -116,27 +159,29 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
     <div class="settings-selectors" :class="{ 'is-mobile': mobile }">
       <template v-if="mobile">
         <div class="icon-picker">
-          <button class="lang-btn icon-picker-btn" @click.stop="toggleMenu('theme')" :title="t('theme')">
+          <button :ref="(el) => setMenuBtnEl('theme', el)" class="lang-btn icon-picker-btn" @click.stop="toggleMenu('theme')" :title="t('theme')">
             {{ currentThemeIcon() }}
           </button>
-          <div v-if="openMenu === 'theme'" class="icon-picker-menu">
+        </div>
+        <div class="icon-picker">
+          <button :ref="(el) => setMenuBtnEl('lang', el)" class="lang-btn icon-picker-btn" @click.stop="toggleMenu('lang')" :title="t('lang')">
+            <i class="fa-solid fa-language"></i>
+          </button>
+        </div>
+        <Teleport to="body">
+          <div v-if="openMenu === 'theme'" class="icon-picker-menu" :style="menuStyle" @click.stop>
             <button v-for="th in themes" :key="th.id" class="icon-picker-option" :class="{ active: th.id === theme }"
                     @click.stop="pickTheme(th.id)">
               {{ th.label }}
             </button>
           </div>
-        </div>
-        <div class="icon-picker">
-          <button class="lang-btn icon-picker-btn" @click.stop="toggleMenu('lang')" :title="t('lang')">
-            <i class="fa-solid fa-language"></i>
-          </button>
-          <div v-if="openMenu === 'lang'" class="icon-picker-menu">
+          <div v-if="openMenu === 'lang'" class="icon-picker-menu" :style="menuStyle" @click.stop>
             <button v-for="l in (langs as any)" :key="langCode(l)" class="icon-picker-option" :class="{ active: langCode(l) === lang }"
                     @click.stop="pickLang(langCode(l))">
               {{ langLabel(l) }}
             </button>
           </div>
-        </div>
+        </Teleport>
       </template>
       <template v-else>
         <div class="selector-item">
@@ -260,10 +305,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   font-size: 15px;
 }
 .icon-picker-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 10000; /* Teleported to body -- needs to clear .bfp-panel/.bfp-bar (999/1000) the same way other Teleported popups in this app do, see WebtorrentAudioSubtitleMenu.vue's own history with this exact class of z-index issue */
   min-width: 140px;
   max-height: 260px;
   overflow-y: auto;

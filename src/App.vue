@@ -179,6 +179,7 @@ const {
 
 <template>
 <div
+  class="bf-app-shell"
   :class="{
     'has-player-active': player.state.active && !player.state.minimized,
     'has-player-expanded': player.state.active && player.state.expanded && !player.state.minimized,

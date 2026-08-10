@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { registerDockedBarElement } from '../../floating-stack';
 import ScrollableTabs from '../../ui/ScrollableTabs.vue';
 import WebtorrentVideo from './WebtorrentVideo.vue';
 import WebtorrentStorage from './WebtorrentStorage.vue';
@@ -391,11 +392,19 @@ onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick);
   window.removeEventListener('resize', handleResize);
 });
+
+// Real measurement of the docked (non-expanded, non-cinema) bar's height
+// for modules/floating-stack.ts -- see registerDockedBarElement's own
+// comment there for why this replaced a guessed constant. Bound to the
+// .bfp-bar root element in the template below via `ref="bfpBarEl"`.
+const bfpBarEl = ref<HTMLElement | null>(null);
+registerDockedBarElement(bfpBarEl);
 </script>
 
 <template>
 <div
   v-if="!player.state.hidden && !player.state.cinema"
+  ref="bfpBarEl"
   class="bfp-bar"
   :class="{
     'bfp-bar--minimized': player.state.minimized,

@@ -1478,8 +1478,21 @@ body {
 a { color: var(--link-color); text-decoration: none; font-weight: bold; }
 a:hover { color: var(--link-hover-color); text-decoration: underline; }
  
-/* ===== ROOT CONTAINER ===== */
-#app {
+/* ===== ROOT CONTAINER =====
+   .bf-app-shell, not #app: index.html has a static <div id="app"> that
+   Vue's mount('#app') call keeps as an outer wrapper, inserting this
+   component's own rendered root as ITS CHILD -- standard Vue 3 mount
+   behavior (mount() does not replace the target element itself, only its
+   content). That means #app and App.vue's own root (the element carrying
+   :class="{cinema-active: ...}" etc) have always been two different,
+   nested DOM elements. #app.cinema-active below could therefore never
+   match anything real: no element ever has both id="app" and
+   class="cinema-active" at the same time. The base (non-cinema) look
+   happened to work anyway, since #app's plain rule did correctly style
+   the real outer div -- only the cinema-mode override silently never
+   fired, which is why cinema mode never actually went full-bleed no
+   matter what state.cinema/cinemaMode did. */
+.bf-app-shell {
   max-width: 1200px;
   margin: 0 auto;
   background: var(--app-bg);
@@ -1490,7 +1503,7 @@ a:hover { color: var(--link-hover-color); text-decoration: underline; }
 /* Cinema mode is a full-bleed, edge-to-edge experience -- the classic
    layout's centered "card on a page" treatment doesn't apply once the rail
    replaces normal site chrome. */
-#app.cinema-active {
+.bf-app-shell.cinema-active {
   max-width: none;
   margin: 0;
   border: none;
@@ -1766,7 +1779,7 @@ a:hover { color: var(--link-hover-color); text-decoration: underline; }
 /* ===== RESPONSIVE STYLES (Mobile) ===== */
 @media (max-width: 800px) {
   body { padding: 0; }
-  #app { border: none; border-radius: 0; width: 100%; overflow-x: hidden; }
+  .bf-app-shell { border: none; border-radius: 0; width: 100%; overflow-x: hidden; }
   .header-inner { flex-direction: column; text-align: center; gap: 15px; }
   .active-community-badge { font-size: 30px !important; padding: 10px 20px !important; margin: 15px auto 0 !important; width: 90% !important; }
   .header-right { align-items: center; }
@@ -1907,7 +1920,7 @@ a:hover { color: var(--link-hover-color); text-decoration: underline; }
   }
 
   /* Add spacer for fixed top bar */
-  #app {
+  .bf-app-shell {
     padding-top: 50px !important;
   }
 

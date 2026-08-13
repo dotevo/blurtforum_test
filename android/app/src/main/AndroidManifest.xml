@@ -7,6 +7,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:banner="@drawable/tv_banner"
         android:theme="@style/AppTheme">
 
         <activity
@@ -20,6 +21,14 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- Without this, the app is invisible on the Android TV
+                     home-screen launcher row; LAUNCHER alone (above) only
+                     covers phone/tablet home screens and app drawers. This
+                     is what actually puts a tile up for a remote-control
+                     user to select; installing via `adb install` without
+                     it still "works" (you can launch it from a shell) but
+                     isn't how a real TV user would ever find or open it. -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
 
         </activity>
@@ -41,6 +50,21 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
     </application>
+
+    <!-- Declares "this app knows how to run on Leanback (TV) devices",
+         paired with the LEANBACK_LAUNCHER category above. required="false"
+         so the app can still install on regular phones/tablets too (this
+         isn't a TV-only build). -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
+    <!-- Critical, easy to miss: Android assumes every app REQUIRES a
+         touchscreen unless told otherwise, which is exactly backwards for
+         a TV app (no TV has one). Without this declaration, Google Play's
+         own TV device-compatibility filtering, and some TV devices
+         directly, can refuse to list or install the app at all, touch-
+         screen requirement failing silently long before anyone gets to
+         see whether the app itself works. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <!-- Permissions -->
 

@@ -1,0 +1,84 @@
+name: Build Android APK
+
+# Produces a DEBUG apk (not signed for release / not suitable for the Play
+# Store) -- exactly what's needed for sideload-testing on a phone or
+# Android TV, matching the "first APK" stage this project is currently at.
+# See docs/tv-vs-phone.md for why this is a single APK for both phone and
+# TV rather than separate builds.
+#
+# Runs on every push to main (so `main` always has a fresh, downloadable
+# test build) and can also be triggered manually from the Actions tab
+# ("Run workflow") for any branch. Remove the `push` trigger below if you'd
+# rather only build on demand.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # GitHub's ubuntu-latest runners come with an Android SDK
+      # pre-installed, but not necessarily every platform/build-tools
+      # version a given project needs -- compileSdk 36 (see
+      # android/variables.gradle) is recent enough that this explicitly
+      # installs exactly what's needed rather than assuming it's already
+      # there.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0'
+
+      # Speeds up repeat builds a lot -- Gradle's own dependency cache,
+      # keyed on the wrapper + build files so it invalidates correctly
+      # when a dependency version changes.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build
+
+      # Copies dist/ into android/app/src/main/assets/public and updates
+      # native plugin registrations -- same as running `npx cap sync
+      # android` locally (see README's Local development section).
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: blurtforum-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

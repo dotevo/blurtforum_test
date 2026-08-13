@@ -1320,7 +1320,7 @@ export function useApp() {
   const { postForm, replyForm, editModal } = postFormApi;
 
   const submitReply = (data?: any) =>
-    postFormApi.submitReply(replyTarget.value, replies, activeTopic.value?.permlink, quickReplyBody, drafts, data);
+    postFormApi.submitReply(data?._target ?? replyTarget.value, replies, activeTopic.value?.permlink, quickReplyBody, drafts, data);
 
   const submitPost = (data?: any) =>
     postFormApi.submitPost(activeForum.value?.id, ({ author, permlink }) => {

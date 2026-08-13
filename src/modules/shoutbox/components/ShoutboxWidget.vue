@@ -119,6 +119,18 @@ const stackBottomPx = useFloatingLayer(dockEl, {
 });
 const dockBottomPx = computed(() => stackBottomPx.value + GAP_ABOVE_PLAYER_PX);
 
+// Avoids a real (if tiny -- Lighthouse measured 0.003) layout-shift: on
+// first paint, dockBottomPx is still using floating-stack.ts's fallback
+// defaults (ResizeObserver hasn't reported real measurements yet), so the
+// dock would render at an estimated position and then visibly jump once
+// real numbers arrive a frame or two later. Staying invisible until then
+// turns that into "fades in already in the right place" instead -- CLS
+// only counts movement of content that's already painted.
+const settled = ref(false);
+onMounted(() => {
+  requestAnimationFrame(() => requestAnimationFrame(() => { settled.value = true; }));
+});
+
 onMounted(async () => {
   Shoutbox.init({ auth: props.auth, getClient: props.getClient, checkLock: props.checkLock });
   await Shoutbox.start(scope.value);
@@ -201,7 +213,7 @@ function shareCurrentPost(): void {
 </script>
 
 <template>
-  <div ref="dockEl" class="shoutbox-dock" :class="{ 'shoutbox-dock--expanded': expanded }" :style="{ bottom: dockBottomPx + 'px' }">
+  <div ref="dockEl" class="shoutbox-dock" :class="{ 'shoutbox-dock--expanded': expanded }" :style="{ bottom: dockBottomPx + 'px', opacity: settled ? 1 : 0, transition: 'opacity 0.15s ease-in, bottom 0.2s ease-in-out' }">
     <button type="button" class="shoutbox-pill" @click="toggleExpanded">
       <span class="dot" :class="status"></span>
       <span class="shoutbox-pill-label">Chat</span>

@@ -49,7 +49,14 @@ src/
 ```bash
 npm install
 npm run dev        # Vite dev server at http://localhost:5173
+npm run dev:tv     # same, but forces TV-only UI (device profiles, etc.)
+                    # without needing real TV hardware -- see docs/tv-vs-phone.md
 ```
+
+This app ships as a single APK that behaves differently on phones vs.
+Android TV **at runtime**, not via separate builds — see
+[`docs/tv-vs-phone.md`](docs/tv-vs-phone.md) before touching anything
+gated on `isTVPlatform` or `cinemaMode`.
 
 ## Build
 

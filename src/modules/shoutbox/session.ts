@@ -1,4 +1,5 @@
 import CryptoJS from 'crypto-js/core';
+import 'crypto-js/lib-typedarrays';
 import 'crypto-js/sha256';
 import 'crypto-js/enc-hex';
 import * as dblurt from '@beblurt/dblurt';

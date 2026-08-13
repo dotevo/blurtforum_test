@@ -6,6 +6,13 @@
 <title>BlurtForum - Blockchain Powered Community</title>
 <meta name="description" content="BlurtForum is a decentralized community platform powered by the Blurt blockchain. Engage, post, and earn rewards.">
 <link rel="canonical" href="https://forum.blurt.pl/">
+<!-- Default RPC node (see DEFAULT_RPC in src/composables/useRpc.ts) -- the
+     app doesn't request anything from it until its JS bundle has loaded
+     and run, well into the page-load waterfall. Preconnecting here lets
+     the browser get DNS/TCP/TLS out of the way in parallel with everything
+     else, so the first real RPC call doesn't have to pay that cost cold. -->
+<link rel="preconnect" href="https://rpc.drakernoise.com">
+<link rel="dns-prefetch" href="https://rpc.drakernoise.com">
 <!-- Kept in sync (and rebuilt per view) at runtime by syncSeoTags() in
      src/modules/seo.ts. These are just the pre-JS fallback for the bare
      homepage — one per supported UI language in translations.ts, so

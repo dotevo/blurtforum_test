@@ -633,14 +633,30 @@ export function useApp() {
     const fullPath = window.location.pathname + '?' + params.toString();
     window.history.pushState({ path: fullPath }, '', fullPath);
     syncSeoTags(langs);
+    trackCurrentView(fullPath);
+  };
 
-    // Google Analytics Virtual Page View
+  // Google Analytics virtual page view for whatever `view.value` /
+  // activeForum / activeTopic / profileUser currently is.
+  //
+  // Pulled out of syncUrl() because syncUrl() only runs for in-app
+  // navigation that itself writes the URL (openForum, openTopic, goHome,
+  // etc). It was NEVER called by handleUrlChange() -- the function that
+  // handles the initial page load and popstate (back/forward) -- so the
+  // very first page_view of every single session (including every direct
+  // link from search/shares) silently never fired. That's the actual
+  // reason GA looked "broken" even after accepting cookies: the only
+  // sessions that ever sent a hit were ones where the user clicked further
+  // in-app navigation after landing. Fixed by also calling this from
+  // handleUrlChange()'s branches below, once each has finished settling
+  // view/activeForum/activeTopic/profileUser.
+  const trackCurrentView = (fullPath?: string): void => {
     let gaTitle = 'BlurtForum';
     if (view.value === 'forum' && activeForum.value) gaTitle = 'BlurtForum | ' + activeForum.value.name;
     else if (view.value === 'topic' && activeTopic.value) gaTitle = 'BlurtForum | ' + activeTopic.value.title;
     else if (view.value === 'profile' && profileUser.username) gaTitle = 'BlurtForum | @' + profileUser.username;
     else if (view.value === 'communities') gaTitle = 'BlurtForum | Communities';
-    trackPageView(fullPath, gaTitle, {
+    trackPageView(fullPath ?? (window.location.pathname + window.location.search), gaTitle, {
       view: view.value,
       community: config.communityAccount
     });
@@ -1171,6 +1187,7 @@ export function useApp() {
           if (raw?.length) f.posts = raw.map(normalizePost).filter(post => !post.isMuted || canMute.value).slice(0, 5);
         } catch { /* ignore */ }
       });
+      trackCurrentView();
     } else if (requestedView === 'forum' && requestedForumId) {
       let f: Forum | undefined = VIRTUAL_FORUMS.find(vf => vf.id === requestedForumId);
       if (!f) { for (const cat of forumStructure.value) { f = cat.forums.find(forum => forum.id === requestedForumId); if (f) break; } }
@@ -1184,6 +1201,7 @@ export function useApp() {
         f.pageHistory = []; f.hasMore = true;
         activeForum.value = f; view.value = 'forum'; activeTopic.value = null;
         loadData('current', f);
+        trackCurrentView();
       }
     } else if (requestedView === 'topic' && requestedAuthor && requestedPermlink) {
       if (view.value === 'topic' && activeTopic.value?.author === requestedAuthor && activeTopic.value?.permlink === requestedPermlink) return;
@@ -1196,14 +1214,15 @@ export function useApp() {
       }
 
       Blockchain.getContent(rpc.dataClient.value, requestedAuthor, requestedPermlink).then(content => {
-        if (content?.author) { activeTopic.value = { ...normalizePost(content), beneficiaries: (content.beneficiaries || []) as Beneficiary[] }; view.value = 'topic'; loadReplies(content.author, content.permlink); }
+        if (content?.author) { activeTopic.value = { ...normalizePost(content), beneficiaries: (content.beneficiaries || []) as Beneficiary[] }; view.value = 'topic'; loadReplies(content.author, content.permlink); trackCurrentView(); }
       });
     } else if (requestedView === 'profile' && requestedUser) {
       if (requestedTab) profileTab.value = requestedTab;
       if (view.value === 'profile' && profileUser.username === requestedUser) return;
-      openProfile(requestedUser);
+      openProfile(requestedUser).then(() => trackCurrentView());
     } else if (requestedView === 'communities') {
       view.value = 'communities';
+      trackCurrentView();
       if (BFCommunity.state.list.length === 0) BFCommunity.fetchCommunities(rpc.dataClient.value as unknown as Record<string, unknown>);
     }
   };

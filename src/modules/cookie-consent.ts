@@ -58,6 +58,25 @@ function loadGoogleAnalytics(): void {
 
   (window as any).dataLayer = (window as any).dataLayer || [];
   (window as any).gtag = function gtag(...args: unknown[]) { (window as any).dataLayer.push(args); };
+
+  // Real root cause of "GA looks 100% wired up client-side (dataLayer is
+  // correct, gtm.load fires, script loads 200 OK) but literally zero hits
+  // ever reach google-analytics.com, in every browser, with every blocker
+  // disabled": gtag.js was NEVER given an explicit consent signal. Without
+  // one, modern gtag.js defaults analytics_storage to 'denied' for EU
+  // traffic (Consent Mode) -- it still runs internally (that's why the
+  // dataLayer / gtm.* housekeeping events looked fine) but silently
+  // suppresses the actual network hit, with zero console warning. Since
+  // this function is ONLY ever called after the user has actually
+  // accepted (see acceptCookies()/initConsent() below), we can tell it
+  // consent is granted immediately -- no need for a real default-denied
+  // window here.
+  (window as any).gtag('consent', 'default', {
+    analytics_storage: 'granted',
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+  });
   (window as any).gtag('js', new Date());
   (window as any).gtag('config', GA_MEASUREMENT_ID, { send_page_view: false });
 }
